@@ -159,10 +159,10 @@ const BUILDERS = {
   },
 
   start() {
-    const checks = surface(range(12), range(2), (u, v) => V(-5 + 10 * u, 0.04, 10 + 1.6 * v),
+    const checks = surface(range(12), range(2), (u, v) => V(-5 + 10 * u, 0.09, 10 + 1.6 * v),
       (i, j) => ((i + j) % 2 ? C.check1 : C.check2));
     const posts = [box(0.6, 7, 0.6, -6.6, 3.5, 11, C.concrete), box(0.6, 7, 0.6, 6.6, 3.5, 11, C.concrete)];
-    const banner = new THREE.Mesh(new THREE.BoxGeometry(13.8, 1.8, 0.4),
+    const banner = new THREE.Mesh(new THREE.BoxGeometry(13.7, 1.8, 0.4),   // ends just inside the posts' faces
       [0, 1, 2, 3, 4, 5].map(i => (i === 4 || i === 5)
         ? new THREE.MeshLambertMaterial({ map: bannerTexture() })
         : new THREE.MeshLambertMaterial({ color: '#222' })));
@@ -197,7 +197,7 @@ const BUILDERS = {
       for (const side of [-1, 1]) {
         chevrons.push(surface([0, 1], [0, 1], (u, v) => {
           const x = side * 3.6 * v, z = z0 - 2.2 + 2.2 * v;
-          return V(x, 0.06, z + 1.4 * u);
+          return V(x, 0.08, z + 1.4 * u);
         }, () => (k % 2 ? C.yellow : C.orange)));
       }
     }
@@ -237,7 +237,7 @@ const BUILDERS = {
   tunnel() {
     const parts = [straightRoad()];
     // Walls stop short of the portals' outer faces so no two faces share a plane (z-fighting)
-    const walls = [box(1, 5, TILE - 0.3, -6.5, 2.5, 0, C.concrete), box(1, 5, TILE - 0.3, 6.5, 2.5, 0, C.concrete), box(13.9, 0.8, TILE - 0.3, 0, 5.4, 0, C.concrete)];
+    const walls = [box(1, 4.96, TILE - 0.3, -6.5, 2.48, 0, C.concrete), box(1, 4.96, TILE - 0.3, 6.5, 2.48, 0, C.concrete), box(13.9, 0.8, TILE - 0.3, 0, 5.4, 0, C.concrete)];
     const portals = [];
     for (const z of [-HALF + 0.4, HALF - 0.4]) portals.push(box(15, 1.2, 0.8, 0, 6.2, z, C.red), box(1.4, 6, 0.8, -7.2, 3, z, C.red), box(1.4, 6, 0.8, 7.2, 3, z, C.red));
     const lamps = [];
@@ -329,7 +329,7 @@ const BUILDERS = {
       const w = W + (10 - W) * m;
       return V(A * (1 - m) + w * (u - 0.5), 0.03, -HALF * v);
     }, roadColour);
-    const pillars = [box(0.8, 18.6, 0.8, -9.4, 9.3, 0, C.steel), box(0.8, 18.6, 0.8, 9.4, 9.3, 0, C.steel), box(19.6, 0.8, 0.8, 0, 18.2, 0, C.steel)];
+    const pillars = [box(0.8, 18.6, 0.8, -9.4, 9.3, 0, C.steel), box(0.8, 18.6, 0.8, 9.4, 9.3, 0, C.steel), box(19.6, 0.8, 0.7, 0, 18.15, 0, C.steel)];
     inner.userData.loop = true;
     return { vis: [inner, outer, ...edges, approach, exit, ...pillars], col: [inner, ...pillars] };
   },

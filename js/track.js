@@ -204,8 +204,11 @@ export class World {
     const rand = rng(parseInt(trackId(this.grid), 36));
     // Grass tiles (skip water pits), slightly varied for a patchwork look.
     const grassGeo = new THREE.PlaneGeometry(TILE, TILE).rotateX(-Math.PI / 2);
-    const grassMats = ['#5da43f', '#58a03b', '#62aa44'].map(c => new THREE.MeshLambertMaterial({ color: c }));
-    const hillMat = new THREE.MeshLambertMaterial({ color: '#5aa23d', flatShading: true });
+    // The ground is pushed back in the depth buffer so roads and markings lying a few cm above it never
+    // z-fight with it, even from far away.
+    const behind = { polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 4 };
+    const grassMats = ['#5da43f', '#58a03b', '#62aa44'].map(c => new THREE.MeshLambertMaterial({ color: c, ...behind }));
+    const hillMat = new THREE.MeshLambertMaterial({ color: '#5aa23d', flatShading: true, ...behind });
     for (let z = 0; z < GRID; z++) for (let x = 0; x < GRID; x++) {
       const c = this.grid[z][x];
       if (c && c.t === 'water') continue;
@@ -224,7 +227,7 @@ export class World {
       g.add(m);
     }
     // Surrounding land
-    const outer = new THREE.MeshLambertMaterial({ color: '#4f9437' });
+    const outer = new THREE.MeshLambertMaterial({ color: '#4f9437', ...behind });
     const S = GRID * TILE / 2, BIG = 2400;
     for (const [w, d, x, z] of [[BIG, BIG / 2 - S, 0, -(S + (BIG / 2 - S) / 2)], [BIG, BIG / 2 - S, 0, S + (BIG / 2 - S) / 2],
       [BIG / 2 - S, 2 * S, -(S + (BIG / 2 - S) / 2), 0], [BIG / 2 - S, 2 * S, S + (BIG / 2 - S) / 2, 0]]) {

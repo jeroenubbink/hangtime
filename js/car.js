@@ -409,12 +409,13 @@ export function buildCarModel(colour, { ghost = false, kind = 'comet' } = {}) {
     root.add(extrudeAcross([[-2.0, -0.42], [-2.05, -0.02], [-1.25, 0.08], [1.45, 0.08], [2.0, 0.22], [2.0, -0.42]], 1.6, paint));
     add(1.1, 0.3, 0.9, 0, 0.2, 0.35, black);              // seats
     for (const x of [-0.72, 0.72]) for (const z of [-0.45, 1.05]) add(0.08, 0.95, 0.08, x, 0.55, z, black);
-    for (const z of [-0.45, 1.05]) add(1.52, 0.08, 0.08, 0, 1.0, z, black);
-    for (const x of [-0.72, 0.72]) add(0.08, 0.08, 1.58, x, 1.0, 0.3, black);
-    add(1.5, 0.1, 0.1, 0, 0.05, -2.12, chrome);           // bull bar
-    add(0.1, 0.4, 0.1, -0.55, -0.1, -2.12, chrome);
-    add(0.1, 0.4, 0.1, 0.55, -0.1, -2.12, chrome);
-    add(1.0, 0.36, 0.5, 0, 0.18, 1.75, black);            // engine
+    for (const z of [-0.45, 1.05]) add(1.54, 0.09, 0.09, 0, 1.0, z, black);
+    for (const x of [-0.72, 0.72]) add(0.09, 0.085, 1.58, x, 1.0, 0.3, black);
+    // Parts that touch are offset by a few mm so no two faces share a plane (z-fighting)
+    add(1.5, 0.1, 0.1, 0, 0.05, -2.1, chrome);            // bull bar
+    add(0.1, 0.38, 0.09, -0.55, -0.1, -2.1, chrome);
+    add(0.1, 0.38, 0.09, 0.55, -0.1, -2.1, chrome);
+    add(1.0, 0.36, 0.5, 0, 0.18, 1.72, black);            // engine
   } else if (kind === 'brute') {
     // Muscle car: long hood with a scoop, cabin set back, ducktail
     root.add(extrudeAcross([[-2.25, -0.42], [-2.3, 0.0], [-0.55, 0.2], [0.95, 0.22], [1.9, 0.26], [2.22, 0.34], [2.22, -0.42]], 1.9, paint));
@@ -434,7 +435,7 @@ export function buildCarModel(colour, { ghost = false, kind = 'comet' } = {}) {
     add(1.84, 0.12, 4.36, 0, -0.38, 0, black);           // sill / skirt
     add(0.6, 0.06, 0.18, 0, -0.32, -2.22, chrome);
   }
-  const hz = kind === 'brute' ? -2.32 : -2.2, tz = kind === 'brute' ? 2.25 : 2.16;
+  const hz = kind === 'brute' ? -2.32 : -2.2, tz = kind === 'brute' ? 2.26 : 2.16;
   add(0.42, 0.14, 0.06, -0.62, -0.08, hz, head);
   add(0.42, 0.14, 0.06, 0.62, -0.08, hz, head);
   add(0.5, 0.14, 0.06, -0.6, kind === 'hopper' ? 0.0 : 0.1, tz, tail);
