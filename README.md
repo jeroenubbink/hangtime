@@ -3,6 +3,8 @@
 A low-poly stunt-driving game that runs in the browser. It has no build step and no assets: three.js,
 WebAudio synthesis and about 3,000 lines of plain JavaScript modules.
 
+**Play it: https://jeroenubbink.github.io/hangtime/**
+
 - **Stunt tracks:** loops, ramp jumps over water, banked bowls, humps and boost pads across five built-in
   tracks, plus a tile-based **track editor** with shareable links.
 - **Air tricks:** flips, spins and barrel rolls on their own keys, slow motion while airborne, a level
