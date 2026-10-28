@@ -145,9 +145,9 @@ kbd { display: inline-block; min-width: 20px; text-align: center; font: 600 12px
   border-right: 1px solid var(--line); }
 #ed-main { flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0; }
 #ed-canvas { border-radius: 8px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); cursor: crosshair; }
-#palette { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.piece { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px; font-size: 12px; }
-.piece canvas { width: 48px; height: 48px; border-radius: 4px; }
+#palette { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.piece { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 2px; font-size: 11px; white-space: nowrap; }
+.piece canvas { width: 40px; height: 40px; border-radius: 4px; }
 .piece.active { border-color: var(--accent); background: rgba(255, 207, 46, 0.18); }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; opacity: 0.9; }
 .field input { background: rgba(255, 255, 255, 0.08); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }

@@ -11,13 +11,16 @@ export const SKILLS = {
 };
 
 // Comfortable speeds per piece (m/s). Loop and jump speeds are not scaled by skill.
-const WANT = { loop: 24, corner: 15, banked: 20.5, hump: 34, straight: 40, start: 40, ramp: 30, boost: 40 };
-const SCALED = new Set(['corner', 'banked', 'hump', 'straight', 'start', 'boost']);
+const WANT = { loop: 24, corner: 15, banked: 20.5, hump: 34, straight: 40, start: 40, ramp: 30, boost: 40,
+  corkscrew: 21, pipe: 36, tunnel: 40, chicane: 15, dirt: 33, ice: 25, kicker: 24 };
+const SCALED = new Set(['corner', 'banked', 'hump', 'straight', 'start', 'boost', 'pipe', 'tunnel', 'chicane', 'dirt', 'ice']);
 // Line radius through curves: the middle of a flat curve; a banked one climbs the bowl mid-curve,
 // where the bowl is highest, and comes back to the middle at either end.
 const RADIUS = { corner: () => 14, banked: s => 14 + 2.5 * Math.sin(Math.PI * s) };
 const PER_TILE = 6;
-const OPEN = new Set(['start', 'straight', 'corner', 'banked', 'hump', 'boost']);
+const OPEN = new Set(['start', 'straight', 'corner', 'banked', 'hump', 'boost', 'pipe', 'tunnel', 'dirt', 'ice']);
+// Tiles with a set line through them (no lane offset, steering handled or fixed)
+const SET_LINE = new Set(['loop', 'corkscrew', 'kicker']);
 const WHEELBASE = 2.6;
 
 export class Driver {
@@ -77,10 +80,13 @@ export class Driver {
     const [cx, cz] = cellOf(car.pos.x, car.pos.z);
     const cell = cz >= 0 && cz < GRID && cx >= 0 && cx < GRID ? this.grid[cz][cx] : null;
     if (cell && cell.t === 'loop' && car.pos.y > 0.5) out.steer = 0;   // the loop's lane assist does the steering
+    if (car.rail) out.steer = 0;
 
     // Speed plan from the tile the car is on to a few tiles ahead. Each tile of run-up allows a bit more
     // speed, but only where the car can brake: it's half in the air over a hump and fully on the tile after.
-    const brakeable = i => path[i].t === 'hump' ? 3 : path[(i - 1 + n) % n].t === 'hump' ? 0 : 6;
+    // Slippery surfaces brake less.
+    const BRAKE = { hump: 3, kicker: 2, ice: 2.5, dirt: 4.5 };
+    const brakeable = i => ['hump', 'kicker'].includes(path[(i - 1 + n) % n].t) ? 0 : BRAKE[path[i].t] ?? 6;
     let target = 40 * this.pace, credit = 0, bends = Infinity;
     for (let j = -1; j < 4; j++) {
       const k = (next + j + n) % n, t = path[k].t;
@@ -95,7 +101,7 @@ export class Driver {
       } else if (t === 'water' || (t === 'ramp' && path[(k - 1 + n) % n].t === 'water')) w = 99;
       else w = (WANT[t] ?? 40) * (SCALED.has(t) ? this.pace : 1) * (car.world.wet && RADIUS[t] ? 0.9 : 1);
       target = Math.min(target, w + credit);
-      if (RADIUS[t] || t === 'loop') bends = Math.min(bends, w + credit);
+      if (RADIUS[t] || SET_LINE.has(t) || t === 'chicane') bends = Math.min(bends, w + credit);
     }
     if (path[next].t === 'water' || car.grounded === 0) target = -1;
     out.throttle = car.speed < target ? 1 : 0;
@@ -113,11 +119,11 @@ export class Driver {
 // PER_TILE points per path tile, from its entry edge towards its exit edge. Loops and curves are taken
 // in the middle; the lane offset applies on straight pieces and fades in and out next to them. The tile
 // before a loop stays centred so the car arrives straight.
-const LANED = new Set(['start', 'straight', 'ramp', 'water', 'hump', 'boost']);
+const LANED = new Set(['start', 'straight', 'ramp', 'water', 'hump', 'boost', 'pipe', 'tunnel', 'dirt', 'ice']);
 function racingLine(path, lane) {
   const pts = [], n = path.length;
   const f = path.map(p => (LANED.has(p.t) ? 1 : 0));
-  path.forEach((p, k) => { if (p.t === 'loop') f[(k - 1 + n) % n] = 0; });
+  path.forEach((p, k) => { if (SET_LINE.has(p.t)) f[(k - 1 + n) % n] = 0; });
   path.forEach((p, k) => {
     const [cx, cz] = cellCenter(p.x, p.z);
     const R = RADIUS[p.t];
@@ -131,7 +137,8 @@ function racingLine(path, lane) {
         const th = s * Math.PI / 2, Rs = R(s);
         pts.push({ x: ox + Rs * (-dout[0] * Math.cos(th) + din[0] * Math.sin(th)), z: oz + Rs * (-dout[1] * Math.cos(th) + din[1] * Math.sin(th)) });
       } else {
-        const off = lane * (fin + (fout - fin) * s);
+        // Through the chicane, a smooth S that clips the inside of both bends
+        const off = lane * (fin + (fout - fin) * s) + (p.t === 'chicane' ? 1.5 * Math.sin(2 * Math.PI * s) : 0);
         const r = DIRS[(p.hin + 1) % 4];
         pts.push({ x: cx + din[0] * HALF * (2 * s - 1) + r[0] * off, z: cz + din[1] * HALF * (2 * s - 1) + r[1] * off });
       }

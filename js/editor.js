@@ -1,5 +1,5 @@
 // 2D top-down track editor plus the shared tile drawing used by the minimap and palette.
-import { GRID, PIECES, PIECE_TYPES } from './pieces.js';
+import { GRID, PIECES, PIECE_TYPES, chicaneX } from './pieces.js';
 import { emptyGrid, walk, serialize, deserialize, BUILTIN } from './track.js';
 import * as store from './store.js';
 
@@ -83,6 +83,54 @@ export function drawPiece(ctx, type, r, x, y, s, { grass = true, simple = false 
         ctx.strokeStyle = c;
         ctx.beginPath(); ctx.moveTo(-0.13, yy + 0.08); ctx.lineTo(0, yy - 0.05); ctx.lineTo(0.13, yy + 0.08); ctx.stroke();
       }
+      break;
+    case 'corkscrew':
+      road();
+      ctx.strokeStyle = '#2f6fbd'; ctx.lineWidth = 0.07;
+      ctx.beginPath();
+      for (let i = 0; i <= 40; i++) { const t = i / 40; ctx.lineTo(0.22 * Math.sin(2 * Math.PI * t), 0.4 - 0.8 * t); }
+      ctx.stroke();
+      if (!simple) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 / s; ctx.stroke(); }
+      break;
+    case 'pipe':
+      ctx.fillStyle = '#a29c90'; ctx.fillRect(-0.24, -0.5, 0.48, 1);
+      ctx.fillStyle = ROAD; ctx.fillRect(-0.11, -0.5, 0.22, 1);
+      ctx.fillStyle = '#d8352b'; ctx.fillRect(-0.26, -0.5, 0.03, 1); ctx.fillRect(0.23, -0.5, 0.03, 1);
+      break;
+    case 'tunnel':
+      road();
+      ctx.fillStyle = '#a29c90'; ctx.fillRect(-0.27, -0.42, 0.54, 0.84);
+      ctx.fillStyle = '#d8352b'; ctx.fillRect(-0.29, -0.5, 0.58, 0.08); ctx.fillRect(-0.29, 0.42, 0.58, 0.08);
+      ctx.fillStyle = '#ffe6a0'; for (const yy of [-0.25, 0, 0.25]) ctx.fillRect(-0.04, yy - 0.04, 0.08, 0.08);
+      break;
+    case 'chicane': {
+      ctx.strokeStyle = ROAD; ctx.lineWidth = 0.27;
+      const cx = v => chicaneX(v) / 28;
+      ctx.beginPath();
+      for (let i = 0; i <= 30; i++) { const v = i / 30; ctx.lineTo(cx(v), 0.5 - v); }
+      ctx.stroke();
+      if (!simple) {
+        ctx.strokeStyle = '#d8352b'; ctx.lineWidth = 0.025;
+        for (const sd of [-1, 1]) { ctx.beginPath(); for (let i = 0; i <= 30; i++) { const v = i / 30; ctx.lineTo(cx(v) + sd * 0.14, 0.5 - v); } ctx.stroke(); }
+      }
+      break;
+    }
+    case 'dirt':
+      ctx.fillStyle = '#8a6440'; ctx.fillRect(-W / 2, -0.5, W, 1);
+      ctx.fillStyle = '#6e4e30'; ctx.fillRect(-0.09, -0.5, 0.03, 1); ctx.fillRect(0.06, -0.5, 0.03, 1);
+      break;
+    case 'ice':
+      ctx.fillStyle = '#cfe8f5'; ctx.fillRect(-W / 2, -0.5, W, 1);
+      if (!simple) {
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5 / s;
+        ctx.beginPath(); ctx.moveTo(-0.1, -0.3); ctx.lineTo(0.08, -0.05); ctx.lineTo(-0.05, 0.2); ctx.moveTo(0.1, 0.1); ctx.lineTo(0.02, 0.35); ctx.stroke();
+      }
+      break;
+    case 'kicker':
+      road();
+      ctx.fillStyle = '#a8a49a'; ctx.fillRect(-W / 2, -0.1, W, 0.28);
+      ctx.fillStyle = '#ffd23a'; ctx.fillRect(-W / 2, -0.1, W, 0.05);
+      ctx.beginPath(); ctx.moveTo(0, -0.38); ctx.lineTo(0.12, -0.2); ctx.lineTo(-0.12, -0.2); ctx.fill();
       break;
     case 'hump':
       road();

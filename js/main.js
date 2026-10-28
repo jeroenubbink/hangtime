@@ -121,7 +121,7 @@ function applyTimeOfDay() {
   for (const m of [game.model, game.rivalModel]) if (m) setCarLights(m, t.lamps);
 }
 
-const camera = new THREE.PerspectiveCamera(65, 1, 0.1, 4000);
+const camera = new THREE.PerspectiveCamera(65, 1, 0.25, 4000);
 function resize() {
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -366,8 +366,8 @@ const dirVec = h => new THREE.Vector3(DIRS[h][0], 0, DIRS[h][1]);
 // the start line, and never more than a few tiles when a closer spot will do.
 function spawnPoint(i) {
   const path = game.path, n = path.length;
-  const standable = t => ['start', 'straight', 'corner', 'hump', 'banked', 'boost'].includes(t);
-  const stunt = t => ['ramp', 'water', 'loop'].includes(t);
+  const standable = t => ['start', 'straight', 'corner', 'hump', 'banked', 'boost', 'pipe', 'tunnel', 'dirt', 'ice'].includes(t);
+  const stunt = t => ['ramp', 'water', 'loop', 'corkscrew', 'kicker'].includes(t);
   const runup = k => { let d = 1; while (d <= 3 && !stunt(path[(k + d) % n].t)) d++; return d - 1; };
   let k = -1;
   for (const need of [3, 2, 1, 0]) {
@@ -379,7 +379,9 @@ function spawnPoint(i) {
   const [cx, cz] = cellCenter(p.x, p.z);
   const c = new THREE.Vector3(cx, 0.95, cz);
   if (p.t === 'start') return { pos: c.addScaledVector(dirVec(p.hout), -4), heading: p.hout, index: k };
-  if (p.t === 'straight' || p.t === 'boost') return { pos: c, heading: p.hout, index: k };
+  if (!['corner', 'banked', 'hump'].includes(p.t)) return { pos: c, heading: p.hout, index: k };
+  // Curves: just inside the entry, on the inside lane, where even a banked curve is still flat
+  if (p.t !== 'hump') c.addScaledVector(dirVec(p.hout), 2.5);
   return { pos: c.addScaledVector(dirVec(p.hin), -(HALF - 3)), heading: p.hin, index: k };
 }
 
@@ -640,10 +642,10 @@ function advance(st, pos) {
   const idx = game.pathIndex.get(cx + ',' + cz);
   if (idx === undefined || idx === st.last) return null;
   let res = null;
-  // Tiles you can fly clean over (a long jump past the landing ramp, a hump) don't have to be touched
+  // Tiles you can fly over or cut across the inside of (jumps, corners) don't have to be touched
   const n = game.path.length;
   let skip = 0;
-  while (skip < 3 && idx !== (st.next + skip) % n && ['ramp', 'water', 'hump'].includes(game.path[(st.next + skip) % n].t)) skip++;
+  while (skip < 3 && idx !== (st.next + skip) % n && ['ramp', 'water', 'hump', 'kicker', 'corner', 'banked'].includes(game.path[(st.next + skip) % n].t)) skip++;
   if (idx === (st.next + skip) % n && (skip === 0 || idx !== 0)) {
     st.last = idx;
     st.next = (idx + 1) % game.path.length;
@@ -1343,8 +1345,9 @@ function frame(now) {
       if (race.countdown <= 0) { setMode('race'); showMessage('GO!', '', 0.8); sound.beep(true); }
     }
     poseCarModel(game.model, car.pos, car.q, car.steer, car.wheels.map(w => w.comp), car.wheels.map(w => w.spin));
-    // Count as airborne only after a moment, so bumps don't make the camera twitch
-    const airborne = car.grounded === 0 && car.airTime > 0.15 && !car.loopRef;
+    // Count as airborne only after a moment, so bumps don't make the camera twitch. Through a corkscrew the
+    // camera stays level too, watching the car roll from behind instead of rolling outside the tube.
+    const airborne = (car.grounded === 0 && car.airTime > 0.15 && !car.loopRef) || !!car.rail;
     updateCamera(dt, car.pos, car.q, game.camMode, { wrecked: !!race.crash, airborne, vel: car.vel });
     const rv = race.rival;
     if (rv) {

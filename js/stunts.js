@@ -20,6 +20,7 @@ export class Stunts {
     this.loop = false;
     this.drift = 0;
     this.driftCool = 0;
+    this.wall = 0;
   }
 
   // Forget in-progress stunts without penalty (respawns, manual resets).
@@ -27,6 +28,7 @@ export class Stunts {
     this.air = this.pending = null;
     this.loop = false;
     this.drift = 0;
+    this.wall = 0;
   }
 
   // Text for the live "in progress" indicator.
@@ -43,7 +45,7 @@ export class Stunts {
     const out = [];
     this.chainT = Math.max(0, this.chainT - dt);
     if (crashed) {
-      if (this.air || this.pending || this.loop || this.drift > 0.6) out.push([{ name: 'BAILED', bail: true }]);
+      if (this.air || this.pending || this.loop || this.drift > 0.6 || this.wall > 0.6) out.push([{ name: 'BAILED', bail: true }]);
       this.cancel();
       this.chain = this.chainT = 0;
       return out;
@@ -75,6 +77,19 @@ export class Stunts {
     else if (this.loop) {
       this.loop = false;
       out.push(this.award([{ name: 'LOOP', detail: '', pts: 300 }]));
+    }
+
+    if (car.railDone) {
+      car.railDone = false;
+      out.push(this.award([{ name: 'CORKSCREW', detail: '', pts: 450 }]));
+    }
+
+    // Wall rides: up on the side of a half-pipe or banked bowl
+    const upY = 1 - 2 * (car.q.x * car.q.x + car.q.z * car.q.z);
+    if (car.grounded >= 3 && !car.rail && !car.loopRef && upY < 0.78 && Math.hypot(car.vel.x, car.vel.z) > 10) this.wall += dt;
+    else if (this.wall > 0) {
+      if (this.wall >= 0.6) out.push(this.award([{ name: 'WALL RIDE', detail: `${this.wall.toFixed(1)} s`, pts: Math.round(this.wall * 180) }]));
+      this.wall = 0;
     }
 
     // Drifts: sliding sideways at speed with the wheels down

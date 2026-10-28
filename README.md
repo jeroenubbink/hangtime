@@ -5,8 +5,9 @@ WebAudio synthesis and about 3,000 lines of plain JavaScript modules.
 
 **Play it: https://jeroenubbink.github.io/hangtime/**
 
-- **Stunt tracks:** loops, ramp jumps over water, banked bowls, humps and boost pads across five built-in
-  tracks, plus a tile-based **track editor** with shareable links.
+- **Stunt tracks:** loops, corkscrews, ramp jumps over water, kickers, half-pipes, banked bowls, chicanes,
+  tunnels, dirt and ice, humps and boost pads across six built-in tracks, plus a tile-based **track editor**
+  with shareable links.
 - **Air tricks:** flips, spins and barrel rolls on their own keys, slow motion while airborne, a level
   camera and a pitch/roll gauge so you know how you'll land.
 - **Stunt score and nitro:** combos up to ×5, and every point fills the nitro tank.
@@ -65,7 +66,8 @@ LB/RB roll. Touch screens get on-screen buttons, including trick buttons.
 
 ## Stunts and nitro
 
-Airtime and distance, backflips, frontflips, barrel rolls, spins, loops, drifts and smooth landings score
+Airtime and distance, backflips, frontflips, barrel rolls, spins, loops, corkscrews, wall rides, drifts and
+smooth landings score
 points. Stunts landed within 6 seconds of each other build a combo up to ×5. Crashing during a stunt loses
 it. Points fill the nitro tank; orange chevrons on the road are boost pads.
 
@@ -77,7 +79,15 @@ it. Points fill the nitro tank; orange chevrons on the road are boost pads.
 - **Banked curves** have a flat inner lane and a bowl on the outside. Ride up the bowl to carry
   about 70 km/h through the turn, against roughly 50 km/h for a flat curve.
 - **Humps** throw the car into the air at speed, and you can't brake while flying.
-- You must pass every tile in order; cutting across the grass shows a "missed checkpoint" warning.
+- **Corkscrews** roll you all the way round. They need about 50 km/h going in; any slower and you drop off
+  the top onto your roof.
+- **Kickers** are small jumps in the middle of a straight. At speed they throw you a long way, so watch what
+  comes after them.
+- **Half-pipes** let you ride up the walls (a wall ride scores points).
+- **Chicanes** are a tight S between barriers: about 55 km/h.
+- **Dirt** has noticeably less grip, and **ice** has very little: brake before it, not on it.
+- You must pass every tile in order; cutting across the grass shows a "missed checkpoint" warning. Press R
+  to go back to the last checkpoint.
 
 ## Track editor
 

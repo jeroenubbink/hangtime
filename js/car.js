@@ -1,7 +1,7 @@
 // Raycast-suspension rigid-body car, plus its low-poly model.
 import * as THREE from 'three';
 import { WORLD_LIMIT } from './track.js';
-import { LOOP_R, loopX, loopDX } from './pieces.js';
+import { LOOP_R, loopX, loopDX, CORK_R, CORK_Z, corkFrame } from './pieces.js';
 
 export const MASS = 1200;
 const G = 9.81;
@@ -37,7 +37,7 @@ const v3 = () => new THREE.Vector3();
 const _up = v3(), _fwd = v3(), _right = v3(), _F = v3(), _T = v3(), _down = v3();
 const _mount = v3(), _r = v3(), _pv = v3(), _wf = v3(), _ws = v3(), _f = v3(), _t1 = v3(), _t2 = v3();
 const _n = v3(), _J = v3(), _vt = v3(), _d = v3(), _p = v3();
-const _qi = new THREE.Quaternion(), _dq = new THREE.Quaternion();
+const _qi = new THREE.Quaternion(), _dq = new THREE.Quaternion(), _mq = new THREE.Matrix4();
 const clamp = THREE.MathUtils.clamp;
 
 export class CarPhysics {
@@ -65,6 +65,8 @@ export class CarPhysics {
     this.steer = 0;
     for (const w of this.wheels) { w.comp = 0; w.contact = false; }
     this.loopRef = this.loopTop = null;
+    this.rail = null;
+    this.railCool = 0;
   }
 
   invInertia(v, out) {
@@ -81,6 +83,8 @@ export class CarPhysics {
 
   // One fixed physics step. Returns collision info for crash detection.
   step(dt, input) {
+    if (this.rail) return this.railStep(dt, input);
+    this.railCool -= dt;
     const q = this.q, world = this.world;
     _up.set(0, 1, 0).applyQuaternion(q);
     _fwd.set(0, 0, -1).applyQuaternion(q);
@@ -132,6 +136,7 @@ export class CarPhysics {
       this.grounded++;
       ws.contact = true;
       if (hit.object && hit.object.userData.loop) { this.loopRef = hit.object.userData.loop; this.loopTimer = 0.4; }
+      if (hit.object && hit.object.userData.cork && this.railCool <= 0 && this.enterRail(hit.object.userData.cork)) return this.railStep(dt, input);
       const comp = REST + RADIUS - hit.dist;
       const cv = (comp - ws.comp) / dt;
       ws.comp = comp;
@@ -160,7 +165,7 @@ export class CarPhysics {
       if (bF > 0) lon -= clamp(vf * 6000, -bF, bF);
       if (input.handbrake && !W.front) lon -= clamp(vf * 6000, -3500, 3500);
 
-      const mu = (ws.road ? this.spec.grip : this.spec.grip / 1.5) * (W.front ? 1 : 1.1) * (world.wet ? 0.94 : 1);
+      const mu = (ws.road ? this.spec.grip * world.surfaceGrip(hit.point.x, hit.point.z) : this.spec.grip / 1.5) * (W.front ? 1 : 1.1) * (world.wet ? 0.94 : 1);
       const maxF = mu * Math.min(fs, 9000);
       const mag = Math.hypot(lat, lon);
       ws.slip = maxF > 0 ? mag / maxF : 0;
@@ -216,6 +221,66 @@ export class CarPhysics {
     const ev = this.collide();
     ev.landing = this.landing;
     return ev;
+  }
+
+  // Corkscrew: like a roller coaster, the car rides a rail through the twist. It keeps its speed (less what
+  // the climb costs) and falls off if it's too slow to stay pressed against the road upside down.
+  enterRail(C) {
+    const ca = Math.cos(C.a), sa = Math.sin(C.a);
+    const dx = this.pos.x - C.cx, dz = this.pos.z - C.cz;
+    const lx = dx * ca + dz * sa, lz = -dx * sa + dz * ca;
+    _fwd.set(0, 0, -1).applyQuaternion(this.q);
+    const fz = -_fwd.x * sa + _fwd.z * ca, vz = -this.vel.x * sa + this.vel.z * ca;
+    const s = (CORK_Z - lz) / (2 * CORK_Z);
+    let dir = 0;
+    if (s > -0.05 && s < 0.08 && fz < -0.8 && vz < -2) dir = 1;
+    else if (s > 0.92 && s < 1.05 && fz > 0.8 && vz > 2) dir = -1;
+    if (!dir || Math.abs(lx) > 2.6) return false;
+    this.rail = { C, ca, sa, dir, s: Math.min(1, Math.max(0, s)), v: Math.abs(vz), x: lx };
+    return true;
+  }
+
+  railStep(dt, input) {
+    const R = this.rail;
+    let f = corkFrame(R.s);
+    // Travel direction in local space
+    const tx = f.t.x * R.dir, ty = f.t.y * R.dir, tz = f.t.z * R.dir;
+    R.v += (-G * ty + (input.throttle > 0 ? 3 : 0) - (input.brake > 0 ? 6 : 0) - 0.0003 * R.v * R.v * 30) * dt;
+    R.x *= 1 - Math.min(1, dt * 3);            // drift to the middle of the road
+    // Too slow to stay on upside down: let go
+    const circ = R.v * Math.sqrt(Math.max(0, 1 - tz * tz));
+    const fall = f.n.y < -0.2 && circ * circ / CORK_R < G * -f.n.y * 0.85;
+    R.s += R.dir * R.v * dt / f.len;
+    const done = R.s >= 1 || R.s <= 0;
+    R.s = Math.min(1, Math.max(0, R.s));
+    f = corkFrame(R.s);
+    const w = _t1.crossVectors(f.t, f.n).normalize();
+    const lp = _p.copy(f.p).addScaledVector(f.n, 0.86).addScaledVector(w, R.x);
+    const toWorld = (v, out) => out.set(v.x * R.ca - v.z * R.sa, v.y, v.x * R.sa + v.z * R.ca);
+    toWorld(lp, this.pos);
+    this.pos.x += R.C.cx;
+    this.pos.z += R.C.cz;
+    toWorld(_t2.copy(f.t).multiplyScalar(R.dir), _fwd);
+    toWorld(f.n, _up);
+    _right.crossVectors(_fwd, _up).normalize();
+    _up.crossVectors(_right, _fwd);
+    _mq.makeBasis(_right, _up, _t2.copy(_fwd).negate());
+    this.q.setFromRotationMatrix(_mq);
+    this.vel.copy(_fwd).multiplyScalar(R.v);
+    this.w.set(0, 0, 0);
+    this.speed = R.v;
+    this.grounded = 4;
+    this.airTime = 0;
+    this.landing = 0;
+    for (const ws of this.wheels) { ws.contact = true; ws.comp = 0.1; ws.slip = 0; ws.road = true; ws.spin += R.v / RADIUS * dt; }
+    this.steer *= 1 - Math.min(1, dt * 5);
+    this.rpm += (1100 + 6200 * Math.min(1, R.v / 35) - this.rpm) * Math.min(1, dt * 8);
+    if (done || fall || R.v < 1) {
+      this.rail = null;
+      this.railCool = 0.6;
+      if (done) this.railDone = true;
+    }
+    return { impact: 0, under: 0, roof: false, landing: 0 };
   }
 
   // Loops shift sideways so entry and exit lanes don't collide. Like a slot car, keep the car on the lane

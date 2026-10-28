@@ -26,7 +26,8 @@ export function trackId(grid) {
 }
 
 // Lay out a track with turtle tokens. Heading uses side indices (0 = north).
-// S straight, L/R curve, BL/BR banked curve, J ramp up, D ramp down (landing), W water, O loop, H hump, B boost pad.
+// S straight, L/R curve, BL/BR banked curve, J ramp up, D ramp down (landing), W water, O loop, H hump, B boost pad,
+// X corkscrew, P half-pipe, T tunnel, Z chicane, U dirt, I ice, K kicker.
 export function fromTurtle(x, z, h, tokens) {
   const grid = emptyGrid();
   const place = (t, r) => { grid[z][x] = { t, r }; };
@@ -48,6 +49,13 @@ export function fromTurtle(x, z, h, tokens) {
       case 'O': place('loop', h); break;
       case 'H': place('hump', h % 2); break;
       case 'B': place('boost', h); break;
+      case 'X': place('corkscrew', h); break;
+      case 'P': place('pipe', h % 2); break;
+      case 'T': place('tunnel', h % 2); break;
+      case 'Z': place('chicane', h % 2); break;
+      case 'U': place('dirt', h % 2); break;
+      case 'I': place('ice', h % 2); break;
+      case 'K': place('kicker', h); break;
       case 'L': case 'R': case 'BL': case 'BR': {
         const out = (h + (tok.endsWith('R') ? 1 : 3)) % 4;
         fitCorner(tok.startsWith('B') ? 'banked' : 'corner', back, out);
@@ -102,6 +110,8 @@ export const BUILTIN = [
     'S S R  S H S L  S S BR  B S S S R  S S O S S S R  S S S J W D S S R') },
   { name: 'Stunt Park', medals: [43.5, 47.5, 53], grid: () => fromTurtle(1, 10, 0,
     'S S J W D S S S BR  B S O S H S S S R  S B S J W W D S S BR  B S O S S H S S R') },
+  { name: 'Funhouse', medals: [45.5, 49.5, 55], grid: () => fromTurtle(1, 9, 0,
+    'S S X S S U U BR  S K S S Z S T T R  S P P S I I I S BR  S S J W D S X S BR') },
 ];
 
 // Best-lap targets for gold, silver and bronze (seconds), roughly 5% under to 15% over the Pro rival's lap.
@@ -275,6 +285,7 @@ export class World {
         cg.computeBoundingBox();
         const mesh = new THREE.Mesh(cg, collisionMaterial);
         if (geo.userData.loop) mesh.userData.loop = { cx, cz, a: c.r * Math.PI / 2 };
+        if (geo.userData.cork) mesh.userData.cork = { cx, cz, a: c.r * Math.PI / 2 };
         mesh.updateMatrixWorld(true);
         this.colliders[z][x].push(mesh);
       }
@@ -324,7 +335,7 @@ export class World {
     this.lampGlow = [];
     for (let z = 0; z < GRID; z++) for (let x = 0; x < GRID; x++) {
       const c = this.grid[z][x];
-      if (!c || !['straight', 'start', 'hump', 'boost'].includes(c.t) || (x + z) % 2) continue;
+      if (!c || !['straight', 'start', 'hump', 'boost', 'dirt', 'ice', 'kicker'].includes(c.t) || (x + z) % 2) continue;
       const side = (x * 3 + z) % 4 < 2 ? 1 : -1;
       const lamp = new THREE.Group();
       const pole = new THREE.Mesh(poleGeo, poleMat), arm = new THREE.Mesh(armGeo, poleMat), head = new THREE.Mesh(headGeo, this.lampHeadMat);
@@ -354,7 +365,8 @@ export class World {
 
     // Mountains
     const mtnMats = ['#7d8f9e', '#6f8494', '#8a9aa6'].map(c => new THREE.MeshLambertMaterial({ color: c, flatShading: true }));
-    const snow = new THREE.MeshLambertMaterial({ color: '#f2f4f7', flatShading: true });
+    // The caps sit a little proud of the slope and win the depth test, so far away they don't z-fight with it
+    const snow = new THREE.MeshLambertMaterial({ color: '#f2f4f7', flatShading: true, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
     for (let i = 0; i < 46; i++) {
       const a = (i / 46) * Math.PI * 2 + rand() * 0.1, d = 640 + rand() * 260;
       const h = 70 + rand() * 150, r = 70 + rand() * 90;
@@ -363,8 +375,8 @@ export class World {
       m.rotation.y = rand() * 6;
       g.add(m);
       if (h > 150) {
-        const cap = new THREE.Mesh(new THREE.ConeGeometry(r * 0.3, h * 0.3, m.geometry.parameters.radialSegments), snow);
-        cap.position.set(m.position.x, h - h * 0.15 - 1.9, m.position.z);
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(r * 0.3 * 1.08, h * 0.3, m.geometry.parameters.radialSegments), snow);
+        cap.position.set(m.position.x, h - h * 0.15 - 1.2, m.position.z);
         cap.rotation.y = m.rotation.y;
         g.add(cap);
       }
@@ -399,6 +411,13 @@ export class World {
     const [cx, cz] = cellOf(x, z);
     const c = this.cell(cx, cz);
     return c && c.t === 'water' ? -6 : this.hillHeight(x, z);
+  }
+
+  // Tyre grip factor of the road surface (only applied on the road itself)
+  surfaceGrip(x, z) {
+    const [cx, cz] = cellOf(x, z);
+    const c = this.cell(cx, cz);
+    return !c ? 1 : c.t === 'ice' ? 0.42 : c.t === 'dirt' ? 0.72 : 1;
   }
 
   isWater(x, z) {

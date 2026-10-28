@@ -16,6 +16,14 @@ export const PIECES = {
   loop:     { label: 'Loop',     conn: [0, 2] },
   hump:     { label: 'Hump',     conn: [0, 2] },
   boost:    { label: 'Boost',    conn: [0, 2] },
+  // Appended so saved track codes keep their meaning
+  corkscrew: { label: 'Corkscrew', conn: [0, 2] },
+  pipe:     { label: 'Half-pipe', conn: [0, 2] },
+  tunnel:   { label: 'Tunnel',   conn: [0, 2] },
+  chicane:  { label: 'Chicane',  conn: [0, 2] },
+  dirt:     { label: 'Dirt',     conn: [0, 2] },
+  ice:      { label: 'Ice',      conn: [0, 2] },
+  kicker:   { label: 'Kicker',   conn: [0, 2] },
 };
 export const PIECE_TYPES = Object.keys(PIECES);
 export const sidesOf = (t, r) => PIECES[t].conn.map(s => (s + r) % 4);
@@ -26,11 +34,46 @@ export const loopX = t => LOOP_A * (1 - Math.cos(Math.PI * loopS(t))) / 2;
 export const loopDX = t => (t < 0.06 || t > 0.92) ? 0 : LOOP_A * Math.sin(Math.PI * loopS(t)) / (4 * 0.86); // dx/dθ
 export const RAMP_H = 3.6, HUMP_H = 1.3, LOOP_R = 8.5, LOOP_A = 5.8, LOOP_W = 5.4, BANK_H = 4.5;
 
+// Corkscrew: the road winds once round a horizontal axis CORK_R above the ground, from z = CORK_Z to -CORK_Z.
+// The rotation eases in and out so the road leaves and rejoins the ground straight.
+export const CORK_R = 3.6, CORK_Z = 11, CORK_W = 6;
+const corkTh = s => {
+  const e = 0.18, a = s < e ? s * s / (2 * e) : s > 1 - e ? 1 - e - (1 - s) ** 2 / (2 * e) : s - e / 2;
+  return 2 * Math.PI * a / (1 - e);
+};
+// Frame on the corkscrew's centre line at progress s: point on the road, normal (towards the axis) and the
+// unit tangent in the direction of increasing s, plus |dc/ds| for turning speed into progress.
+export function corkFrame(s) {
+  const th = corkTh(s), d = 1e-4, th2 = corkTh(Math.min(1, s + d)), th1 = corkTh(Math.max(0, s - d));
+  const p = V(CORK_R * Math.sin(th), CORK_R * (1 - Math.cos(th)), CORK_Z - 2 * CORK_Z * s);
+  const n = V(-Math.sin(th), Math.cos(th), 0);
+  const dth = (th2 - th1) / (Math.min(1, s + d) - Math.max(0, s - d));
+  const t = V(CORK_R * Math.cos(th) * dth, CORK_R * Math.sin(th) * dth, -2 * CORK_Z);
+  const len = t.length();
+  return { p, n, t: t.divideScalar(len), len };
+}
+
+// Chicane: an S-bend inside one tile between barriers. Centre line offset (+x) by progress v from the south edge.
+const CHI_A = 2.8 / 1.299;
+export const chicaneX = v => CHI_A * (Math.sin(2 * Math.PI * v) - 0.5 * Math.sin(4 * Math.PI * v));
+const chicaneW = v => 3.2 + 1.8 * Math.max(0, 1 - Math.min(v, 1 - v) / 0.15) ** 2;   // half-width, flared at the ends
+
+// Half-pipe cross-section: flat floor, quarter-circle walls; flattened at the tile ends.
+const PIPE_F = 3, PIPE_R = 4.2, PIPE_E = 3.7;
+const pipeY = (x, v) => {
+  const e = Math.max(0, Math.abs(x) - PIPE_F);
+  const f = smooth(Math.min(1, Math.min(v, 1 - v) / 0.16));
+  return f * (PIPE_R - Math.sqrt(PIPE_R * PIPE_R - e * e));
+};
+export const KICK_H = 1.05;
+
 const col = c => new THREE.Color(c);
 const C = {
   asphalt: col('#45484f'), line: col('#efeee6'), red: col('#d8352b'), white: col('#f3f3f3'),
   concrete: col('#a29c90'), steel: col('#2f6fbd'), dirt: col('#7a5634'), yellow: col('#f2c230'),
   check1: col('#111111'), check2: col('#f5f5f5'), orange: col('#ff7a1a'),
+  dirt1: col('#8a6440'), dirt2: col('#9b7650'), rut: col('#6e4e30'),
+  ice1: col('#cfe8f5'), ice2: col('#b4d8ee'), ice3: col('#e9f6fc'), lamp: col('#ffe6a0'),
 };
 
 export const trackMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
@@ -161,6 +204,85 @@ const BUILDERS = {
     return { vis: [straightRoad(), ...chevrons], col: [] };
   },
 
+  corkscrew() {
+    const ss = range(140), us = KERB;
+    const at = (u, sv) => {
+      const f = corkFrame(sv);
+      const w = new THREE.Vector3().crossVectors(f.t, f.n).normalize();   // across the road, to the right
+      return f.p.clone().addScaledVector(w, CORK_W * (u - 0.5));
+    };
+    const top = surface(us, ss, (u, sv) => at(u, sv).addScaledVector(corkFrame(sv).n, 0.03), kerbColour);
+    const under = surface([0, 1], ss, (u, sv) => at(u, sv).addScaledVector(corkFrame(sv).n, -0.4), solid(C.steel));
+    const edges = [0, 1].map(e => surface([0, 1], ss, (u, sv) => at(e, sv).addScaledVector(corkFrame(sv).n, -0.4 + 0.43 * u), solid(C.steel)));
+    const approach = surface(LANES, range(2), (u, v) => V(-5 + 10 * u - (1 - v) * 0, 0.03, HALF - (HALF - CORK_Z) * v), roadColour);
+    const exit = surface(LANES, range(2), (u, v) => V(-5 + 10 * u, 0.03, -CORK_Z - (HALF - CORK_Z) * v), roadColour);
+    const pillars = [];
+    for (const z of [-6, 0, 6]) pillars.push(box(0.6, 2 * CORK_R + 1.6, 0.6, -CORK_R - 3.2, CORK_R + 0.8, z, C.steel), box(0.6, 2 * CORK_R + 1.6, 0.6, CORK_R + 3.2, CORK_R + 0.8, z, C.steel));
+    pillars.push(box(0.6, 0.6, 13, -CORK_R - 3.2, 2 * CORK_R + 1.6, 0, C.steel), box(0.6, 0.6, 13, CORK_R + 3.2, 2 * CORK_R + 1.6, 0, C.steel));
+    top.userData.cork = true;
+    return { vis: [top, under, ...edges, approach, exit, ...pillars], col: [top, ...pillars] };
+  },
+
+  pipe() {
+    const xs = [-PIPE_F - PIPE_E, -6, -5, -4, -PIPE_F, -2.95, -0.1, 0.1, 2.95, PIPE_F, 4, 5, 6, PIPE_F + PIPE_E];
+    const us = xs.map(x => (x - xs[0]) / (xs[xs.length - 1] - xs[0]));
+    const X = u => xs[0] + u * (xs[xs.length - 1] - xs[0]);
+    const vs = range(20);
+    const top = surface(us, vs, (u, v) => V(X(u), pipeY(X(u), v) + 0.03, HALF - TILE * v), (i, j) =>
+      i === 0 || i === xs.length - 2 ? (j % 2 ? C.red : C.white) : (i === 4 || i === 8) ? C.line : i === 6 && j % 2 === 0 ? C.line : i < 4 || i > 8 ? C.concrete : C.asphalt);
+    const sides = [-1, 1].map(sd => surface([0, 1], vs, (u, v) => V(sd * (PIPE_F + PIPE_E), u * (pipeY(PIPE_F + PIPE_E, v) + 0.03), HALF - TILE * v), solid(C.concrete)));
+    return { vis: [top, ...sides], col: [top] };
+  },
+
+  tunnel() {
+    const parts = [straightRoad()];
+    // Walls stop short of the portals' outer faces so no two faces share a plane (z-fighting)
+    const walls = [box(1, 5, TILE - 0.3, -6.5, 2.5, 0, C.concrete), box(1, 5, TILE - 0.3, 6.5, 2.5, 0, C.concrete), box(13.9, 0.8, TILE - 0.3, 0, 5.4, 0, C.concrete)];
+    const portals = [];
+    for (const z of [-HALF + 0.4, HALF - 0.4]) portals.push(box(15, 1.2, 0.8, 0, 6.2, z, C.red), box(1.4, 6, 0.8, -7.2, 3, z, C.red), box(1.4, 6, 0.8, 7.2, 3, z, C.red));
+    const lamps = [];
+    for (const z of [-10, -3.5, 3, 9.5]) lamps.push(box(1.4, 0.12, 2.4, 0, 4.95, z, C.lamp));
+    return { vis: [...parts, ...walls, ...portals, ...lamps], col: walls };
+  },
+
+  chicane() {
+    const vs = range(36);
+    const road = surface(LANES, vs, (u, v) => V(chicaneX(v) + chicaneW(v) * (2 * u - 1) * 0.97, 0.03, HALF - TILE * v), roadColour);
+    const barrier = sd => {
+      const at = (u, v) => V(chicaneX(v) + sd * (chicaneW(v) + 0.3 * u), 0.85 * (1 - u * 0.4), HALF - TILE * v);
+      const topS = surface([0, 1], vs, (u, v) => at(u, v), (i, j) => (j % 2 ? C.red : C.white));
+      const inner = surface([0, 1], vs, (u, v) => V(chicaneX(v) + sd * chicaneW(v), 0.85 * u, HALF - TILE * v), (i, j) => (j % 2 ? C.red : C.white));
+      return [topS, inner];
+    };
+    const b = [...barrier(-1), ...barrier(1)];
+    return { vis: [road, ...b], col: [b[1], b[3]] };
+  },
+
+  dirt() {
+    const g = surface([0, 0.1, 0.28, 0.36, 0.64, 0.72, 0.9, 1], range(14), (u, v) => V(-5.2 + 10.4 * u, 0.03, HALF - TILE * v),
+      (i, j) => (i === 2 || i === 4 ? C.rut : (i + j) % 3 === 0 ? C.dirt2 : C.dirt1));
+    return { vis: [g], col: [] };
+  },
+
+  ice() {
+    const g = surface([0, 0.035, 0.2, 0.4, 0.6, 0.8, 0.965, 1], range(14), (u, v) => V(-5 + 10 * u, 0.03, HALF - TILE * v),
+      (i, j) => (i === 0 || i === 6 ? C.line : (i * 7 + j * 3) % 5 === 0 ? C.ice3 : (i + j) % 2 ? C.ice1 : C.ice2));
+    const posts = [];
+    for (const z of [-9, 0, 9]) for (const x of [-5.6, 5.6]) posts.push(box(0.3, 1.2, 0.3, x, 0.6, z, C.steel));
+    return { vis: [g, ...posts], col: [] };
+  },
+
+  // A short kicker in the middle of a straight: launches the car over the rest of the tile.
+  kicker() {
+    const v0 = 0.32, v1 = 0.6, z = v => HALF - TILE * v;
+    const h = v => KICK_H * ((v - v0) / (v1 - v0)) ** 2;
+    const vs = range(16, v0, v1);
+    const top = surface(KERB, vs, (u, v) => V(-5 + 10 * u, h(v) + 0.03, z(v)), (i, j) => (i === 1 ? (j > 12 ? C.yellow : C.asphalt) : j % 2 ? C.red : C.white));
+    const sides = [-5, 5].map(x => surface([0, 1], vs, (u, v) => V(x, u * (h(v) + 0.03), z(v)), solid(C.concrete)));
+    const back = surface([0, 1], [0, 1], (u, v) => V(-5 + 10 * u, v * (KICK_H + 0.03), z(v1)), solid(C.concrete));
+    return { vis: [straightRoad(), top, ...sides, back], col: [top, ...sides, back] };
+  },
+
   ramp() {
     return profiled(v => v < 0.15 ? 0 : RAMP_H * ((v - 0.15) / 0.85) ** 2, true);
   },
@@ -234,5 +356,11 @@ export function onRoadLocal(type, x, z) {
     return r > 8.5 && r < 19.5;
   }
   if (type === 'loop') return Math.abs(x) < 8.5;
+  if (type === 'pipe') return Math.abs(x) < PIPE_F + PIPE_E + 0.2;
+  if (type === 'corkscrew') return Math.abs(x) < 5.5 || Math.abs(z) < CORK_Z;
+  if (type === 'chicane') {
+    const v = (HALF - z) / TILE;
+    return Math.abs(x - chicaneX(v)) < chicaneW(v) + 0.4;
+  }
   return Math.abs(x) < 5.5;
 }
