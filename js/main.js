@@ -361,19 +361,25 @@ function setRivalModel() {
 
 const dirVec = h => new THREE.Vector3(DIRS[h][0], 0, DIRS[h][1]);
 
-// Where to put the car for checkpoint i (walks back to a tile that is safe to stand on).
+// Where to put the car for checkpoint i: the nearest tile at or before it that is safe to stand on,
+// preferring one with a few tiles of run-up before the next ramp, water or loop. Never walks back past
+// the start line, and never more than a few tiles when a closer spot will do.
 function spawnPoint(i) {
   const path = game.path, n = path.length;
-  // Needs a flat tile with three tiles of run-up before any ramp, water or loop; never walks back past the start line.
-  const flat = t => ['start', 'straight', 'corner', 'hump'].includes(t);
+  const standable = t => ['start', 'straight', 'corner', 'hump', 'banked', 'boost'].includes(t);
   const stunt = t => ['ramp', 'water', 'loop'].includes(t);
-  let k = i;
-  while (k > 0 && !(flat(path[k].t) && [1, 2, 3].every(d => !stunt(path[(k + d) % n].t)))) k--;
+  const runup = k => { let d = 1; while (d <= 3 && !stunt(path[(k + d) % n].t)) d++; return d - 1; };
+  let k = -1;
+  for (const need of [3, 2, 1, 0]) {
+    for (let j = i; j >= Math.max(0, i - 6); j--) if (standable(path[j].t) && runup(j) >= need) { k = j; break; }
+    if (k >= 0) break;
+  }
+  if (k < 0) { k = i; while (k > 0 && !standable(path[k].t)) k--; }
   const p = path[k];
   const [cx, cz] = cellCenter(p.x, p.z);
   const c = new THREE.Vector3(cx, 0.95, cz);
   if (p.t === 'start') return { pos: c.addScaledVector(dirVec(p.hout), -4), heading: p.hout, index: k };
-  if (p.t === 'straight') return { pos: c, heading: p.hout, index: k };
+  if (p.t === 'straight' || p.t === 'boost') return { pos: c, heading: p.hout, index: k };
   return { pos: c.addScaledVector(dirVec(p.hin), -(HALF - 3)), heading: p.hin, index: k };
 }
 
@@ -634,7 +640,11 @@ function advance(st, pos) {
   const idx = game.pathIndex.get(cx + ',' + cz);
   if (idx === undefined || idx === st.last) return null;
   let res = null;
-  if (idx === st.next) {
+  // Tiles you can fly clean over (a long jump past the landing ramp, a hump) don't have to be touched
+  const n = game.path.length;
+  let skip = 0;
+  while (skip < 3 && idx !== (st.next + skip) % n && ['ramp', 'water', 'hump'].includes(game.path[(st.next + skip) % n].t)) skip++;
+  if (idx === (st.next + skip) % n && (skip === 0 || idx !== 0)) {
     st.last = idx;
     st.next = (idx + 1) % game.path.length;
     res = idx === 0 ? 'lap' : 'cp';
@@ -652,7 +662,7 @@ function checkpoints() {
     if (b != null && race.last % 3 === 0) showDelta(t - b);
   }
   if (r === 'lap') lapComplete();
-  else if (r === 'missed' && !race.attack) showMessage('', '↩ Missed a checkpoint — go back!', 2);
+  else if (r === 'missed' && !race.attack) showMessage('', '↩ Missed a checkpoint — go back, or press R', 2);
 }
 
 // How far round the race a racer is, in tiles (for positions).
