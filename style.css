@@ -217,3 +217,29 @@ body.touch #nitro kbd { display: none; }
 #nitro.on #nitro-fill { background: linear-gradient(90deg, #ff6a1f, #ffcf2e); }
 #hint { display: none; }
 }
+
+/* Touch screens held upright: smaller buttons in two rows at the bottom, the small utility buttons in a
+   column on the right, and the gauges tucked into the top corners. */
+@media (orientation: portrait) {
+  body.touch #touch button { width: 72px; height: 72px; font-size: 24px; }
+  body.touch #touch button.small { width: 72px; height: 42px; font-size: 12px; }
+  body.touch #touch .pad.left { left: 12px; bottom: 16px; gap: 10px; }
+  body.touch #touch .pad.right { right: 12px; bottom: 16px; grid-template-columns: 72px 72px; gap: 10px; }
+  body.touch #touch .pad.tricks { left: 12px; bottom: 98px; grid-template-columns: 72px 72px; gap: 8px 10px; }
+  body.touch #touch .pad.tricks button.small { height: 38px; font-size: 11px; }
+  body.touch #touch .pad.top { left: auto; right: 10px; top: 112px; bottom: auto; transform: none; flex-direction: column; }
+  body.touch #touch .pad.top button.small { width: 58px; height: 36px; font-size: 11px; letter-spacing: 0; padding: 0; }
+  body.touch #minimap { width: 96px; height: 96px; top: 10px; right: 10px; }
+  body.touch #dial { top: 4px; right: 110px; width: 104px; height: 104px; }
+  body.touch #nitro { top: 108px; right: 114px; width: 96px; }
+  body.touch #hud-tl { left: 14px; top: 12px; }
+  body.touch #hud-lap { font-size: 17px; }
+  body.touch #hud-time { font-size: 28px; }
+  body.touch #hud-laps { font-size: 13px; }
+  body.touch #hud-pos { font-size: 26px; margin-top: 4px; }
+  body.touch #hud-delta { left: 14px; top: 172px; font-size: 20px; }
+  body.touch #hud-score { top: 150px; font-size: 24px; }
+  body.touch #stunt-live { top: 184px; font-size: 20px; }
+  body.touch #stunt-feed { top: 212px; }
+  body.touch #attitude { bottom: 210px; width: 176px; height: 80px; }
+}

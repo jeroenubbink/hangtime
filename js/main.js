@@ -129,6 +129,14 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 resize();
+// Field of view chosen for a landscape screen; on a portrait one (a phone held upright) the view is widened
+// so you still see about as much of the road to either side, up to a limit.
+function fitFov(fov) {
+  const a = camera.aspect;
+  if (a >= 0.8) return fov;
+  const half = Math.atan(Math.tan(fov * Math.PI / 360) * 0.8 / a);
+  return Math.min(100, half * 360 / Math.PI);
+}
 
 const sound = new Sound();
 
@@ -969,6 +977,7 @@ function updateCamera(dt, pos, q, mode, opts = {}) {
     camera.position.z += (Math.random() - 0.5) * k2;
   }
   game.shake *= Math.exp(-dt * 6);
+  camera.fov = fitFov(camera.fov);
   camera.updateProjectionMatrix();
 }
 
@@ -1445,7 +1454,7 @@ function frame(now) {
     const R = 230;
     camera.position.set(Math.cos(menuAngle) * R, 95, Math.sin(menuAngle) * R);
     camera.up.set(0, 1, 0);
-    camera.fov = 55;
+    camera.fov = fitFov(55);
     camera.updateProjectionMatrix();
     camera.lookAt(-30, 0, 0);
     poseCarModel(game.model, car.pos, car.q, 0, car.wheels.map(w => w.comp), [0, 0, 0, 0]);
