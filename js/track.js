@@ -1,6 +1,8 @@
 // Track grid model, path validation, built-in tracks and the 3D world built from a grid.
 import * as THREE from 'three';
 import { TILE, HALF, GRID, DIRS, PIECE_TYPES, sidesOf, pieceParts, trackMaterial, collisionMaterial, onRoadLocal } from './pieces.js';
+import { addDetail, grassTexture } from './textures.js';
+import { Scatter, grandstand, mountainGeometry, merge } from './scenery.js';
 
 export const emptyGrid = () => Array.from({ length: GRID }, () => Array(GRID).fill(null));
 
@@ -207,8 +209,10 @@ export class World {
     // The ground is pushed back in the depth buffer so roads and markings lying a few cm above it never
     // z-fight with it, even from far away.
     const behind = { polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 4 };
-    const grassMats = ['#5da43f', '#58a03b', '#62aa44'].map(c => new THREE.MeshLambertMaterial({ color: c, ...behind }));
-    const hillMat = new THREE.MeshLambertMaterial({ color: '#5aa23d', flatShading: true, ...behind });
+    // Mown in stripes inside the arena; rougher grass outside it
+    const lawn = { map: grassTexture, fine: 0.4, coarse: 0.025, strength: 0.32, coarseStrength: 0.28, flat: true };
+    const grassMats = [addDetail(new THREE.MeshLambertMaterial({ color: '#5a8c3f', ...behind }), { ...lawn, stripes: 3.5 })];
+    const hillMat = addDetail(new THREE.MeshLambertMaterial({ color: '#578a3d', flatShading: true, ...behind }), lawn);
     for (let z = 0; z < GRID; z++) for (let x = 0; x < GRID; x++) {
       const c = this.grid[z][x];
       if (c && c.t === 'water') continue;
@@ -221,13 +225,13 @@ export class World {
         for (let i = 0; i < pos.count; i++) pos.setY(i, this.hillHeight(cx + pos.getX(i), cz + pos.getZ(i)));
         geo.computeVertexNormals();
       }
-      const m = new THREE.Mesh(geo, geo === grassGeo ? grassMats[(x * 7 + z * 3) % 3] : hillMat);
+      const m = new THREE.Mesh(geo, geo === grassGeo ? grassMats[0] : hillMat);
       m.position.set(cx, 0, cz);
       m.receiveShadow = true;
       g.add(m);
     }
     // Surrounding land
-    const outer = new THREE.MeshLambertMaterial({ color: '#4f9437', ...behind });
+    const outer = addDetail(new THREE.MeshLambertMaterial({ color: '#527f3a', ...behind }), { ...lawn, coarseStrength: 0.4 });
     const S = GRID * TILE / 2, BIG = 2400;
     for (const [w, d, x, z] of [[BIG, BIG / 2 - S, 0, -(S + (BIG / 2 - S) / 2)], [BIG, BIG / 2 - S, 0, S + (BIG / 2 - S) / 2],
       [BIG / 2 - S, 2 * S, -(S + (BIG / 2 - S) / 2), 0], [BIG / 2 - S, 2 * S, S + (BIG / 2 - S) / 2, 0]]) {
@@ -248,7 +252,7 @@ export class World {
         pos.setY(i, h);
       }
       geo.computeVertexNormals();
-      const hills = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: '#4c8f35', flatShading: true }));
+      const hills = new THREE.Mesh(geo, addDetail(new THREE.MeshLambertMaterial({ color: '#4f7a38', flatShading: true }), { ...lawn, fine: 0.2, coarse: 0.012, coarseStrength: 0.45 }));
       hills.receiveShadow = true;
       g.add(hills);
       this.outerHill = (x, z) => {
@@ -294,34 +298,63 @@ export class World {
       }
     }
 
-    // Trees on empty tiles
-    const trunkGeo = new THREE.CylinderGeometry(0.35, 0.45, 2.4, 5).translate(0, 1.2, 0);
-    const leafGeo = new THREE.ConeGeometry(2.2, 6, 6).translate(0, 5, 0);
-    const trunkMat = new THREE.MeshLambertMaterial({ color: '#6b4a2b', flatShading: true });
-    const leafMats = ['#2f7a35', '#3b8a3a', '#2a6b40'].map(c => new THREE.MeshLambertMaterial({ color: c, flatShading: true }));
+    // Trees, bushes and rocks on empty tiles, a forest belt beyond the fence, tyre walls on the outside
+    // of corners and a grandstand beside the start
+    const sc = new Scatter(Math.floor(rand() * 1e9));
+    const groundAt = (x, z) => (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT ? this.outerHill(x, z) : this.hillHeight(x, z));
     const addTree = (x, z, s) => {
-      const t = new THREE.Group();
-      t.add(new THREE.Mesh(trunkGeo, trunkMat), new THREE.Mesh(leafGeo, leafMats[Math.floor(rand() * 3)]));
-      t.position.set(x, Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT ? this.outerHill(x, z) - 0.3 : this.hillHeight(x, z) - 0.2, z);
-      t.scale.setScalar(s);
-      t.rotation.y = rand() * 6;
-      t.traverse(o => { o.castShadow = true; });
-      g.add(t);
+      const kind = rand() < 0.55 ? 'pine' : 'round';
+      sc.add(kind, x, groundAt(x, z) - 0.2, z, s * (kind === 'pine' ? 0.85 : 0.9));
       this.trees.push({ x, z, r: 0.5 * s });
     };
     for (let z = 0; z < GRID; z++) for (let x = 0; x < GRID; x++) {
-      if (this.grid[z][x]) continue;
+      const [cx, cz] = cellCenter(x, z);
+      const c = this.grid[z][x];
+      if (c) {
+        if (c.t === 'corner' || c.t === 'banked') {
+          // Outside corner of the bend, a few metres in from the tile's corner
+          const [a, b] = sidesOf(c.t, c.r).map(d => DIRS[d]);
+          const ox = -(a[0] + b[0]), oz = -(a[1] + b[1]);
+          const tx = cx + ox * (HALF - 2.2), tz = cz + oz * (HALF - 2.2);
+          sc.add('tyres', tx, groundAt(tx, tz), tz, 1.2, Math.atan2(ox, oz) + Math.PI / 4);
+          this.trees.push({ x: tx, z: tz, r: 1.4 });
+        }
+        continue;
+      }
       const near = DIRS.some(([dx, dz]) => this.cell(x + dx, z + dz));
       const n = Math.floor(rand() * (near ? 2 : 4));
-      const [cx, cz] = cellCenter(x, z);
       const spread = near ? TILE - 16 : TILE - 6;
       for (let i = 0; i < n; i++) addTree(cx + (rand() - 0.5) * spread, cz + (rand() - 0.5) * spread, 0.8 + rand() * 0.6);
+      for (let i = 0, nb = Math.floor(rand() * 4); i < nb; i++) {
+        const bx = cx + (rand() - 0.5) * spread, bz = cz + (rand() - 0.5) * spread;
+        sc.add(rand() < 0.75 ? 'bush' : 'rock', bx, groundAt(bx, bz) - 0.1, bz, 0.7 + rand() * 0.7);
+      }
     }
-    // Forest belt beyond the fence
-    for (let i = 0; i < 140; i++) {
-      const a = rand() * Math.PI * 2, d = WORLD_LIMIT + 14 + rand() * 120;
+    for (let i = 0; i < 260; i++) {
+      const a = rand() * Math.PI * 2, d = WORLD_LIMIT + 14 + rand() * 160;
       const x = Math.cos(a) * d, z = Math.sin(a) * d;
       if (Math.max(Math.abs(x), Math.abs(z)) > WORLD_LIMIT + 8) addTree(x, z, 1 + rand() * 1.2);
+    }
+    for (const m of sc.build()) g.add(m);
+    for (let z = 0; z < GRID; z++) for (let x = 0; x < GRID; x++) {
+      const c = this.grid[z][x];
+      if (!c || c.t !== 'start') continue;
+      // On whichever side of the start straight is free
+      const along = sidesOf(c.t, c.r)[0];
+      for (const side of [(along + 1) % 4, (along + 3) % 4]) {
+        const [dx, dz] = DIRS[side];
+        if (this.cell(x + dx, z + dz) || x + dx < 0 || x + dx >= GRID || z + dz < 0 || z + dz >= GRID) continue;
+        const [cx, cz] = cellCenter(x, z);
+        const stand = grandstand(x * 31 + z);
+        stand.position.set(cx + dx * 12, 0, cz + dz * 12);
+        stand.rotation.y = Math.atan2(dx, dz);
+        g.add(stand);
+        for (let k = -2; k <= 2; k++) {
+          const along2 = DIRS[along];
+          this.trees.push({ x: cx + dx * 16 + along2[0] * k * 5, z: cz + dz * 16 + along2[1] * k * 5, r: 3 });
+        }
+        break;
+      }
     }
 
     // Street lamps beside straights. At dusk and night they glow and throw a pool of light on the road.
@@ -357,7 +390,7 @@ export class World {
     }
 
     // Fence around the arena
-    const fenceMat = new THREE.MeshLambertMaterial({ color: '#c8c2b4' });
+    const fenceMat = addDetail(new THREE.MeshLambertMaterial({ color: '#c8c2b4' }), { fine: 0.6, strength: 0.3, coarse: 0.1, coarseStrength: 0.3 });
     const L = WORLD_LIMIT;
     for (const [w, d, x, z] of [[2 * L, 0.4, 0, -L], [2 * L, 0.4, 0, L], [0.4, 2 * L, -L, 0], [0.4, 2 * L, L, 0]]) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, 1.2, d), fenceMat);
@@ -366,23 +399,17 @@ export class World {
       g.add(m);
     }
 
-    // Mountains
-    const mtnMats = ['#7d8f9e', '#6f8494', '#8a9aa6'].map(c => new THREE.MeshLambertMaterial({ color: c, flatShading: true }));
-    // The caps sit a little proud of the slope and win the depth test, so far away they don't z-fight with it
-    const snow = new THREE.MeshLambertMaterial({ color: '#f2f4f7', flatShading: true, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-    for (let i = 0; i < 46; i++) {
-      const a = (i / 46) * Math.PI * 2 + rand() * 0.1, d = 640 + rand() * 260;
-      const h = 70 + rand() * 150, r = 70 + rand() * 90;
-      const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 5 + Math.floor(rand() * 3)), mtnMats[i % 3]);
-      m.position.set(Math.cos(a) * d, h / 2 - 2, Math.sin(a) * d);
-      m.rotation.y = rand() * 6;
-      g.add(m);
-      if (h > 150) {
-        const cap = new THREE.Mesh(new THREE.ConeGeometry(r * 0.3 * 1.08, h * 0.3, m.geometry.parameters.radialSegments), snow);
-        cap.position.set(m.position.x, h - h * 0.15 - 1.2, m.position.z);
-        cap.rotation.y = m.rotation.y;
-        g.add(cap);
+    // Mountains, merged into one mesh
+    {
+      const geos = [];
+      for (let i = 0; i < 46; i++) {
+        const a = (i / 46) * Math.PI * 2 + rand() * 0.1, d = 640 + rand() * 260;
+        const h = 70 + rand() * 150, r = 70 + rand() * 90;
+        geos.push(mountainGeometry(r, h, i + 1).rotateY(rand() * 6).translate(Math.cos(a) * d, -2, Math.sin(a) * d));
       }
+      const m = new THREE.Mesh(merge(geos.map(g => [g, null])), addDetail(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
+        { fine: 0.02, coarse: 0.004, strength: 0.2, coarseStrength: 0.25 }));
+      g.add(m);
     }
     // Clouds
     const cloudMat = this.cloudMat = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#b8c4d0', flatShading: true });

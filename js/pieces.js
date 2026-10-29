@@ -1,6 +1,7 @@
 // Track piece catalogue: connection sides plus visual + collision geometry builders.
 // Local piece space: tile centred at origin, at rotation 0 the "forward" direction is north (-z).
 import * as THREE from 'three';
+import { addDetail, waterMaterial } from './textures.js';
 
 export const TILE = 28, HALF = TILE / 2, GRID = 12;
 // Sides: 0 = N (-z), 1 = E (+x), 2 = S (+z), 3 = W (-x)
@@ -79,6 +80,8 @@ const C = {
 export const trackMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
 export const collisionMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
 trackMaterial.userData.shared = collisionMaterial.userData.shared = true;
+const waterMat = waterMaterial();
+addDetail(trackMaterial, { fine: 0.45, strength: 0.3, coarse: 0.05, coarseStrength: 0.16 });
 
 // Parametric surface over breakpoint lists us (across) x vs (along), one colour per quad.
 function surface(us, vs, pos, colour) {
@@ -300,7 +303,7 @@ const BUILDERS = {
       surface([0, 1], [0, 1], (u, v) => V(HALF, -D * v, -HALF + TILE * u), solid(C.dirt)),
     ];
     const water = new THREE.Mesh(new THREE.PlaneGeometry(TILE, TILE, 7, 7).rotateX(-Math.PI / 2),
-      new THREE.MeshLambertMaterial({ color: '#2e8fd8', flatShading: true }));
+      waterMat);
     water.position.y = -1.2;
     water.userData.water = true;
     const posts = [];

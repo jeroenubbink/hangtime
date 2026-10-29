@@ -1,0 +1,7 @@
+Car models: "Car Kit" by Kenney (www.kenney.nl)
+
+License: Creative Commons Zero, CC0 1.0 Universal
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Files: sedan-sports.glb (Comet), race.glb (Hopper), hatchback-sports.glb (Brute), Textures/colormap.png.
+Free to use in personal, educational and commercial projects; credit is appreciated, not required.

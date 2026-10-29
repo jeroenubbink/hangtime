@@ -1,12 +1,16 @@
 import * as THREE from 'three';
 import { TILE, HALF, GRID, DIRS } from './pieces.js';
 import { World, walk, BUILTIN, cellOf, cellCenter, trackId, deserialize, medalFor, MEDALS } from './track.js';
-import { CarPhysics, buildCarModel, poseCarModel, setCarLights, MASS, CARS, WHEELS, WHEEL_RADIUS, WHEEL_REST } from './car.js';
+import { CarPhysics, buildCarModel, loadCarKits, poseCarModel, setCarLights, MASS, CARS, WHEELS, WHEEL_RADIUS, WHEEL_REST } from './car.js';
 import { Sound } from './audio.js';
 import { Editor, drawPiece, customTracks } from './editor.js';
 import { Driver, SKILLS } from './ai.js';
 import { Stunts } from './stunts.js';
 import * as store from './store.js';
+import { waterTime } from './textures.js';
+
+// Car models; the built-in box cars stand in if they can't be loaded
+await loadCarKits().catch(e => console.warn('Car models not loaded:', e));
 
 const DT = 1 / 120;
 const PAINTS = ['#e8352b', '#ffcf2e', '#2f7fe0', '#22b35a', '#f2f2f2', '#9b4dff', '#ff7a1a'];
@@ -15,14 +19,18 @@ const $ = id => document.getElementById(id);
 
 // ---------- Renderer & scene ----------
 const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: true });
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+// Phones and tablets start at 1.5× pixel density: sharp enough on small screens, and far fewer pixels to shade
+renderer.setPixelRatio(Math.min(matchMedia('(pointer: coarse)').matches ? 1.5 : 2, window.devicePixelRatio));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// Filmic tone mapping: softer highlights and richer shadows than plain clamping
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog('#bfe0f5', 260, 1300);
 const skyGeo = new THREE.SphereGeometry(2000, 24, 12);
-scene.add(new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false })));
+scene.add(new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, toneMapped: false })));
 function setSkyColours(top, mid, hor) {
   [top, mid, hor] = [top, mid, hor].map(c => new THREE.Color(c));
   const pos = skyGeo.attributes.position, cols = [];
@@ -87,8 +95,8 @@ const rain = (() => {
 
 // Time of day: sky gradient, fog, lights, street lamps and headlights
 const TOD = {
-  day: { label: 'Day', sky: ['#2f7fd6', '#9ccdf2', '#d9eefa'], fog: ['#bfe0f5', 260, 1300], hemi: ['#e4f3ff', '#5b7a3a', 1.7],
-    sun: ['#fff3dc', 2.4, [70, 120, 45]], orb: '#fffbe8', stars: 0, lamps: 0, clouds: ['#ffffff', '#b8c4d0'] },
+  day: { label: 'Day', sky: ['#2f7fd6', '#9ccdf2', '#d9eefa'], fog: ['#bfe0f5', 260, 1300], hemi: ['#e4f3ff', '#4d6a35', 1.5],
+    sun: ['#fff1d6', 2.1, [70, 120, 45]], orb: '#fffbe8', stars: 0, lamps: 0, clouds: ['#ffffff', '#b8c4d0'] },
   dusk: { label: 'Dusk', sky: ['#2b2f6b', '#c8679a', '#ffb066'], fog: ['#d99a8a', 200, 1150], hemi: ['#ffc4a8', '#3c3550', 1.05],
     sun: ['#ff9b55', 2.1, [-140, 34, -70]], orb: '#ffcf8a', stars: 0.35, lamps: 0.55, clouds: ['#e3a39a', '#7a4060'] },
   rain: { label: 'Rain', sky: ['#5d6873', '#8a96a1', '#a9b3bb'], fog: ['#9aa5ae', 90, 700], hemi: ['#c9d3dc', '#4a5a40', 1.3],
@@ -467,7 +475,7 @@ function respawn() {
 }
 
 function setCharred(on, model = game.model) {
-  if (model) model.userData.paint.color.set(on ? '#2a2422' : model === game.model ? game.paint : rivalPaint());
+  if (model) model.userData.paint.color.set(on ? '#2a2422' : model.userData.normal);
 }
 
 // Crash rules shared by the player and the rival. Landing on the wheels, even hard and a bit crooked,
@@ -1329,8 +1337,32 @@ window.addEventListener('blur', () => keys.clear());
 // ---------- Main loop ----------
 let acc = 0, last = performance.now(), menuAngle = 0, skidTimer = 0;
 
+// Keeping 60 fps: if the frame rate stays under 50 for a few seconds, render at a lower resolution
+// (and with a smaller shadow map), step by step down to 60% of the display's pixel density.
+const quality = { ratio: renderer.getPixelRatio(), frames: 0, time: 0, slow: 0 };
+function watchFrameRate(raw) {
+  if (raw <= 0 || raw > 1 || document.hidden || game.mode === 'editor') return;
+  quality.frames++;
+  quality.time += raw;
+  if (quality.time < 2) return;
+  const fps = quality.frames / quality.time;
+  quality.frames = quality.time = 0;
+  quality.slow = fps < 50 ? quality.slow + 1 : 0;
+  if (quality.slow < 2 || quality.ratio <= 0.6) return;
+  quality.slow = 0;
+  quality.ratio = Math.max(0.6, quality.ratio * 0.8);
+  renderer.setPixelRatio(quality.ratio);
+  resize();
+  if (quality.ratio < 1 && sun.shadow.mapSize.x > 1024) {
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
+  }
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
+  watchFrameRate((now - last) / 1000);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   readInput();
@@ -1463,6 +1495,7 @@ function frame(now) {
   particles.update(dt * game.timeScale);
   rain.update(dt * game.timeScale, camera.position);
   if (game.world) for (const w of game.world.waterMeshes) w.position.y = -1.2 + Math.sin(now / 700) * 0.08;
+  waterTime.value = now / 1000;
   if (m !== 'editor') renderer.render(scene, camera);
 }
 
@@ -1476,7 +1509,7 @@ function focusSun(p, extent = 50) {
   }
 }
 
-game.debug = { input, physicsStep, setMode, editor, Driver, skids, get race() { return race; } };
+game.debug = { input, physicsStep, setMode, editor, Driver, skids, renderer, quality, get race() { return race; } };
 
 // A shared link (#track=name&code=…) adds the track to "my tracks" and selects it.
 function importSharedTrack() {

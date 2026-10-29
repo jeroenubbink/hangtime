@@ -1,5 +1,6 @@
 // Raycast-suspension rigid-body car, plus its low-poly model.
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { WORLD_LIMIT } from './track.js';
 import { LOOP_R, loopX, loopDX, CORK_R, CORK_Z, corkFrame } from './pieces.js';
 
@@ -13,7 +14,7 @@ const BOOST_TOP = 86;
 // power, top speed (m/s), grip and air-control rate differ.
 export const CARS = {
   comet: { name: 'Comet', blurb: 'All-rounder', power: 13000, top: 68, grip: 1.75, air: 1 },
-  hopper: { name: 'Hopper', blurb: 'Light buggy: grippy, flips fast, lower top speed', power: 12000, top: 62, grip: 1.9, air: 1.35, tone: 1.3 },
+  hopper: { name: 'Hopper', blurb: 'Light open-wheeler: grippy, flips fast, lower top speed', power: 12000, top: 62, grip: 1.9, air: 1.35, tone: 1.3 },
   brute: { name: 'Brute', blurb: 'Muscle car: big power, slides, heavy in the air', power: 15500, top: 74, grip: 1.58, air: 0.8, tone: 0.72 },
 };
 // Air control: rotation rate (rad/s) held for pitch, yaw and roll input while airborne
@@ -389,7 +390,138 @@ function extrudeAcross(points, width, mat) {
   return m;
 }
 
+
+// ---------- Kit models ----------
+// The cars are Kenney's Car Kit (CC0, see assets/cars/LICENSE.txt), loaded once at startup. Each one is
+// scaled to the chassis size; its wheels are re-mounted on the suspension. The kit colours everything from
+// one palette texture, so a paint job is a copy of that texture with the body's colour swatch replaced.
+const KITS = {
+  comet: { file: 'sedan-sports', len: 4.4 },
+  hopper: { file: 'race', len: 4.3 },
+  brute: { file: 'hatchback-sports', len: 4.6 },
+};
+const WHEEL_VIS = 0.42;    // drawn wheel radius; the physics wheel is RADIUS
+const kits = {};
+let palette = null;        // the kit's palette as an image, for repainting
+
+export async function loadCarKits() {
+  const loader = new GLTFLoader();
+  await Promise.all(Object.entries(KITS).map(async ([kind, k]) => {
+    const g = await loader.loadAsync(`assets/cars/${k.file}.glb`);
+    kits[kind] = g.scene;
+  }));
+  const any = Object.values(kits)[0];
+  any.traverse(o => { if (o.isMesh && !palette) palette = o.material.map.image; });
+}
+
+// Which 32×128 palette swatch the body is painted with: the most used saturated one.
+function paintSwatch(geo, ctx) {
+  const uv = geo.attributes.uv, count = new Map();
+  const px = ctx.getImageData(0, 0, 512, 512).data;
+  for (let i = 0; i < uv.count; i++) {
+    const x = Math.min(511, Math.floor(uv.getX(i) * 512)), y = Math.min(511, Math.floor(uv.getY(i) * 512));
+    const o = (y * 512 + x) * 4, r = px[o], g = px[o + 1], b = px[o + 2];
+    if (Math.max(r, g, b) - Math.min(r, g, b) < 60) continue;   // greys: trim, glass, tyres
+    const key = (x >> 5) + ',' + (y >> 7);
+    count.set(key, (count.get(key) || 0) + 1);
+  }
+  const best = [...count].sort((a, b) => b[1] - a[1])[0];
+  return best && best[0].split(',').map(Number);
+}
+
+const paintTextures = new Map();
+function paintedTexture(kind, colour, geo) {
+  const key = kind + colour;
+  if (paintTextures.has(key)) return paintTextures.get(key);
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(palette, 0, 0);
+  const sw = paintSwatch(geo, ctx);
+  if (sw) {
+    // Keep the swatch's shading (its brightness relative to its middle) and swap the hue for the paint
+    const [x0, y0] = [sw[0] * 32, sw[1] * 128];
+    const img = ctx.getImageData(x0, y0, 32, 128), d = img.data;
+    const lum = o => 0.3 * d[o] + 0.59 * d[o + 1] + 0.11 * d[o + 2];
+    const mid = lum((64 * 32 + 16) * 4) || 1;
+    const p = new THREE.Color(colour);
+    for (let o = 0; o < d.length; o += 4) {
+      const k = lum(o) / mid;
+      d[o] = Math.min(255, p.r * 255 * k); d[o + 1] = Math.min(255, p.g * 255 * k); d[o + 2] = Math.min(255, p.b * 255 * k);
+    }
+    ctx.putImageData(img, x0, y0);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.flipY = false;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+  paintTextures.set(key, tex);
+  return tex;
+}
+
+function buildKitModel(colour, ghost, kind) {
+  const src = kits[kind];
+  const root = new THREE.Group();
+  const body = src.getObjectByName('body');
+  const box = new THREE.Box3().setFromObject(src);
+  const s = KITS[kind].len / (box.max.z - box.min.z);
+  // Kit cars face +z; ours face -z. Turn them round and scale about the wheel axle height.
+  const xf = new THREE.Matrix4().makeRotationY(Math.PI).premultiply(new THREE.Matrix4().makeScale(s, s, s));
+  const wheelNodes = src.children.filter(o => o.name.startsWith('wheel'));
+  const axleY = wheelNodes[0].position.y * s;
+  const rest = WHEELS[0].p.y - REST + MASS * G / 4 / SPRING + (WHEEL_VIS - RADIUS);   // wheel centre at rest
+  const lift = rest - axleY;
+  const mat = ghost
+    ? new THREE.MeshBasicMaterial({ color: '#9fe3ff', transparent: true, opacity: 0.32, depthWrite: false })
+    : new THREE.MeshLambertMaterial({ map: paintedTexture(kind, colour, body.geometry) });
+  body.updateMatrixWorld(true);
+  src.updateMatrixWorld(true);
+  body.traverse(o => {
+    if (!o.isMesh) return;
+    const g = o.geometry.clone().applyMatrix4(o.matrixWorld).applyMatrix4(xf).translate(0, lift, 0);
+    const m = new THREE.Mesh(g, mat);
+    m.castShadow = !ghost;
+    root.add(m);
+  });
+  const ws = WHEEL_VIS / (0.3 * s);
+  const wheels = WHEELS.map(W => {
+    // The kit wheel on the same corner (after turning the car round, kit +x is our -x)
+    const n = wheelNodes.find(o => Math.sign(-o.position.x) === Math.sign(W.p.x) && Math.sign(-o.position.z) === Math.sign(W.p.z));
+    const steerer = new THREE.Group(), spinner = new THREE.Group();
+    const g = n.geometry.clone().applyMatrix4(new THREE.Matrix4().makeRotationY(Math.PI)).scale(s * ws, s * ws, s * ws);
+    const tyre = new THREE.Mesh(g, ghost ? mat : new THREE.MeshLambertMaterial({ map: palette && n.material.map }));
+    tyre.castShadow = !ghost;
+    spinner.add(tyre);
+    steerer.add(spinner);
+    steerer.position.set(-n.position.x * s, 0, -n.position.z * s);
+    root.add(steerer);
+    return { steerer, spinner, base: W.p.y + (WHEEL_VIS - RADIUS) };
+  });
+  // Lamps: invisible by day; lit panels at night over the kit's own lamps
+  const bb = new THREE.Box3().setFromObject(root);
+  const lamp = c => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0 });
+  const head = lamp('#fff6c8'), tail = lamp('#ff3020');
+  const ly = bb.min.y + (bb.max.y - bb.min.y) * 0.32, hw = (bb.max.x - bb.min.x) * 0.32;
+  for (const x of [-hw, hw]) {
+    const h = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.13), head);
+    h.position.set(x, ly, bb.min.z - 0.01);
+    h.rotation.y = Math.PI;
+    const t = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.13), tail);
+    t.position.set(x, ly + 0.08, bb.max.z + 0.01);
+    root.add(h, t);
+  }
+  root.userData = { wheels, paint: mat, normal: ghost ? '#9fe3ff' : '#ffffff', head, tail, kit: true };
+  return root;
+}
+
 export function buildCarModel(colour, { ghost = false, kind = 'comet' } = {}) {
+  const root = kits[kind] ? buildKitModel(colour, ghost, kind) : buildBoxModel(colour, ghost, kind);
+  if (!ghost) addHeadlights(root);
+  return root;
+}
+
+function buildBoxModel(colour, ghost, kind) {
   const root = new THREE.Group();
   const mk = c => ghost
     ? new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.32, depthWrite: false })
@@ -458,25 +590,27 @@ export function buildCarModel(colour, { ghost = false, kind = 'comet' } = {}) {
     return { steerer, spinner, base: W.p.y };
   });
   if (!ghost) root.traverse(o => { if (o.isMesh) o.castShadow = true; });
-  root.userData = { wheels, paint, head, tail };
-  if (!ghost) {
-    // Headlights, switched on after dark by setCarLights()
-    const spot = new THREE.SpotLight('#fff1cc', 0, 90, 0.5, 0.55, 1);
-    spot.position.set(0, 0.1, -2.1);
-    spot.target.position.set(0, -1.6, -16);
-    const beamGeo = new THREE.CylinderGeometry(0.15, 3.2, 14, 14, 1, true).rotateX(Math.PI / 2).translate(0, 0, -9.1);
-    const beamMat = new THREE.MeshBasicMaterial({ color: '#fff0c0', transparent: true, opacity: 0, depthWrite: false,
-      blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-    const beams = [-0.62, 0.62].map(x => {
-      const b = new THREE.Mesh(beamGeo, beamMat);
-      b.position.set(x, -0.08, 0);
-      b.rotation.x = -0.06;
-      b.visible = false;
-      return b;
-    });
-    root.add(spot, spot.target, ...beams);
-    Object.assign(root.userData, { spot, beams, beamMat });
-  }
+  root.userData = { wheels, paint, normal: colour, head, tail };
+  return root;
+}
+
+// Headlights, switched on after dark by setCarLights()
+function addHeadlights(root) {
+  const spot = new THREE.SpotLight('#fff1cc', 0, 90, 0.5, 0.55, 1);
+  spot.position.set(0, 0.1, -2.1);
+  spot.target.position.set(0, -1.6, -16);
+  const beamGeo = new THREE.CylinderGeometry(0.15, 3.2, 14, 14, 1, true).rotateX(Math.PI / 2).translate(0, 0, -9.1);
+  const beamMat = new THREE.MeshBasicMaterial({ color: '#fff0c0', transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const beams = [-0.62, 0.62].map(x => {
+    const b = new THREE.Mesh(beamGeo, beamMat);
+    b.position.set(x, -0.08, 0);
+    b.rotation.x = -0.06;
+    b.visible = false;
+    return b;
+  });
+  root.add(spot, spot.target, ...beams);
+  Object.assign(root.userData, { spot, beams, beamMat });
   return root;
 }
 
@@ -487,6 +621,11 @@ export function setCarLights(model, level) {
   u.spot.intensity = level * 40;
   u.beamMat.opacity = 0.06;
   for (const b of u.beams) b.visible = level >= 1;   // visible beams only in full darkness
+  if (u.kit) {
+    u.head.opacity = level > 0 ? 0.95 : 0;
+    u.tail.opacity = level > 0 ? 0.95 : 0;
+    return;
+  }
   u.head.emissive.set(level > 0 ? '#fff3c0' : '#000000');
   u.tail.emissive.set(level > 0 ? '#ff2010' : '#000000');
 }

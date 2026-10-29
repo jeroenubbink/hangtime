@@ -1,7 +1,7 @@
 # Hangtime
 
-A low-poly stunt-driving game that runs in the browser. It has no build step and no assets: three.js,
-WebAudio synthesis and about 3,000 lines of plain JavaScript modules.
+A low-poly stunt-driving game that runs in the browser. It has no build step: three.js, WebAudio synthesis,
+plain JavaScript modules and three small car models. All other scenery and textures are generated in code.
 
 **Play it: https://jeroenubbink.github.io/hangtime/**
 
@@ -14,7 +14,7 @@ WebAudio synthesis and about 3,000 lines of plain JavaScript modules.
 - **Race a rival:** an AI driver (Rookie, Pro or Ace) on a racing line, plus a ghost of your best lap,
   split times and bronze/silver/gold medals.
 - **Stunt attack:** 90 seconds to score as many points as you can.
-- **Three cars:** Comet, Hopper and Brute, each with its own handling and engine note.
+- **Three cars:** Comet, Hopper and Brute, each with its own handling and engine note, in any of seven paints.
 - **Day, dusk, rain or night:** street lamps and working headlights after dark.
 - **Replays:** trackside TV cameras and automatic slow motion on big air.
 - **Controls:** keyboard, gamepad and touch screens.
@@ -60,7 +60,7 @@ LB/RB roll. Touch screens get on-screen buttons, including trick buttons.
   split times against your best lap.
 - **Stunt attack:** 90 seconds to score as many stunt points as possible. Each lap adds a bonus; each crash
   costs 3 seconds. Medals at 3,000 / 6,000 / 10,000 points.
-- **Cars:** Comet (all-rounder), Hopper (light buggy: grippy, quick in the air, lower top speed) and
+- **Cars:** Comet (all-rounder), Hopper (light open-wheeler: grippy, quick in the air, lower top speed) and
   Brute (muscle car: big power, slides more, heavy in the air).
 - **Time and weather:** day, dusk, rain (less grip, spray) or night (street lamps and headlights).
 
@@ -106,3 +106,15 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
 - `js/stunts.js`: stunt detection and scoring
 - `js/editor.js`: the 2D track editor
 - `js/audio.js`: synthesised engine, tyre and crash sounds (WebAudio)
+- `js/textures.js`: procedural textures (asphalt grit, grass, blotches), applied in world space, and the water shader
+- `js/scenery.js`: instanced trees, bushes, rocks and tyre walls, the grandstand, and the mountains
+
+## Performance
+
+Scenery is instanced, so a track takes about 170 draw calls. If the frame rate stays under 50 fps, the game
+lowers its rendering resolution step by step (down to 60% of the screen's pixel density) and shrinks the shadow
+map. Phones and tablets start at 1.5× pixel density.
+
+## Credits
+
+Car models: [Car Kit](https://kenney.nl/assets/car-kit) by Kenney, CC0 (see `assets/cars/LICENSE.txt`).
