@@ -474,7 +474,7 @@ function buildKitModel(colour, ghost, kind) {
   const lift = rest - axleY;
   const mat = ghost
     ? new THREE.MeshBasicMaterial({ color: '#9fe3ff', transparent: true, opacity: 0.32, depthWrite: false })
-    : new THREE.MeshLambertMaterial({ map: paintedTexture(kind, colour, body.geometry) });
+    : new THREE.MeshStandardMaterial({ map: paintedTexture(kind, colour, body.geometry), roughness: 0.38, metalness: 0.15, envMapIntensity: 0.9 });
   body.updateMatrixWorld(true);
   src.updateMatrixWorld(true);
   body.traverse(o => {
@@ -490,7 +490,7 @@ function buildKitModel(colour, ghost, kind) {
     const n = wheelNodes.find(o => Math.sign(-o.position.x) === Math.sign(W.p.x) && Math.sign(-o.position.z) === Math.sign(W.p.z));
     const steerer = new THREE.Group(), spinner = new THREE.Group();
     const g = n.geometry.clone().applyMatrix4(new THREE.Matrix4().makeRotationY(Math.PI)).scale(s * ws, s * ws, s * ws);
-    const tyre = new THREE.Mesh(g, ghost ? mat : new THREE.MeshLambertMaterial({ map: palette && n.material.map }));
+    const tyre = new THREE.Mesh(g, ghost ? mat : new THREE.MeshStandardMaterial({ map: n.material.map, roughness: 0.8, metalness: 0 }));
     tyre.castShadow = !ghost;
     spinner.add(tyre);
     steerer.add(spinner);

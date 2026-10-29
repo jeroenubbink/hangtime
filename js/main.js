@@ -40,6 +40,21 @@ function setSkyColours(top, mid, hor) {
     cols.push(c.r, c.g, c.b);
   }
   skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  updateReflections(hor);
+}
+// Reflections for the cars' glossy paint: the sky above a grass-coloured ground, blurred. Only the cars
+// use a material that shows them, and they are regenerated only when the sky changes.
+const pmrem = new THREE.PMREMGenerator(renderer);
+function updateReflections(horizon) {
+  const env = new THREE.Scene();
+  env.add(new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(1900, 16).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: horizon.clone().lerp(new THREE.Color('#3f6a2c'), 0.75) }));
+  ground.position.y = -20;
+  env.add(ground);
+  const old = scene.environment;
+  scene.environment = pmrem.fromScene(env, 0.03).texture;
+  old?.dispose();
 }
 const stars = (() => {
   const p = [];
