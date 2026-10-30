@@ -106,6 +106,8 @@ kbd { display: inline-block; min-width: 20px; text-align: center; font: 600 12px
 #status { position: absolute; left: 50%; transform: translateX(-50%); top: 12px; text-align: center; white-space: nowrap; }
 #status-main { font-size: 34px; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
 #status-main.low { color: #ff6a5a; }
+#status .gain { position: absolute; left: 100%; top: 4px; margin-left: 10px; color: var(--good); font-size: 22px; animation: gain 1.4s ease-out forwards; }
+@keyframes gain { 0% { opacity: 0; transform: translateY(8px); } 15% { opacity: 1; transform: none; } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px); } }
 #status-sub { font-size: 14px; letter-spacing: 2px; opacity: 0.85; color: var(--accent2); }
 #scorebox { position: absolute; left: 18px; top: 14px; }
 #score { font-size: 32px; font-variant-numeric: tabular-nums; }
@@ -123,6 +125,8 @@ kbd { display: inline-block; min-width: 20px; text-align: center; font: 600 12px
 .call.big { font-size: 46px; color: var(--accent2); }
 .call.bad { color: #ff6a5a; }
 .call.item { font-size: 22px; }
+.call.tip { font-family: Rubik, sans-serif; font-weight: 600; font-size: 18px; background: rgba(0, 0, 0, 0.45); padding: 4px 12px;
+  border-radius: 8px; animation-duration: 3.2s; }
 @keyframes call {
   0% { opacity: 0; transform: scale(0.5) rotate(-4deg); }
   10% { opacity: 1; transform: scale(1.15) rotate(1deg); }

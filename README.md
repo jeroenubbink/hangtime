@@ -1,9 +1,15 @@
-# Hangtime
+# Hangtime & Crunchtime
 
-A low-poly stunt-driving game that runs in the browser. It has no build step: three.js, WebAudio synthesis,
-plain JavaScript modules and three small car models. All other scenery and textures are generated in code.
+Two low-poly driving games that run in the browser, sharing one car physics engine. There's no build step:
+three.js, WebAudio synthesis, plain JavaScript modules and a handful of small car models. All other scenery and
+textures are generated in code.
 
-**Play it: https://jeroenubbink.github.io/hangtime/**
+**Play: https://jeroenubbink.github.io/hangtime/** (pick a game on the start screen)
+
+- **Hangtime** is stunt racing: loops, jumps and flips against the clock and a rival.
+- **Crunchtime** is a demolition derby: eight cars in an arena, last one running wins.
+
+## Hangtime
 
 - **Stunt tracks:** loops, corkscrews, ramp jumps over water, kickers, half-pipes, banked bowls, chicanes,
   tunnels, dirt and ice, humps and boost pads across six built-in tracks, plus a tile-based **track editor**
@@ -19,6 +25,51 @@ plain JavaScript modules and three small car models. All other scenery and textu
 - **Replays:** trackside TV cameras and automatic slow motion on big air.
 - **Controls:** keyboard, gamepad and touch screens.
 
+## Crunchtime
+
+- **Eight cars, eight drivers.** Pick from eight (plus two to unlock) Kenney kit cars, from a 1-tonne hot hatch to
+  a 1.8-tonne van; the other seven are driven by computer opponents with their own temper: some go for the weak,
+  some hold grudges, some ram in reverse to spare their engine.
+- **Damage where you hit.** Bodywork dents where it's struck. The nose is built to take hits, the doors aren't, so a
+  T-bone hurts far more than a head-on. A battered nose loses engine power; hits near a wheel knock it off (the car
+  then drags and pulls); doors, bumpers, spoilers and push bars fly off; a big side hit on a car that's finished
+  **tears it in half**.
+- **Three arenas:** the **Dust Bowl** (banked edges and a hill in the middle), the **Scrapyard** (walls of crushed
+  cars, two jumps and a mud pit) and the **Sky Deck**, a rooftop with no walls where you can shove cars off the edge.
+- **Four events:**
+  - **Last Car Standing:** the last car running wins. After 2:30 it's sudden death, and engines overheat.
+  - **Brawl:** three minutes, wrecked cars come back, most points wins.
+  - **Wrecking Spree:** a 60-second clock that only stops for carnage: damage, takedowns and smashed props buy
+    time, a wreck costs 15 seconds, and points buy repairs (<kbd>X</kbd>).
+  - **Championship:** three rounds across the three arenas, with points for placing.
+- **Pickups:** repair, nitro, shield and spikes (double damage from the nose) work at once; shockwaves and mines wait
+  for <kbd>E</kbd>.
+- **Points** for damage, T-bones, reverse rams, air strikes, spin-outs, wheels knocked off, takedowns, ring-outs,
+  revenge, double takedowns and smashed cones and barrels, with a combo for keeping it up.
+- **Unlocks:** win a championship for the Dumpster (a garbage truck); win with four different cars for the Prototype.
+- Day, sunset or floodlit night; keyboard, gamepad and touch.
+
+### Crunchtime controls
+
+| Key | Action |
+| --- | --- |
+| ↑ ↓ ← → or W A S D | Drive (↓ brakes, then reverses) |
+| Space | Handbrake |
+| Shift | Nitro (refills slowly, and faster as you deal damage) |
+| E | Use item (shockwave, mine) |
+| Q (hold) | Look back |
+| R | Flip back over / get unstuck |
+| X | Wrecking Spree: buy a repair |
+| C | Camera (chase, far chase, hood, overhead) |
+| Esc | Pause |
+
+### Balance
+
+All cars sit on one trade-off: light cars are quicker and turn sharper but take more damage; heavy ones shrug off
+hits and shove others around but are slow to get going. The numbers come from AI-only tournaments
+(`await derby.simulate(20, 'elim', 'bowl')` in the browser console on the Crunchtime page), adjusted until every car's
+average finishing place lands near the middle.
+
 ## Run
 
 ES modules need to be served over HTTP (three.js loads from a CDN):
@@ -28,7 +79,7 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-## Controls
+## Hangtime controls
 
 | Key | Action |
 | --- | --- |
@@ -108,13 +159,24 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
 - `js/audio.js`: synthesised engine, tyre and crash sounds (WebAudio)
 - `js/textures.js`: procedural textures (asphalt grit, grass, blotches), applied in world space, and the water shader
 - `js/scenery.js`: instanced trees, bushes, rocks and tyre walls, the grandstand, and the mountains
+- `js/derby/`: Crunchtime
+  - `main.js`: events, scoring, hits and damage rules, cameras, HUD, menus, and the balancing simulator
+  - `vehicle.js`: a derby car: model, dents, lost wheels and parts, splitting in two, and car-to-car impacts
+  - `arena.js`: the three arenas (height functions for the ground, distance functions for the walls) and their scenery
+  - `ai.js`: opponents: picking victims, leading their aim, swooping run-ups, reverse rams, repairs, the rooftop edge
+  - `roster.js`: cars, stats and drivers
+  - `pickups.js`: pickups, mines and smashable props
+  - `fx.js`: smoke, fire and sparks as GPU points, and tumbling debris
+  - `stage.js`: renderer, sky, lights and time of day
 
 ## Performance
 
-Scenery is instanced, so a track takes about 170 draw calls. If the frame rate stays under 50 fps, the game
+Scenery is instanced, so a Hangtime track takes about 170 draw calls and a Crunchtime arena about 100–170 with
+eight cars. Crunchtime's ground and walls are height and distance functions, so eight cars' physics costs well
+under a millisecond per step. If the frame rate stays under 50 fps, the game
 lowers its rendering resolution step by step (down to 60% of the screen's pixel density) and shrinks the shadow
 map. Phones and tablets start at 1.5× pixel density.
 
 ## Credits
 
-Car models: [Car Kit](https://kenney.nl/assets/car-kit) by Kenney, CC0 (see `assets/cars/LICENSE.txt`).
+Car, debris and cone models: [Car Kit](https://kenney.nl/assets/car-kit) by Kenney, CC0 (see `assets/cars/LICENSE.txt`).

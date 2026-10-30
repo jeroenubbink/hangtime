@@ -35,6 +35,8 @@ const CUP_ROUNDS = [['bowl', 'elim'], ['yard', 'brawl'], ['deck', 'elim']];
 const CUP_POINTS = [10, 8, 6, 5, 4, 3, 2, 1];
 const SUDDEN_AFTER = 150;                 // Last Car Standing: hits count 1.5× after this long
 const SPREE_START = 60;
+const AFTERTOUCH = 2.5;              // seconds you can steer your own wreck
+const _af = new THREE.Vector3();
 const SHOWROOM = { bowl: [0, 0], yard: [-30, -22], deck: [16, 8] };
 // Livery cars keep their own colours (repainting would recolour the light bar)
 const LIVERY = { police: '#9fb4d0', cabbie: '#ffcf2e', dumpster: '#3a8a4a' };
@@ -241,6 +243,7 @@ function startMatch(type, arenaKey, { sim = false } = {}) {
     timeLeft: type === 'brawl' ? EVENTS.brawl.secs : type === 'spree' ? SPREE_START : Infinity,
     chain: { n: 0, t: -10 }, repairCost: 300, kills: [], lastKiller: null, steps: 0 };
   G.follow = vehicles[0];
+  G.killCam = null;
   G.state = sim ? 'play' : 'countdown';
   G.ff = false;
   G.camMode = G.camMode || 0;
@@ -296,6 +299,11 @@ function step() {
     if (v.boosting) v.nitro = Math.max(0, v.nitro - DT / 2.6);
     else v.nitro = Math.min(1, v.nitro + DT * 0.025);
     inp.boost = v.boosting;
+    // Aftertouch: for a moment after being wrecked, steer the wreck (into someone, ideally)
+    if (!v.alive && v.player && !G.sim && M.time - v.diedAt < AFTERTOUCH && !v.halved) {
+      const r = _af.set(1, 0, 0).applyQuaternion(c.q).setY(0).normalize();
+      c.vel.addScaledVector(r, playerInput.steer * 9 * DT);
+    }
     c.wallHit = null;
     c.step(DT, inp);
     inp.boost = want;
@@ -344,14 +352,25 @@ function step() {
       sound.thud(3);
     }
     if (p.vehicle.alive) award(p.vehicle, 15, p.prop.kind === 'cone' ? 'CONE' : 'BARREL', p.pos, true);
-    if (p.vehicle.player && M.type === 'spree') M.timeLeft += 1;
+    if (p.vehicle.player && M.type === 'spree') gainTime(1);
   }
   rules();
+}
+
+// Tips for the first couple of matches
+const TIPS = [[4, 'Hit them in the side: T-bones hurt most'], [16, 'Crates on the glowing pads: repairs, nitro, shields…'],
+  [30, 'Nitro refills as you deal damage'], [46, 'Reversing into them spares your engine'], [62, 'Stuck or upside down? Press R / FLIP']];
+function tips() {
+  const M = G.match;
+  if (G.sim || records.played >= 2 || M.type === 'spree') return;
+  const t = TIPS[M.tip || 0];
+  if (t && M.time > t[0]) { callout(t[1], 'item tip'); M.tip = (M.tip || 0) + 1; }
 }
 
 function rules() {
   const M = G.match;
   if (M.over) return;
+  if (M.steps % 60 === 0) tips();
   const alive = vehicles.filter(v => v.alive);
   const me = vehicles[0];
   if (M.type === 'elim') {
@@ -367,7 +386,7 @@ function rules() {
     if (M.timeLeft <= 0) endMatch();
   } else if (M.type === 'spree') {
     M.timeLeft -= DT;
-    if (M.timeLeft <= 0 || !me.alive) endMatch();
+    if (M.timeLeft <= 0) endMatch();
   }
 }
 
@@ -404,6 +423,12 @@ function collided(A, B, h) {
 // `X` is hit by `Y`. `zX`, `zY`: the zone of each car that took the contact.
 function hitBy(X, Y, base, point, n, zX, zY) {
   if (!X.alive) return;
+  if (!Y.alive) {
+    // A wreck sliding into someone: the wreck's driver gets the credit while it's fresh
+    if (G.match.time - Y.diedAt > AFTERTOUCH) Y = null;
+    hurt(X, Y, base * 0.9 * { front: 0.6, rear: 0.85, left: 1.3, right: 1.3 }[zX], point, n, { zone: zX, kind: 'AFTERTOUCH' });
+    return;
+  }
   let mult = { front: 0.6, rear: 0.85, left: 1.3, right: 1.3 }[zX];
   if (Y.ram > 0 && zY === 'front') mult *= 2;
   if (X.ram > 0 && zX === 'front') mult *= 0.3;
@@ -419,7 +444,7 @@ function hitBy(X, Y, base, point, n, zX, zY) {
   hurt(X, Y, base * mult, point, n, { zone: zX, kind });
 }
 
-const BONUS = { 'T-BONE': 20, 'REVERSE RAM': 30, 'AIR STRIKE': 40, 'HEAD-ON': 10, 'REAR-END': 10, SIDESWIPE: 5 };
+const BONUS = { AFTERTOUCH: 60, 'T-BONE': 20, 'REVERSE RAM': 30, 'AIR STRIKE': 40, 'HEAD-ON': 10, 'REAR-END': 10, SIDESWIPE: 5 };
 
 // Damage X by `dmg` at world point `point`, the hit pushing along `n` (into X). `by` gets the credit.
 function hurt(X, by, dmg, point, n, { zone, kind = 'HIT', quiet = false } = {}) {
@@ -463,7 +488,7 @@ function hurt(X, by, dmg, point, n, { zone, kind = 'HIT', quiet = false } = {}) 
     X.lastHit = { by, t: M.time };
     by.dealt += dmg;
     by.nitro = Math.min(1, by.nitro + dmg / 220);
-    if (by.player && M.type === 'spree') M.timeLeft += dmg * 0.15;
+    if (by.player && M.type === 'spree') gainTime(dmg * 0.15);
     award(by, Math.round(dmg * 2) + (BONUS[kind.replace('NITRO ', '')] || 0) + (kind.startsWith('NITRO') ? 15 : 0), kind, point, quiet || dmg < 4);
   }
   if (X.hp <= 0) kill(X, by, zone, dmg);
@@ -485,7 +510,7 @@ function wallHit(v, w) {
 function kill(X, by, zone, dmg, cause) {
   if (!X.alive) return;
   const M = G.match;
-  const split = cause !== 'ring' && (((zone === 'left' || zone === 'right') && dmg >= 16) || X.zones.left + X.zones.right >= 1.8);
+  const split = cause !== 'ring' && cause !== 'heat' && (((zone === 'left' || zone === 'right') && dmg >= 20) || X.zones.left + X.zones.right >= 2);
   if (split) {
     const hs = X.split();
     X.halved = true;
@@ -493,7 +518,9 @@ function kill(X, by, zone, dmg, cause) {
     while (halves.length > 8) scene.remove(halves.shift().model);
   } else X.wreck();
   X.diedAt = M.time;
-  X.respawnT = M.type === 'brawl' || (M.type === 'spree' && !X.player) ? 3.5 : null;
+  X.respawnT = M.type === 'brawl' || M.type === 'spree' ? 3.5 : null;
+  // In the spree the clock is your life: a wreck costs time, not the run
+  if (X.player && M.type === 'spree') { M.timeLeft -= 15; if (!G.sim) callout('−15 s', 'big bad'); }
   M.out.push(X);
   if (!G.sim && cause !== 'ring') {
     explosion(X.car.pos, split ? 1.4 : 1);
@@ -510,12 +537,19 @@ function kill(X, by, zone, dmg, cause) {
     const recent = M.kills.filter(k => k.by === by && M.time - k.t < 3);
     if (recent.length) award(by, 200, recent.length > 1 ? 'TRIPLE TAKEDOWN' : 'DOUBLE TAKEDOWN', X.car.pos, false, true);
     M.kills.push({ by, t: M.time });
-    if (by.player && !G.sim) { G.slowmo = 0.9; }
-    if (by.player && M.type === 'spree') M.timeLeft += 8;
+    if (by.player && !G.sim) {
+      // Takedown cam: a slow-motion cut to the victim, from the side
+      G.slowmo = 1.1;
+      const side = new THREE.Vector3().subVectors(X.car.pos, by.car.pos).setY(0).normalize();
+      G.killCam = { t: 1.1, target: X, from: X.car.pos.clone().add(new THREE.Vector3(-side.z, 0, side.x).multiplyScalar(7)).addScaledVector(side, -3).setY(X.car.pos.y + 2.2) };
+      keepInside(G.killCam.from);
+    }
+    if (by.player && M.type === 'spree') gainTime(8);
   }
   if (X.player) {
     M.lastKiller = by;
     if (!G.sim) {
+      G.slowmo = 1.2;
       callout(cause === 'ring' ? 'OVER THE EDGE' : split ? 'CUT IN HALF!' : 'WRECKED', 'big bad');
       if (M.type === 'elim') {
         $('btn-ff').classList.remove('hidden');
@@ -564,7 +598,7 @@ function collect(v, type, pos) {
   } else if (type === 'nitro') v.nitro = 1;
   else if (type === 'shield') v.shield = it.secs;
   else if (type === 'ram') v.ram = it.secs;
-  else if (type === 'time') { if (G.match.type === 'spree' && v.player) G.match.timeLeft += 10; }
+  else if (type === 'time') { if (G.match.type === 'spree' && v.player) gainTime(10); }
   else v.item = type;
   if (!G.sim) {
     ring(pos, it.colour);
@@ -610,6 +644,12 @@ function mineBlast(owner, pos) {
 }
 
 // ---------- Scoring ----------
+function gainTime(s) {
+  const M = G.match;
+  M.timeLeft += s;
+  M.gained = (M.gained || 0) + s;
+}
+
 function award(v, pts, label, pos, quiet = false, big = false) {
   if (!v || !pts) return;
   const M = G.match;
@@ -641,7 +681,7 @@ function endMatch() {
   const place = order.indexOf(me);
   let title, sub = '';
   if (M.type === 'spree') {
-    title = me.alive ? "TIME'S UP" : 'WRECKED';
+    title = "TIME'S UP";
     sub = `${me.score.toLocaleString()} points · ${me.takedowns} takedowns · lasted ${fmt(M.time)}`;
   } else {
     title = place === 0 ? 'WINNER!' : `${ordinal(place + 1)} PLACE`;
@@ -763,6 +803,16 @@ function updateHud() {
     setText('status-main', fmt(Math.max(0, M.timeLeft)));
     $('status-main').classList.toggle('low', M.timeLeft < 10);
     setText('status-sub', M.type === 'spree' ? `DEAL DAMAGE FOR TIME · X REPAIR (${M.repairCost})` : 'BRAWL');
+    // Time bought in the spree, shown in batches
+    if (M.gained >= 0.5 && M.time - (M.gainShown || 0) > 0.6) {
+      const el = document.createElement('div');
+      el.className = 'gain';
+      el.textContent = `+${M.gained.toFixed(1)} s`;
+      $('status').appendChild(el);
+      el.addEventListener('animationend', () => el.remove());
+      M.gained = 0;
+      M.gainShown = M.time;
+    }
   }
   setText('score', me.score.toLocaleString());
   setText('combo', M.chain.n && M.time - M.chain.t < 4 ? `COMBO ×${(1 + 0.25 * M.chain.n).toFixed(2)}` : '');
@@ -933,7 +983,15 @@ function updateCamera(dt) {
   camera.clearViewOffset();
   const v = G.follow, c = v.car;
   let fov = 65;
-  if (v.gone && v.player) {
+  const kc = G.killCam;
+  if (kc && (kc.t -= dt) <= 0) G.killCam = null;
+  if (G.killCam) {
+    const t = kc.target, p = t.halved ? (halves.find(h => h.owner === t)?.car.pos || t.car.pos) : t.car.pos;
+    camera.position.copy(kc.from);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(p.x, p.y + 0.5, p.z);
+    fov = 50;
+  } else if (v.gone && v.player) {
     // Fell off the roof: watch it go from the edge
     if (c.pos.y > -80) camera.lookAt(c.pos);
   } else if (!v.alive && (G.state === 'play' || G.state === 'over') && v.player) {

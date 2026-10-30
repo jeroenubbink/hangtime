@@ -8,26 +8,26 @@
 
 export const ROSTER = {
   zipper: { name: 'Zipper', file: 'hatchback-sports', blurb: 'Hot hatch. Darts in, darts out. Folds like paper.',
-    mass: 1000, power: 12000, top: 46, grip: 1.86, armour: 1.1, hp: 96, size: [1.9, 4.5], scale: 1.62, paint: '#ff7a1a', tone: 1.25 },
+    mass: 1000, power: 12700, top: 47, grip: 1.86, armour: 1.02, hp: 100, size: [1.9, 4.5], scale: 1.62, paint: '#ff7a1a', tone: 1.25 },
   comet: { name: 'Comet', file: 'sedan-sports', blurb: 'Sports coupe with a wing. Quick and keen to turn.',
-    mass: 1120, power: 12700, top: 45, grip: 1.82, armour: 1.04, hp: 100, size: [1.9, 4.3], scale: 1.7, paint: '#e8352b', tone: 1.15 },
+    mass: 1120, power: 13100, top: 45, grip: 1.82, armour: 1.0, hp: 100, size: [1.9, 4.3], scale: 1.7, paint: '#e8352b', tone: 1.15 },
   cabbie: { name: 'Cabbie', file: 'taxi', blurb: 'Seen it all. Takes a knock, gives one back.',
-    mass: 1250, power: 12700, top: 43, grip: 1.78, armour: 1.0, hp: 100, size: [2.0, 4.6], scale: 1.68, paint: null, tone: 1 },
+    mass: 1250, power: 12700, top: 43, grip: 1.78, armour: 1.0, hp: 102, size: [2.0, 4.6], scale: 1.68, paint: null, tone: 1 },
   sedan: { name: 'Sunday', file: 'sedan', blurb: 'Family saloon. Steady, honest, underestimated.',
-    mass: 1300, power: 12900, top: 42, grip: 1.76, armour: 0.98, hp: 104, size: [2.0, 4.3], scale: 1.7, paint: '#2f7fe0', tone: 0.95 },
+    mass: 1300, power: 13500, top: 42, grip: 1.76, armour: 0.97, hp: 106, size: [2.0, 4.3], scale: 1.7, paint: '#2f7fe0', tone: 0.95 },
   police: { name: 'Interceptor', file: 'police', blurb: 'Pursuit special. Big engine, push bar up front.',
-    mass: 1360, power: 14300, top: 46, grip: 1.74, armour: 1.0, hp: 98, size: [2.0, 4.8], scale: 1.66, paint: null, tone: 0.9 },
+    mass: 1360, power: 14700, top: 46, grip: 1.74, armour: 0.98, hp: 100, size: [2.0, 4.8], scale: 1.66, paint: null, tone: 0.9 },
   truck: { name: 'Mule', file: 'truck', blurb: 'Pickup with a heavy nose. Hits hard going forward.',
-    mass: 1550, power: 14400, top: 41, grip: 1.68, armour: 0.92, hp: 108, size: [2.1, 5.0], scale: 1.7, paint: '#22b35a', tone: 0.8 },
+    mass: 1550, power: 14400, top: 41, grip: 1.68, armour: 0.95, hp: 106, size: [2.1, 5.0], scale: 1.7, paint: '#22b35a', tone: 0.8 },
   suv: { name: 'Boulder', file: 'suv', blurb: 'Tall, heavy four-by-four. Hard to stop, slow to turn.',
-    mass: 1650, power: 15000, top: 40, grip: 1.64, armour: 0.9, hp: 112, size: [2.1, 4.6], scale: 1.72, paint: '#ffcf2e', tone: 0.75 },
+    mass: 1650, power: 15000, top: 40, grip: 1.64, armour: 0.95, hp: 104, size: [2.1, 4.6], scale: 1.72, paint: '#ffcf2e', tone: 0.75 },
   van: { name: 'Brick', file: 'van', blurb: 'A delivery van that delivers dents. Heaviest of the lot.',
-    mass: 1800, power: 15600, top: 38, grip: 1.58, armour: 0.88, hp: 116, size: [2.1, 4.8], scale: 1.74, paint: '#f2f2f2', tone: 0.68 },
+    mass: 1800, power: 15600, top: 38, grip: 1.58, armour: 0.97, hp: 110, size: [2.1, 4.8], scale: 1.74, paint: '#f2f2f2', tone: 0.68 },
   // Unlockables
   dumpster: { name: 'Dumpster', file: 'garbage-truck', blurb: 'Garbage truck. Unstoppable, unhurried. (Win a championship.)',
-    mass: 2300, power: 18800, top: 35, grip: 1.52, armour: 0.8, hp: 124, size: [2.3, 5.6], scale: 1.6, paint: null, tone: 0.55, locked: 'cup' },
+    mass: 2300, power: 18800, top: 35, grip: 1.52, armour: 0.9, hp: 116, size: [2.3, 5.6], scale: 1.6, paint: null, tone: 0.55, locked: 'cup' },
   proto: { name: 'Prototype', file: 'race-future', blurb: 'Track car from the future. Blink and it\'s gone. (Win with 4 different cars.)',
-    mass: 950, power: 12200, top: 50, grip: 2.0, armour: 1.18, hp: 88, size: [1.8, 4.4], scale: 1.65, paint: '#9b4dff', tone: 1.4, locked: 'four' },
+    mass: 950, power: 12800, top: 50, grip: 2.0, armour: 1.08, hp: 94, size: [1.8, 4.4], scale: 1.65, paint: '#9b4dff', tone: 1.4, locked: 'four' },
 };
 export const CORE = ['zipper', 'comet', 'cabbie', 'sedan', 'police', 'truck', 'suv', 'van'];
 
