@@ -1179,7 +1179,7 @@ function stuntPopup(group) {
 
 // ---------- Screens ----------
 function showScreen(id) {
-  for (const s of ['menu', 'pause', 'results', 'help']) $(s).classList.toggle('hidden', s !== id);
+  for (const s of ['games', 'menu', 'pause', 'results', 'help']) $(s).classList.toggle('hidden', s !== id);
 }
 
 function renderMenu() {
@@ -1561,5 +1561,10 @@ window.addEventListener('hashchange', () => {
 importSharedTrack();
 toMenu();
 noteSharedTrack();
-if (!store.load('seenHelp', false)) showScreen('help');   // first visit
+// The game picker comes first, unless a shared track link was opened
+const firstHelp = () => { if (!store.load('seenHelp', false)) showScreen('help'); };
+if (game.sharedTrack) firstHelp();
+else showScreen('games');
+$('pick-hangtime').onclick = () => { showScreen('menu'); firstHelp(); };
+$('btn-games').onclick = () => showScreen('games');
 requestAnimationFrame(frame);

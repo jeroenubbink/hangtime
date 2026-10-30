@@ -153,4 +153,128 @@ export class Sound {
       o.stop(t + 0.32);
     });
   }
+
+  // ---------- Derby ----------
+  // Metal crunch: a thump, torn-metal noise and a few clanging inharmonic partials. `v` is 0..1.
+  crunch(v) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    v = Math.min(1, v);
+    this.burst(0.18 + v * 0.3, 300 + v * 500, 0.4 + v * 0.6);
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1500 + Math.random() * 1500;
+    bp.Q.value = 1.5;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.5 * v, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.15 + v * 0.35);
+    src.connect(bp).connect(g).connect(this.master);
+    src.start(t, Math.random());
+    src.stop(t + 0.6);
+    const base = 180 + Math.random() * 160;
+    for (const m of [1, 2.76, 5.4]) {
+      const o = ctx.createOscillator(), og = ctx.createGain();
+      o.type = 'triangle';
+      o.frequency.value = base * m;
+      og.gain.setValueAtTime(0.06 * v / m, t);
+      og.gain.exponentialRampToValueAtTime(0.0005, t + 0.25 + v * 0.4);
+      o.connect(og).connect(this.master);
+      o.start(t);
+      o.stop(t + 0.8);
+    }
+  }
+
+  // Glass: a scatter of short high clicks
+  glass() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    for (let i = 0; i < 6; i++) {
+      const t = ctx.currentTime + Math.random() * 0.25;
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 3000 + Math.random() * 4000;
+      g.gain.setValueAtTime(0.05, t);
+      g.gain.exponentialRampToValueAtTime(0.0005, t + 0.08);
+      o.connect(g).connect(this.master);
+      o.start(t);
+      o.stop(t + 0.1);
+    }
+  }
+
+  // Explosion: a long low boom
+  boom(v = 1) { this.burst(1.8, 900, 1.1 * v); this.burst(0.5, 3000, 0.4 * v); }
+
+  // Crowd: a constant murmur that swells into a roar on big moments
+  crowd(level) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    if (!this.crowdGain) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      src.loop = true;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 700;
+      bp.Q.value = 0.7;
+      const lfo = ctx.createOscillator(), lg = ctx.createGain();
+      lfo.frequency.value = 0.3;
+      lg.gain.value = 120;
+      lfo.connect(lg).connect(bp.frequency);
+      lfo.start();
+      this.crowdGain = ctx.createGain();
+      this.crowdGain.gain.value = 0;
+      src.connect(bp).connect(this.crowdGain).connect(this.master);
+      src.start();
+    }
+    this.crowdGain.gain.setTargetAtTime(level * 0.12, ctx.currentTime, 0.4);
+  }
+  cheer(v = 1) {
+    if (!this.ctx) return;
+    this.crowd(1);
+    this.crowdGain.gain.setTargetAtTime(0.12 + 0.35 * v, this.ctx.currentTime, 0.08);
+    setTimeout(() => this.crowd(this.crowdBase ?? 0.6), 900);
+  }
+
+  // Pickup: a quick rising arpeggio
+  pickup() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    [523, 659, 784, 1047].forEach((f, i) => {
+      const t = t0 + i * 0.05, o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'square';
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.06, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      o.connect(g).connect(this.master);
+      o.start(t);
+      o.stop(t + 0.14);
+    });
+  }
+
+  // Opponents' engines: a few voices, given to whichever cars are closest
+  voices(list) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (!this.voicePool) {
+      this.voicePool = [0, 1, 2].map(() => {
+        const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+        o.type = 'sawtooth';
+        f.type = 'lowpass';
+        f.frequency.value = 800;
+        g.gain.value = 0;
+        o.connect(f).connect(g).connect(this.master);
+        o.start();
+        return { o, f, g };
+      });
+    }
+    this.voicePool.forEach((v, i) => {
+      const it = list[i];
+      if (!it) { v.g.gain.setTargetAtTime(0, t, 0.1); return; }
+      v.o.frequency.setTargetAtTime(it.rpm / 60 * 2 * it.tone, t, 0.05);
+      v.f.frequency.setTargetAtTime(400 + it.rpm * 0.15, t, 0.05);
+      v.g.gain.setTargetAtTime(Math.min(0.09, it.vol * 0.09), t, 0.1);
+    });
+  }
 }

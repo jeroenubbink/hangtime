@@ -33,6 +33,7 @@ const HULL = [
   [-0.9, 0.05, -2.15], [0.9, 0.05, -2.15], [-0.9, 0.15, 2.12], [0.9, 0.15, 2.12],
   [-0.68, 0.62, -0.1, 1], [0.68, 0.62, -0.1, 1], [-0.68, 0.62, 0.9, 1], [0.68, 0.62, 0.9, 1],
 ].map(([x, y, z, roof]) => ({ p: new THREE.Vector3(x, y, z), roof: !!roof, under: y <= -0.3 }));
+export { HULL };
 
 const v3 = () => new THREE.Vector3();
 const _up = v3(), _fwd = v3(), _right = v3(), _F = v3(), _T = v3(), _down = v3();
@@ -45,6 +46,13 @@ export class CarPhysics {
   constructor(world, spec = CARS.comet) {
     this.world = world;
     this.spec = spec;
+    // Heavier cars (derby) scale every chassis force with their mass, so they ride and grip alike
+    this.mass = spec.mass || MASS;
+    this.k = this.mass / MASS;
+    this.inertia = INERTIA.clone().multiplyScalar(this.k * (spec.inertia || 1));
+    this.hull = spec.hull || HULL;
+    this.powerK = 1;       // engine damage
+    this.steerPull = 0;    // bent steering
     this.pos = v3();
     this.vel = v3();
     this.q = new THREE.Quaternion();
@@ -73,12 +81,12 @@ export class CarPhysics {
   invInertia(v, out) {
     _qi.copy(this.q).invert();
     out.copy(v).applyQuaternion(_qi);
-    out.set(out.x / INERTIA.x, out.y / INERTIA.y, out.z / INERTIA.z);
+    out.set(out.x / this.inertia.x, out.y / this.inertia.y, out.z / this.inertia.z);
     return out.applyQuaternion(this.q);
   }
 
   applyImpulse(r, J) {
-    this.vel.addScaledVector(J, 1 / MASS);
+    this.vel.addScaledVector(J, 1 / this.mass);
     this.w.add(this.invInertia(_t1.crossVectors(r, J), _t2));
   }
 
@@ -91,7 +99,8 @@ export class CarPhysics {
     _fwd.set(0, 0, -1).applyQuaternion(q);
     _right.set(1, 0, 0).applyQuaternion(q);
     _down.copy(_up).negate();
-    _F.set(0, -G * MASS, 0);
+    const K = this.k;
+    _F.set(0, -G * this.mass, 0);
     _T.set(0, 0, 0);
 
     const vF = this.vel.dot(_fwd);
@@ -99,7 +108,7 @@ export class CarPhysics {
     const sp = Math.abs(vF);
 
     const maxSteer = 0.55 - 0.4 * Math.min(1, sp / 55);
-    this.steer += clamp(input.steer * maxSteer - this.steer, -5 * dt, 5 * dt);
+    this.steer += clamp(clamp(input.steer + this.steerPull, -1, 1) * maxSteer - this.steer, -5 * dt, 5 * dt);
 
     // Pedals: the same key brakes or reverses depending on direction of travel
     let drive = 0, brake = 0;
@@ -117,14 +126,15 @@ export class CarPhysics {
     this.rpm += ((revving ? 7200 : rpmTarget) - this.rpm) * Math.min(1, dt * 8);
 
     let driveForce = 0;
-    if (drive > 0) driveForce = drive * this.spec.power * Math.max(0, 1 - sp / this.spec.top) * (this.shift > 0 ? 0.25 : 1);
-    if (input.boost && vF > -0.5) driveForce += 10000 * Math.max(0, 1 - sp / BOOST_TOP);
-    else if (drive < 0) driveForce = drive * 6000 * Math.max(0, 1 - sp / 14);
+    if (drive > 0) driveForce = drive * this.spec.power * this.powerK * Math.max(0, 1 - sp / this.spec.top) * (this.shift > 0 ? 0.25 : 1);
+    if (input.boost && vF > -0.5) driveForce += 10000 * K * Math.max(0, 1 - sp / (this.spec.boostTop || BOOST_TOP));
+    else if (drive < 0) driveForce = drive * 6000 * K * this.powerK * Math.max(0, 1 - sp / (this.spec.reverseTop || 14));
 
     this.landing = 0;
     this.grounded = 0;
     for (let i = 0; i < 4; i++) {
       const W = WHEELS[i], ws = this.wheels[i];
+      if (ws.lost) { ws.contact = false; ws.slip = 0; ws.comp = 0; continue; }
       _mount.copy(W.p).applyQuaternion(q).add(this.pos);
       const hit = world.raycast(_mount, _down, REST + RADIUS);
       if (!hit) {
@@ -141,9 +151,9 @@ export class CarPhysics {
       const comp = REST + RADIUS - hit.dist;
       const cv = (comp - ws.comp) / dt;
       ws.comp = comp;
-      let fs = SPRING * comp + DAMP * cv;
+      let fs = (SPRING * comp + DAMP * cv) * K;
       // Bump stop: stiff on the way in, soft on the way out so it doesn't catapult the car
-      if (comp > REST * 0.7) fs += (cv > 0 ? 500000 : 120000) * (comp - REST * 0.7) + (cv > 0 ? 12000 * cv : 0);
+      if (comp > REST * 0.7) fs += ((cv > 0 ? 500000 : 120000) * (comp - REST * 0.7) + (cv > 0 ? 12000 * cv : 0)) * K;
       fs = Math.max(0, fs);
       const N = hit.normal;
       if (this.airTime > 0.25) this.landing = Math.max(this.landing, -this.vel.dot(N));
@@ -159,15 +169,15 @@ export class CarPhysics {
       const vf = _pv.dot(_wf), vs = _pv.dot(_ws);
       ws.road = world.onRoad(hit.point.x, hit.point.z) || hit.point.y > 0.05;
 
-      let lat = -vs * 7000 * (input.handbrake && !W.front ? 0.3 : 1);
-      let lon = -vf * 15;
+      let lat = -vs * 7000 * K * (input.handbrake && !W.front ? 0.3 : 1);
+      let lon = -vf * 15 * K;
       if (!W.front) lon += driveForce / 2;
-      const bF = brake * (W.front ? 5000 : 3800);
-      if (bF > 0) lon -= clamp(vf * 6000, -bF, bF);
-      if (input.handbrake && !W.front) lon -= clamp(vf * 6000, -3500, 3500);
+      const bF = brake * (W.front ? 5000 : 3800) * K;
+      if (bF > 0) lon -= clamp(vf * 6000 * K, -bF, bF);
+      if (input.handbrake && !W.front) lon -= clamp(vf * 6000 * K, -3500 * K, 3500 * K);
 
       const mu = (ws.road ? this.spec.grip * world.surfaceGrip(hit.point.x, hit.point.z) : this.spec.grip / 1.5) * (W.front ? 1 : 1.1) * (world.wet ? 0.94 : 1);
-      const maxF = mu * Math.min(fs, 9000);
+      const maxF = mu * Math.min(fs, 9000 * K);
       const mag = Math.hypot(lat, lon);
       ws.slip = maxF > 0 ? mag / maxF : 0;
       if (mag > maxF && mag > 0) { lat *= maxF / mag; lon *= maxF / mag; }
@@ -190,7 +200,7 @@ export class CarPhysics {
     _F.addScaledVector(this.vel, -0.7 * Math.sqrt(v2));
     if (this.grounded) _F.addScaledVector(_up, -0.45 * vF * vF);
 
-    this.vel.addScaledVector(_F, dt / MASS);
+    this.vel.addScaledVector(_F, dt / this.mass);
     if (this.loopRef) this.loopAssist(dt);
     this.w.add(this.invInertia(_T, _t1).multiplyScalar(dt));
     // Air control steers the rotation rate about each body axis. Once used during a flight, letting go
@@ -321,7 +331,7 @@ export class CarPhysics {
     // Underbody hits (landings) are reported apart from nose, tail and side hits
     let impact = 0, under = 0, roof = false;
     const world = this.world;
-    for (const h of HULL) {
+    for (const h of this.hull) {
       _p.copy(h.p).applyQuaternion(this.q).add(this.pos);
       _r.subVectors(_p, this.pos);
       let pen = 0;
@@ -337,7 +347,7 @@ export class CarPhysics {
       const vn = _pv.dot(_n);
       if (vn < 0) {
         if (h.under) under = Math.max(under, -vn); else impact = Math.max(impact, -vn);
-        const k = 1 / MASS + _n.dot(_t2.crossVectors(this.invInertia(_t1.crossVectors(_r, _n), _J), _r));
+        const k = 1 / this.mass + _n.dot(_t2.crossVectors(this.invInertia(_t1.crossVectors(_r, _n), _J), _r));
         const j = -1.2 * vn / k;
         _J.copy(_n).multiplyScalar(j);
         _vt.copy(_pv).addScaledVector(_n, -vn);
@@ -360,7 +370,8 @@ export class CarPhysics {
       }
     }
 
-    // Arena fence
+    // Arena fence (an arena with its own walls keeps the car in itself)
+    if (world.contain) return { impact: Math.max(impact, world.contain(this)), under, roof };
     for (const axis of ['x', 'z']) {
       if (Math.abs(this.pos[axis]) > WORLD_LIMIT - 1.5) {
         const s = Math.sign(this.pos[axis]);
@@ -401,18 +412,21 @@ const KITS = {
   brute: { file: 'hatchback-sports', len: 4.6 },
 };
 const WHEEL_VIS = 0.42;    // drawn wheel radius; the physics wheel is RADIUS
-const kits = {};
+const kits = {};           // loaded kit scenes by file name
 let palette = null;        // the kit's palette as an image, for repainting
 
-export async function loadCarKits() {
+// Load kit files (by default Hangtime's three cars). Already loaded files are skipped.
+export async function loadCarKits(files = Object.values(KITS).map(k => k.file)) {
   const loader = new GLTFLoader();
-  await Promise.all(Object.entries(KITS).map(async ([kind, k]) => {
-    const g = await loader.loadAsync(`assets/cars/${k.file}.glb`);
-    kits[kind] = g.scene;
+  await Promise.all(files.filter(f => !kits[f]).map(async f => {
+    const g = await loader.loadAsync(`assets/cars/${f}.glb`);
+    kits[f] = g.scene;
   }));
-  const any = Object.values(kits)[0];
-  any.traverse(o => { if (o.isMesh && !palette) palette = o.material.map.image; });
+  const any = kits[files[0]];
+  if (any) any.traverse(o => { if (o.isMesh && !palette) palette = o.material.map.image; });
 }
+export const kitScene = file => kits[file];
+export const kitPalette = () => palette;
 
 // Which 32×128 palette swatch the body is painted with: the most used saturated one.
 function paintSwatch(geo, ctx) {
@@ -430,7 +444,7 @@ function paintSwatch(geo, ctx) {
 }
 
 const paintTextures = new Map();
-function paintedTexture(kind, colour, geo) {
+export function paintedTexture(kind, colour, geo) {
   const key = kind + colour;
   if (paintTextures.has(key)) return paintTextures.get(key);
   const c = document.createElement('canvas');
@@ -460,12 +474,13 @@ function paintedTexture(kind, colour, geo) {
   return tex;
 }
 
-function buildKitModel(colour, ghost, kind) {
-  const src = kits[kind];
+// `file` is the kit model; it is scaled to `len` metres long, or by `scale`.
+function buildKitModel(colour, ghost, file, { len, scale } = {}) {
+  const src = kits[file];
   const root = new THREE.Group();
   const body = src.getObjectByName('body');
   const box = new THREE.Box3().setFromObject(src);
-  const s = KITS[kind].len / (box.max.z - box.min.z);
+  const s = scale || len / (box.max.z - box.min.z);
   // Kit cars face +z; ours face -z. Turn them round and scale about the wheel axle height.
   const xf = new THREE.Matrix4().makeRotationY(Math.PI).premultiply(new THREE.Matrix4().makeScale(s, s, s));
   const wheelNodes = src.children.filter(o => o.name.startsWith('wheel'));
@@ -474,15 +489,19 @@ function buildKitModel(colour, ghost, kind) {
   const lift = rest - axleY;
   const mat = ghost
     ? new THREE.MeshBasicMaterial({ color: '#9fe3ff', transparent: true, opacity: 0.32, depthWrite: false })
-    : new THREE.MeshStandardMaterial({ map: paintedTexture(kind, colour, body.geometry), roughness: 0.38, metalness: 0.15, envMapIntensity: 0.9 });
+    : new THREE.MeshStandardMaterial({ map: colour ? paintedTexture(file, colour, body.geometry) : body.material.map, roughness: 0.38, metalness: 0.15, envMapIntensity: 0.9 });
   body.updateMatrixWorld(true);
   src.updateMatrixWorld(true);
-  body.traverse(o => {
-    if (!o.isMesh) return;
+  const bodyMeshes = [];
+  // The body and anything that isn't a wheel (grilles, light bars, a garbage truck's arm)
+  src.traverse(o => {
+    if (!o.isMesh || o.name.startsWith('wheel') || wheelOf(o)) return;
     const g = o.geometry.clone().applyMatrix4(o.matrixWorld).applyMatrix4(xf).translate(0, lift, 0);
     const m = new THREE.Mesh(g, mat);
+    m.name = o.name;
     m.castShadow = !ghost;
     root.add(m);
+    bodyMeshes.push(m);
   });
   const ws = WHEEL_VIS / (0.3 * s);
   const wheels = WHEELS.map(W => {
@@ -511,13 +530,17 @@ function buildKitModel(colour, ghost, kind) {
     t.position.set(x, ly + 0.08, bb.max.z + 0.01);
     root.add(h, t);
   }
-  root.userData = { wheels, paint: mat, normal: ghost ? '#9fe3ff' : '#ffffff', head, tail, kit: true };
+  root.userData = { wheels, paint: mat, normal: ghost ? '#9fe3ff' : '#ffffff', head, tail, kit: true, bodyMeshes, scale: s };
   return root;
 }
+const wheelOf = o => { for (let p = o.parent; p; p = p.parent) if (p.name.startsWith('wheel')) return true; return false; };
 
-export function buildCarModel(colour, { ghost = false, kind = 'comet' } = {}) {
-  const root = kits[kind] ? buildKitModel(colour, ghost, kind) : buildBoxModel(colour, ghost, kind);
-  if (!ghost) addHeadlights(root);
+// `file`/`len`/`scale` pick any kit model (the derby); otherwise `kind` is one of Hangtime's cars.
+// `lights: false` leaves out the headlight spot and beams.
+export function buildCarModel(colour, { ghost = false, kind = 'comet', file, len, scale, lights = true } = {}) {
+  const f = file || KITS[kind]?.file;
+  const root = kits[f] ? buildKitModel(colour, ghost, f, { len: len || KITS[kind]?.len || 4.4, scale }) : buildBoxModel(colour, ghost, kind);
+  if (!ghost && lights) addHeadlights(root);
   return root;
 }
 
@@ -617,15 +640,19 @@ function addHeadlights(root) {
 // Lamps for the time of day: 0 = off (daylight), 1 = full night.
 export function setCarLights(model, level) {
   const u = model.userData;
-  if (!u.spot) return;
-  u.spot.intensity = level * 40;
-  u.beamMat.opacity = 0.06;
-  for (const b of u.beams) b.visible = level >= 1;   // visible beams only in full darkness
+  if (u.spot) {
+    u.spot.intensity = level * 40;
+    u.beamMat.opacity = 0.06;
+    for (const b of u.beams) b.visible = level >= 1;   // visible beams only in full darkness
+  }
   if (u.kit) {
     u.head.opacity = level > 0 ? 0.95 : 0;
     u.tail.opacity = level > 0 ? 0.95 : 0;
+    // Unlit lamps aren't drawn at all
+    model.traverse(o => { if (o.material === u.head || o.material === u.tail) o.visible = level > 0; });
     return;
   }
+  if (!u.spot) return;
   u.head.emissive.set(level > 0 ? '#fff3c0' : '#000000');
   u.tail.emissive.set(level > 0 ? '#ff2010' : '#000000');
 }

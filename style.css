@@ -67,6 +67,39 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 2px; opacity: 0
 
 button.link { background: none; border: none; padding: 10px 0 0; text-decoration: underline; opacity: 0.75; font-size: 14px; }
 button.link:hover { background: none; opacity: 1; }
+button.link.back { padding: 0 0 8px; text-decoration: none; font-size: 14px; }
+
+/* Game picker */
+#games { background: radial-gradient(ellipse at center, rgba(10, 14, 22, 0.2), rgba(10, 14, 22, 0.65)); }
+.picker { width: min(980px, 100%); max-height: 100%; overflow: auto; text-align: center; }
+.picker-tag { font-size: 15px; letter-spacing: 3px; text-transform: uppercase; opacity: 0.85; margin: 0 0 18px; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
+.picker-row { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; }
+.game-card { flex: 1 1 340px; max-width: 460px; display: flex; flex-direction: column; text-align: left; padding: 0; overflow: hidden;
+  background: var(--panel); border: 2px solid var(--line); border-radius: 18px; color: var(--ink); text-decoration: none;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45); transition: transform .15s, border-color .15s; cursor: pointer; font: inherit; }
+.game-card:hover { transform: translateY(-4px) scale(1.01); border-color: var(--accent); background: var(--panel); }
+.game-card.derby:hover { border-color: #ff7a1a; }
+.game-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #222; }
+.game-title { font-family: 'Russo One', Rubik, sans-serif; font-style: italic; font-size: 38px; letter-spacing: 2px; padding: 14px 20px 0;
+  text-shadow: 3px 3px 0 var(--red); }
+.game-title em { font-style: italic; color: var(--accent); }
+.game-card.derby .game-title em { color: #ff7a1a; }
+.game-blurb { padding: 6px 20px 20px; font-size: 15px; opacity: 0.8; line-height: 1.45; }
+@media (max-width: 720px) {
+  .picker-tag { font-size: 12px; letter-spacing: 2px; margin-bottom: 12px; }
+  .picker-row { gap: 12px; }
+  .game-card { flex-basis: 100%; }
+  .game-card img { aspect-ratio: 2 / 1; }
+  .game-title { font-size: 26px; padding: 10px 14px 0; }
+  .game-blurb { font-size: 13px; padding: 4px 14px 12px; }
+}
+@media (max-height: 500px) {
+  .picker-tag { display: none; }
+  .game-card { flex-basis: 240px; }
+  .game-card img { aspect-ratio: 2 / 1; }
+  .game-title { font-size: 24px; padding: 8px 14px 0; }
+  .game-blurb { font-size: 12px; padding: 2px 14px 10px; }
+}
 .card.help { width: min(860px, 100%); }
 .help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 24px; margin-bottom: 16px; }
 .help-grid h3 { margin-top: 12px; }

@@ -84,6 +84,9 @@ const MODELS = {
     }
     return merge(parts);
   },
+  // Long runs of tyres lining a wall: the same three stacks, each one six-sided cylinder banded by height
+  tyrewall: () => merge([-0.75, 0, 0.75].map(x => [new THREE.CylinderGeometry(0.36, 0.36, 0.9, 6, 3).translate(x, 0.45, 0),
+    y => (y > 0.6 ? (x === 0 ? '#e8e8e8' : '#d8352b') : '#222326')])),
 };
 
 // Instanced placement: add(kind, x, y, z, scale, rotation), then build() returns the meshes

@@ -1,0 +1,202 @@
+:root {
+  --ink: #fff;
+  --panel: rgba(18, 16, 20, 0.88);
+  --accent: #ff7a1a;
+  --accent2: #ffcf2e;
+  --accent-ink: #1e0d00;
+  --red: #e8352b;
+  --line: rgba(255, 255, 255, 0.14);
+  --good: #3ddc84;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #2a2420; color: var(--ink);
+  font-family: Rubik, system-ui, sans-serif; user-select: none; -webkit-user-select: none; }
+#view, #labels { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#labels { pointer-events: none; }
+.hidden { display: none !important; }
+#loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  font: 22px 'Russo One', sans-serif; letter-spacing: 2px; background: #1a1614; }
+
+button { font: inherit; color: inherit; background: rgba(255, 255, 255, 0.08); border: 1px solid var(--line); border-radius: 8px;
+  padding: 9px 14px; cursor: pointer; transition: background .12s, transform .06s, border-color .12s; }
+button:hover { background: rgba(255, 255, 255, 0.18); }
+button:active { transform: translateY(1px); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button.primary:hover { background: #ff9447; }
+button.link { background: none; border: none; padding: 10px 0 0; text-decoration: underline; opacity: 0.75; font-size: 14px; }
+
+h1 { font-family: 'Russo One', Rubik, sans-serif; font-size: 52px; margin: 6px 0 0; letter-spacing: 2px; line-height: 1;
+  font-style: italic; text-shadow: 3px 3px 0 var(--red); }
+h1 span { color: var(--accent); }
+h2 { font-family: 'Russo One', Rubik, sans-serif; margin: 0 0 6px; font-weight: 400; letter-spacing: 1px; }
+h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.6; margin: 16px 0 8px; font-weight: 600; }
+.tag { margin: 8px 0 0; opacity: 0.75; }
+kbd { display: inline-block; min-width: 20px; text-align: center; font: 600 12px Rubik, sans-serif; padding: 1px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.4); border-bottom-width: 2px; border-radius: 4px; margin: 0 1px; }
+
+.screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 24px 26px;
+  width: min(620px, 100%); max-height: 100%; overflow: auto; backdrop-filter: blur(6px); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45); }
+.card.narrow { width: min(380px, 100%); display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+.row button { flex: 1; padding: 13px; font-size: 17px; }
+
+/* Menu: a panel on the left with the car on its turntable behind it */
+#menu { justify-content: flex-start; padding-left: max(16px, 4vw); }
+#menu .panel { position: relative; width: min(460px, 100%); max-height: 100%; overflow: auto; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px 18px; backdrop-filter: blur(6px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45); }
+#menu .panel::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 8px; border-radius: 16px 16px 0 0;
+  background: repeating-linear-gradient(-45deg, var(--accent2) 0 12px, #222 12px 24px); }
+.back { color: var(--ink); opacity: 0.7; text-decoration: none; font-size: 14px; }
+.back:hover { opacity: 1; }
+.events { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.events button { text-align: left; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }
+.events button b { font-family: 'Russo One', sans-serif; font-weight: 400; font-size: 15px; letter-spacing: 0.5px; }
+.events button span { font-size: 12px; opacity: 0.7; line-height: 1.3; }
+.events button.active { border-color: var(--accent); background: rgba(255, 122, 26, 0.18); }
+.garage { display: flex; align-items: center; gap: 8px; }
+.garage .arrow { width: 40px; height: 64px; font-size: 30px; padding: 0; flex: none; }
+.car-info { flex: 1; min-width: 0; }
+#car-name { font-family: 'Russo One', sans-serif; font-size: 24px; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
+#car-name .wins { font-family: Rubik, sans-serif; font-size: 12px; color: var(--accent2); letter-spacing: 0; }
+#car-name .lock { font-family: Rubik, sans-serif; font-size: 12px; color: #ff8a80; letter-spacing: 0; }
+#car-blurb { font-size: 13px; opacity: 0.7; margin: 2px 0 8px; min-height: 2.6em; line-height: 1.3; }
+#car-stats { display: grid; grid-template-columns: 74px 1fr; gap: 4px 8px; align-items: center; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 1px; opacity: 0.9; }
+.bar { height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 4px;
+  transition: width .25s; }
+.paints { display: flex; gap: 7px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+.paints .swatch { width: 28px; height: 28px; border-radius: 50%; padding: 0; border: 3px solid rgba(255, 255, 255, 0.2); }
+.paints .swatch.active { border-color: #fff; }
+.paints .note { font-size: 12px; opacity: 0.6; }
+.arena-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.arena-col { flex: 1; min-width: 0; }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg button { padding: 8px 11px; font-size: 14px; }
+.seg button.active { border-color: var(--accent); background: rgba(255, 122, 26, 0.2); }
+#arena-blurb { font-size: 12px; opacity: 0.65; margin-top: 6px; }
+#btn-go { position: sticky; bottom: 0; z-index: 2; width: 100%; margin-top: 18px; padding: 14px; font-family: 'Russo One', sans-serif;
+  font-size: 22px; letter-spacing: 2px; box-shadow: 0 -10px 24px rgba(18, 16, 20, 0.9); }
+#btn-go:disabled { background: #555; border-color: #555; color: #bbb; cursor: not-allowed; }
+#records { font-size: 12px; opacity: 0.65; margin-top: 10px; text-align: center; }
+#menu.cup .arena-col { opacity: 0.35; pointer-events: none; }
+
+.card.help { width: min(880px, 100%); }
+.help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 24px; margin-bottom: 16px; }
+.help-grid p { margin: 0; line-height: 1.55; font-size: 14px; opacity: 0.9; }
+#help .primary { width: 100%; padding: 12px; }
+
+/* Results */
+#res-title { font-size: 34px; }
+#res-title.win { color: var(--accent2); }
+#res-sub { opacity: 0.8; margin-bottom: 12px; }
+#res-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+#res-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.55; font-weight: 600; padding: 4px 6px; }
+#res-table td { padding: 6px; border-bottom: 1px solid var(--line); }
+#res-table td.num, #res-table th.num { text-align: right; }
+#res-table tr.me td { color: var(--accent2); }
+#res-table .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+#res-note:not(:empty) { margin-top: 12px; color: var(--good); font-size: 14px; }
+
+/* HUD */
+#hud { position: fixed; inset: 0; pointer-events: none; font-family: 'Russo One', Rubik, sans-serif;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6); }
+#status { position: absolute; left: 50%; transform: translateX(-50%); top: 12px; text-align: center; white-space: nowrap; }
+#status-main { font-size: 34px; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
+#status-main.low { color: #ff6a5a; }
+#status-sub { font-size: 14px; letter-spacing: 2px; opacity: 0.85; color: var(--accent2); }
+#scorebox { position: absolute; left: 18px; top: 14px; }
+#score { font-size: 32px; font-variant-numeric: tabular-nums; }
+#score::before { content: 'POINTS '; font-size: 12px; letter-spacing: 2px; opacity: 0.7; vertical-align: middle; }
+#combo { font-size: 18px; color: var(--accent); }
+#feed { position: absolute; right: 16px; top: 14px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+  font-family: Rubik, sans-serif; font-size: 14px; }
+#feed div { background: rgba(0, 0, 0, 0.45); padding: 3px 9px; border-radius: 6px; animation: feed 6s forwards; }
+#feed b { font-weight: 600; }
+#feed em { font-style: normal; opacity: 0.7; font-size: 12px; margin: 0 6px; }
+@keyframes feed { 0% { opacity: 0; transform: translateX(20px); } 6% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
+#callouts { position: absolute; left: 0; right: 0; top: 24%; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.call { font-size: 30px; letter-spacing: 1px; animation: call 1.8s ease-out forwards; white-space: nowrap; }
+.call small { font-size: 20px; color: var(--accent2); margin-left: 10px; }
+.call.big { font-size: 46px; color: var(--accent2); }
+.call.bad { color: #ff6a5a; }
+.call.item { font-size: 22px; }
+@keyframes call {
+  0% { opacity: 0; transform: scale(0.5) rotate(-4deg); }
+  10% { opacity: 1; transform: scale(1.15) rotate(1deg); }
+  20% { transform: scale(1) rotate(0); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-30px); }
+}
+#msg { position: absolute; left: 0; right: 0; top: 34%; text-align: center; transition: opacity .3s; }
+#msg-main { font-size: 72px; letter-spacing: 3px; color: var(--accent); }
+#msg-sub { font-size: 22px; margin-top: 4px; }
+#carstat { position: absolute; left: 12px; bottom: 12px; width: 200px; height: 236px; }
+#radar { position: absolute; right: 12px; bottom: 12px; width: 200px; height: 200px; }
+#btn-ff { position: absolute; left: 50%; bottom: 90px; transform: translateX(-50%); pointer-events: auto; font-family: Rubik, sans-serif;
+  background: var(--panel); }
+#hint { position: absolute; left: 226px; right: 226px; bottom: 14px; text-align: center; font-family: Rubik, sans-serif; font-size: 13px; opacity: 0.7; }
+
+/* Touch controls */
+#touch { display: none; }
+body.touch #touch { display: block; }
+body.touch #hint { display: none; }
+#touch .pad { position: absolute; display: flex; gap: 12px; pointer-events: auto; }
+#touch .pad.left { left: 16px; bottom: 20px; }
+#touch .pad.right { right: 16px; bottom: 20px; display: grid; grid-template-columns: 74px 74px 84px; gap: 10px; align-items: end; }
+#touch .pad.right .small { grid-row: 1; }
+#touch .pad.right button:not(.small) { grid-row: 2; }
+#touch .pad.right button[data-key="ArrowDown"] { grid-column: 2; }
+#touch .pad.right button.gas { grid-column: 3; }
+#touch .pad.top { right: 16px; top: 12px; gap: 8px; }
+#touch button { width: 84px; height: 84px; border-radius: 50%; font-size: 28px; background: rgba(10, 14, 22, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.35); touch-action: none; }
+#touch button.small { width: 74px; height: 46px; border-radius: 12px; font-size: 12px; letter-spacing: 1px; font-family: Rubik, sans-serif; font-weight: 600; }
+#touch .pad.top button.small { width: 60px; height: 38px; font-size: 11px; letter-spacing: 0; }
+#touch button.gas { background: rgba(34, 179, 90, 0.45); }
+#touch button.nitro { background: rgba(47, 156, 255, 0.45); }
+#touch button.item { background: rgba(180, 107, 255, 0.45); }
+#touch button.down { background: rgba(255, 255, 255, 0.35); }
+body.touch #feed { top: 60px; font-size: 12px; }
+body.touch #carstat { left: 8px; bottom: auto; top: 70px; width: 110px; height: 130px; }
+body.touch #radar { right: 8px; bottom: auto; top: 60px; width: 112px; height: 112px; }
+body.touch #feed { right: 128px; top: 64px; }
+
+@media (max-height: 500px) {
+  h1 { font-size: 34px; }
+  .tag { display: none; }
+  #menu .panel { padding-top: 14px; }
+  #btn-go { padding: 10px; font-size: 18px; margin-top: 12px; }
+}
+@media (max-width: 720px) {
+  h1 { font-size: 40px; }
+  #menu { padding: 10px; justify-content: center; align-items: flex-end; }
+  #menu .panel { padding: 16px 16px 14px; max-height: 70%; }
+  .events button span { display: none; }
+  #msg-main { font-size: 52px; }
+  .call { font-size: 24px; }
+  .call.big { font-size: 34px; }
+  #score { font-size: 24px; }
+  #status-main { font-size: 26px; }
+}
+
+@media (orientation: portrait) {
+  body.touch #touch button { width: 72px; height: 72px; font-size: 24px; }
+  body.touch #touch button.small { width: 66px; height: 42px; font-size: 11px; }
+  body.touch #touch .pad.left { left: 12px; bottom: 16px; gap: 10px; }
+  body.touch #touch .pad.right { right: 12px; bottom: 16px; grid-template-columns: 72px 72px; gap: 8px 10px; }
+  body.touch #touch .pad.right button { grid-row: auto; }
+  body.touch #touch .pad.right button[data-key="Space"] { grid-row: 1; grid-column: 1; width: 72px; }
+  body.touch #touch .pad.right button.nitro { grid-row: 1; grid-column: 2; width: 72px; }
+  body.touch #touch .pad.right button.item { grid-row: 2; grid-column: 1 / 3; width: auto; }
+  body.touch #touch .pad.right button[data-key="ArrowDown"] { grid-row: 3; grid-column: 1; }
+  body.touch #touch .pad.right button.gas { grid-row: 3; grid-column: 2; }
+  body.touch #touch .pad.top { right: 8px; top: auto; bottom: 200px; flex-direction: column; }
+  body.touch #touch .pad.top button.small { width: 56px; height: 36px; }
+  body.touch #feed { right: 8px; top: 180px; }
+  body.touch #carstat { top: 64px; width: 96px; height: 113px; }
+  body.touch #radar { top: 64px; width: 100px; height: 100px; }
+  body.touch #callouts { top: 30%; }
+}

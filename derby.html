@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crunchtime</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rubik:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="derby.css">
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <canvas id="labels"></canvas>
+
+  <div id="loading">Warming up engines…</div>
+
+  <div id="hud" class="hidden">
+    <div id="status"><div id="status-main"></div><div id="status-sub"></div></div>
+    <div id="scorebox"><div id="score">0</div><div id="combo"></div></div>
+    <div id="feed"></div>
+    <div id="callouts"></div>
+    <div id="msg"><div id="msg-main"></div><div id="msg-sub"></div></div>
+    <canvas id="carstat" width="200" height="236"></canvas>
+    <canvas id="radar" width="200" height="200"></canvas>
+    <button id="btn-ff" class="hidden">Fast forward ▸▸</button>
+    <div id="touch">
+      <div class="pad left"><button data-key="ArrowLeft">◀</button><button data-key="ArrowRight">▶</button></div>
+      <div class="pad right">
+        <button data-key="Space" class="small">DRIFT</button><button data-key="ShiftLeft" class="small nitro">NITRO</button><button data-tap="KeyE" class="small item">ITEM</button>
+        <button data-key="ArrowDown">▼</button><button data-key="ArrowUp" class="gas">▲</button>
+      </div>
+      <div class="pad top"><button data-key="KeyQ" class="small">LOOK ◁</button><button data-tap="KeyR" class="small">FLIP</button><button data-tap="KeyC" class="small">CAM</button><button data-tap="Escape" class="small">❚❚</button></div>
+    </div>
+    <div id="hint">↑↓←→ / WASD drive · Space handbrake · Shift nitro · E use item · Q look back · R flip over · C camera · Esc pause</div>
+  </div>
+
+  <div id="menu" class="screen">
+    <div class="panel">
+      <a class="back" href="index.html#games">‹ Games</a>
+      <h1>CRUNCH<span>TIME</span></h1>
+      <p class="tag">demolition derby · eight cars · one left standing</p>
+      <h3>Event</h3>
+      <div id="events" class="events"></div>
+      <h3>Car</h3>
+      <div class="garage">
+        <button id="car-prev" class="arrow" aria-label="Previous car">‹</button>
+        <div class="car-info">
+          <div id="car-name"></div>
+          <div id="car-blurb"></div>
+          <div id="car-stats"></div>
+        </div>
+        <button id="car-next" class="arrow" aria-label="Next car">›</button>
+      </div>
+      <div id="paints" class="paints"></div>
+      <div class="arena-row">
+        <div class="arena-col"><h3>Arena</h3><div id="arenas" class="seg"></div></div>
+        <div><h3>Time</h3><div id="times" class="seg"></div></div>
+      </div>
+      <button id="btn-go" class="primary">CRUNCH ▸</button>
+      <div id="records"></div>
+      <button id="btn-help" class="link">How to play</button>
+    </div>
+  </div>
+
+  <div id="help" class="screen hidden">
+    <div class="card help">
+      <h2>How to play</h2>
+      <div class="help-grid">
+        <section><h3>Drive</h3>
+          <p><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive · <kbd>Space</kbd> handbrake<br>
+            <kbd>Shift</kbd> nitro · <kbd>E</kbd> use item · <kbd>Q</kbd> look back<br><kbd>R</kbd> flip back over · <kbd>C</kbd> camera · <kbd>Esc</kbd> pause · <kbd>M</kbd> sound</p></section>
+        <section><h3>Where to hit</h3>
+          <p>Your nose is built to take it; doors aren't. <b>T-bone</b> them in the side for big damage, and keep your own
+            sides away from their bumpers. Hits near a wheel can knock it <b>clean off</b>. Finish a car with a big side hit and it
+            <b>tears in half</b>.</p></section>
+        <section><h3>Engine &amp; wheels</h3>
+          <p>A battered nose loses power. A missing wheel drags and pulls. Real derby drivers often <b>reverse</b> into
+            others to spare the engine; the game rewards it too.</p></section>
+        <section><h3>Pickups</h3>
+          <p><b style="color:#3ddc84">Repair</b>, <b style="color:#3aa8ff">nitro</b>, <b style="color:#7ff0ff">shield</b> and
+            <b style="color:#ff4a3d">spikes</b> work at once. <b style="color:#b46bff">Shockwave</b> and <b style="color:#ffa31a">mines</b> wait for <kbd>E</kbd>.
+            Nitro also refills as you deal damage.</p></section>
+        <section><h3>Events</h3>
+          <p><b>Last Car Standing:</b> the last car running wins. <b>Brawl:</b> three minutes, wrecked cars come back, most points wins.
+            <b>Wrecking Spree:</b> the clock only stops for carnage. <b>Championship:</b> three rounds, points for placing.</p></section>
+        <section><h3>Points</h3>
+          <p>Damage, takedowns, spin-outs, wheels, ring-outs on the Sky Deck, revenge, and smashing cones and barrels.
+            Keep scoring within 4 s to build a combo.</p></section>
+      </div>
+      <button id="btn-help-close" class="primary">Let's go</button>
+    </div>
+  </div>
+
+  <div id="pause" class="screen hidden">
+    <div class="card narrow">
+      <h2>Paused</h2>
+      <button id="btn-resume" class="primary">Resume</button>
+      <button id="btn-restart">Restart</button>
+      <button id="btn-quit">Quit to menu</button>
+    </div>
+  </div>
+
+  <div id="results" class="screen hidden">
+    <div class="card">
+      <h2 id="res-title"></h2>
+      <div id="res-sub"></div>
+      <table id="res-table"></table>
+      <div id="res-note"></div>
+      <div class="row">
+        <button id="btn-next" class="primary">Again</button>
+        <button id="btn-menu">Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/derby/main.js"></script>
+</body>
+</html>
