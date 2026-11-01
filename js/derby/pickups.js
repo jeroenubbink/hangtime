@@ -1,8 +1,7 @@
 // Pickups (floating crates on pads round the arena), mines, and the cones and barrels lying about to be
 // smashed for points.
 import * as THREE from 'three';
-import { merge } from '../scenery.js';
-import { kitScene } from '../car.js';
+import { merge, sceneryGeo } from '../scenery.js';
 
 export const ITEMS = {
   repair: { name: 'Repair', colour: '#3ddc84', instant: true, note: 'Fixed up!' },
@@ -197,23 +196,29 @@ export class Mines {
 }
 
 // ---------- Props ----------
+const DRUMS = ['#e8333a', '#2f6fe0', '#ffd23a', '#3cbf4a', '#8e5bea', '#20c4c8'];
+// A knocked prop flies off as its own mesh, in the colour its instance had
+const propMats = new Map();
+function propMat(base, colour) {
+  if (colour === '#ffffff') return base;
+  if (!propMats.has(colour)) { const m = base.clone(); m.color.set(colour); propMats.set(colour, m); }
+  return propMats.get(colour);
+}
 // Cones and barrels, drawn instanced; a knocked one is hidden here and flies off as debris.
 export class Props {
   constructor(scene, arena, count, seed = 3) {
     this.scene = scene;
     const rand = (() => { let s = seed; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); })();
-    const cone = kitScene('cone');
-    let coneGeo = null;
-    cone?.traverse(o => { if (o.isMesh && !coneGeo) coneGeo = o.geometry.clone().scale(1.4, 1.4, 1.4); });
+    // Toy models from the arena kit: a cone, and a drum (oil drums; hay bales in the Dust Bowl)
+    const bowl = arena.key === 'bowl';
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
     this.kinds = {
-      cone: { geo: coneGeo || new THREE.ConeGeometry(0.3, 0.8, 10).translate(0, 0.4, 0), mat: coneGeo ? new THREE.MeshLambertMaterial({ map: (() => { let m; cone.traverse(o => { if (o.isMesh && !m) m = o.material.map; }); return m; })() }) : new THREE.MeshLambertMaterial({ color: '#ff7a1a' }), r: 0.4, mass: 0.2 },
+      cone: { geo: sceneryGeo('cone') || new THREE.ConeGeometry(0.3, 0.8, 10).translate(0, 0.4, 0), mat: sceneryGeo('cone') ? mat : new THREE.MeshLambertMaterial({ color: '#ff7a1a' }), r: 0.4, mass: 0.2 },
       barrel: {
-        geo: merge([
+        geo: sceneryGeo(bowl ? 'bale' : 'drum') || merge([
           [new THREE.CylinderGeometry(0.42, 0.42, 1.1, 12).translate(0, 0.55, 0), (y) => (Math.abs(y - 0.55) < 0.15 ? '#f2f2f2' : '#d8352b')],
-          [new THREE.CylinderGeometry(0.44, 0.44, 0.06, 12).translate(0, 0.3, 0), '#9b2a20'],
-          [new THREE.CylinderGeometry(0.44, 0.44, 0.06, 12).translate(0, 0.8, 0), '#9b2a20'],
         ]),
-        mat: new THREE.MeshLambertMaterial({ vertexColors: true }), r: 0.5, mass: 0.5,
+        mat, r: 0.5, mass: 0.5, colours: bowl ? null : DRUMS,
       },
     };
     this.list = [];
@@ -230,7 +235,8 @@ export class Props {
       const n = kind === 'cone' ? 3 : 1, a = rand() * Math.PI;
       for (let k = 0; k < n; k++) {
         const px = x + Math.cos(a) * k * 1.6, pz = z + Math.sin(a) * k * 1.6;
-        this.list.push({ kind, x: px, z: pz, y: arena.groundHeight(px, pz), alive: true, rot: rand() * 6 });
+        const cols = this.kinds[kind].colours;
+        this.list.push({ kind, x: px, z: pz, y: arena.groundHeight(px, pz), alive: true, rot: rand() * 6, colour: cols ? cols[Math.floor(rand() * cols.length)] : '#ffffff' });
       }
     }
     this.meshes = {};
@@ -241,6 +247,7 @@ export class Props {
       items.forEach((p, i) => {
         p.index = i;
         m.setMatrixAt(i, M.compose(new THREE.Vector3(p.x, p.y, p.z), Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.rot), new THREE.Vector3(1, 1, 1)));
+        m.setColorAt(i, new THREE.Color(p.colour));
       });
       m.count = items.length;
       m.castShadow = true;
@@ -270,7 +277,7 @@ export class Props {
         const k = this.kinds[p.kind], m = this.meshes[p.kind];
         m.setMatrixAt(p.index, zero);
         m.instanceMatrix.needsUpdate = true;
-        const mesh = new THREE.Mesh(k.geo, k.mat);
+        const mesh = new THREE.Mesh(k.geo, propMat(k.mat, p.colour));
         mesh.rotation.y = p.rot;
         k.geo.userData.shared = true;
         const sp = c.vel.length();

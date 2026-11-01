@@ -93,17 +93,19 @@ const MODELS = {
     y => (y > 0.6 ? (x === 0 ? '#e8e8e8' : '#d8352b') : '#222326')])),
 };
 
-// The toy-style kit modelled in Blender (assets/scenery/nature.glb): round trees, toy pines, flowering
-// bushes, pebbles and flower patches, vertex-coloured. Loaded once at startup; whatever it holds replaces
-// the primitive models above, which stay as the fallback if it fails to load.
-export async function loadSceneryKit() {
-  const g = await new GLTFLoader().loadAsync('assets/scenery/nature.glb');
+// The toy-style kits modelled in Blender, vertex-coloured: `nature` (round trees, toy pines, flowering
+// bushes, pebbles and flower patches) replaces the primitive models above, which stay as the fallback if
+// it fails to load; `derby` adds Crunchtime's props, pillars, fence panels, a barn and a windmill.
+export async function loadSceneryKit(file = 'nature') {
+  const g = await new GLTFLoader().loadAsync(`assets/scenery/${file}.glb`);
   g.scene.traverse(o => {
-    if (!o.isMesh || !MODELS[o.name]) return;
+    if (!o.isMesh) return;
     const geo = o.geometry;
     MODELS[o.name] = () => geo;
   });
 }
+// A kit model's geometry, or null if it isn't loaded
+export const sceneryGeo = name => MODELS[name]?.() ?? null;
 
 // Instanced placement: add(kind, x, y, z, scale, rotation), then build() returns the meshes
 export class Scatter {
@@ -121,6 +123,7 @@ export class Scatter {
     const out = [];
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
     for (const [kind, list] of Object.entries(this.items)) {
+      if (!MODELS[kind]) continue;
       const mesh = new THREE.InstancedMesh(MODELS[kind](), this.mat, list.length);
       list.forEach(([x, y, z, s, rot, tint], i) => {
         q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rot);

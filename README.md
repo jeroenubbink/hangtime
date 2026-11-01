@@ -34,8 +34,9 @@ textures are generated in code.
   T-bone hurts far more than a head-on. A battered nose loses engine power; hits near a wheel knock it off (the car
   then drags and pulls); doors, bumpers, spoilers and push bars fly off; a big side hit on a car that's finished
   **tears it in half**.
-- **Three arenas:** the **Dust Bowl** (banked edges and a hill in the middle), the **Scrapyard** (walls of crushed
-  cars, two jumps and a mud pit) and the **Sky Deck**, a rooftop with no walls where you can shove cars off the edge.
+- **Three arenas:** the **Dust Bowl**, a country fair among fields, barns and windmills (banked edges lined with hay
+  bales and a hill in the middle), the **Scrapyard** (a patchwork tin fence, heaps of squashed cars, two jumps and a
+  mud pit) and the **Sky Deck**, a rooftop with no walls where you can shove cars off the edge.
 - **Four events:**
   - **Last Car Standing:** the last car running wins. After 2:30 it's sudden death, and engines overheat.
   - **Brawl:** three minutes, wrecked cars come back, most points wins.
@@ -48,8 +49,8 @@ textures are generated in code.
 - **Arcade hits:** solid hits pop cars up and twist them, wrecks blow up and leap into the air, damage numbers fly out
   of every hit you deal or take, and big ones freeze the frame for a moment.
 - **Points** for damage, T-bones, roof crushes, reverse rams, air strikes, spin-outs, wheels knocked off, takedowns, ring-outs,
-  revenge, double takedowns and smashed cones and barrels, with a combo for keeping it up.
-- **Unlocks:** win a championship for the Dumpster (a garbage truck); win with four different cars for the Prototype.
+  revenge, double takedowns and smashed cones, hay bales and oil drums, with a combo for keeping it up.
+- **Unlocks:** two mystery cars wait in wrapped boxes: win a championship for one, and win with four different cars for the other.
 - Day, sunset or floodlit night; keyboard, gamepad and touch.
 
 ### Crunchtime controls
@@ -162,7 +163,8 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
 - `js/audio.js`: synthesised engine, tyre and crash sounds (WebAudio)
 - `js/textures.js`: procedural textures (asphalt grit, grass, blotches), applied in world space, and the water shader
 - `js/scenery.js`: instanced trees, bushes, flowers, rocks and tyre walls, the grandstand, and the rounded hills
-- `assets/cars/toy-*.glb`, `assets/scenery/nature.glb`: both games' toy cars and the round trees, bushes and flowers,
+- `assets/cars/toy-*.glb`, `assets/scenery/nature.glb`, `assets/scenery/derby.glb`: both games' toy cars, the round
+  trees, bushes and flowers, and Crunchtime's cones, drums, bales, tyre stacks, fence panels, barn and windmill,
   modelled in Blender (source: `assets/src/toys.blend`)
 - `js/toon.js`: the shared toybox look for both games: two-tone shading, rim light and a colour boost, patched into three.js's shaders
 - `js/derby/`: Crunchtime
@@ -185,4 +187,4 @@ map. Phones and tablets start at 1.5× pixel density.
 
 ## Credits
 
-Debris and cone models: [Car Kit](https://kenney.nl/assets/car-kit) by Kenney, CC0 (see `assets/cars/LICENSE.txt`).
+Flying debris models: [Car Kit](https://kenney.nl/assets/car-kit) by Kenney, CC0 (see `assets/cars/LICENSE.txt`).

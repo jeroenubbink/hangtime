@@ -1,8 +1,7 @@
-Car models: "Car Kit" by Kenney (www.kenney.nl)
+Debris models and colour palette: "Car Kit" by Kenney (www.kenney.nl)
 
 License: Creative Commons Zero, CC0 1.0 Universal
 https://creativecommons.org/publicdomain/zero/1.0/
 
-Files: sedan-sports.glb, race.glb, hatchback-sports.glb, sedan.glb, taxi.glb, police.glb, truck.glb, suv.glb, van.glb,
-garbage-truck.glb, race-future.glb, cone.glb, debris-*.glb and Textures/colormap.png.
+Files: debris-*.glb and Textures/colormap.png (the toy-*.glb cars are our own, painted from this palette).
 Free to use in personal, educational and commercial projects; credit is appreciated, not required.

@@ -3,7 +3,7 @@
 // stands, scrap, floodlights or a city, built from merged and instanced primitives.
 import * as THREE from 'three';
 import { addDetail, grassTexture } from '../textures.js';
-import { merge, Scatter, grandstand, mountainGeometry, puffyClouds } from '../scenery.js';
+import { merge, Scatter, grandstand, mountainGeometry, puffyClouds, sceneryGeo } from '../scenery.js';
 
 function rng(seed) {
   return () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -27,7 +27,7 @@ export const ARENAS = {
 };
 
 const FALL = -500;
-const _n = new THREE.Vector3();
+const _n = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 
 export class Arena {
   constructor(scene, key) {
@@ -168,7 +168,7 @@ export class Arena {
     this.gripFn = () => 0.86;
     for (let k = 0; k < 4; k++) {
       const a = Math.PI / 4 + k * Math.PI / 2;
-      this.trees.push({ x: Math.sin(a) * 30, z: Math.cos(a) * 30, r: 1.5, kind: 'tyres' });
+      this.trees.push({ x: Math.sin(a) * 30, z: Math.cos(a) * 30, r: 1.5, kind: 'bales' });
     }
     this.pads = [[0, 0]];
     for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; this.pads.push([Math.sin(a) * 25, Math.cos(a) * 25]); }
@@ -258,6 +258,13 @@ export class Arena {
   }
 
   pillarMesh(t) {
+    // The kit's hay bale stack, tyre stack, or a pile of squashed toy cars
+    const kit = sceneryGeo({ bales: 'balestack', tyres: 'tyrestack' }[t.kind]);
+    if (kit) return this.place(new THREE.Mesh(kit, kitMat()), t);
+    if (t.kind === 'cubes' && sceneryGeo('crushed')) {
+      const pile = crushedPile([[0, 0, 0, 0.3], [0.1, 0.9, 0.2, 1.9], [-0.1, 1.8, -0.1, 0.9], [0, 2.7, 0.1, 2.4]], 1.3, this.rand);
+      return this.place(pile, t);
+    }
     let geo;
     if (t.kind === 'tyres') {
       const parts = [];
@@ -274,7 +281,10 @@ export class Arena {
       }
       geo = merge(parts);
     }
-    const m = new THREE.Mesh(geo, detailVC());
+    return this.place(new THREE.Mesh(geo, detailVC()), t);
+  }
+
+  place(m, t) {
     m.position.set(t.x, this.baseFn(t.x, t.z) - 0.05, t.z);
     m.castShadow = m.receiveShadow = true;
     return m;
@@ -309,7 +319,8 @@ export class Arena {
     const n = Math.round(2 * Math.PI * R / 2.3);
     for (let k = 0; k < n; k++) {
       const a = k / n * Math.PI * 2;
-      tyres.add('tyrewall', Math.sin(a) * (R + 0.2), this.baseFn(Math.sin(a) * R, Math.cos(a) * R) - 0.3, Math.cos(a) * (R + 0.2), 1, a + Math.PI / 2);
+      const kind = sceneryGeo('balewall') ? 'balewall' : 'tyrewall';
+      tyres.add(kind, Math.sin(a) * (R - 0.1), this.baseFn(Math.sin(a) * R, Math.cos(a) * R) - 0.15, Math.cos(a) * (R - 0.1), 1, a + Math.PI / 2);
     }
     for (const m of tyres.build()) { m.castShadow = false; this.group.add(m); }
     this.group.add(adBoards(R + 0.82, rim + 2.6, 24));
@@ -324,14 +335,17 @@ export class Arena {
       this.group.add(s);
     }
     this.floodlights([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(k => k % 2 === 0).map(k => { const a = k / 10 * Math.PI * 2; return [Math.sin(a) * (R + 9), Math.cos(a) * (R + 9)]; }), 24, () => rim);
-    this.outskirts(R + 1, rim, '#6cc04a');
+    this.outskirts(R + 1, rim, '#6cc04a', 'farm');
     void rand;
   }
 
   dressYard(W, H) {
     const rand = this.rand;
     // Walls of crushed cars round the edge, three high
-    const cubes = new THREE.InstancedMesh(merge([[new THREE.BoxGeometry(2.4, 1.0, 1.5), (y, f) => shade('#ffffff', f < 4 ? 0.85 : f < 8 ? 1 : 0.75)]]), detailVC(), 1200);
+    const fence = sceneryGeo('fence');
+    const cubes = fence ? new THREE.InstancedMesh(fence, kitMat(), 400)
+      : new THREE.InstancedMesh(merge([[new THREE.BoxGeometry(2.4, 1.0, 1.5), (y, f) => shade('#ffffff', f < 4 ? 0.85 : f < 8 ? 1 : 0.75)]]), detailVC(), 1200);
+    const sheets = ['#9fd8d0', '#ffb59a', '#ffe08a', '#a9c8ff', '#c4e6a0', '#e8e4dc'];   // faded paint on the fence panels
     const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), c = new THREE.Color();
     const rust = ['#e8333a', '#2f6fe0', '#ffd23a', '#3cbf4a', '#ff8cc6', '#20c4c8', '#8e5bea', '#ff8a1e', '#f7f9ff'];   // squashed toys
     let i = 0;
@@ -347,6 +361,14 @@ export class Arena {
     for (const [x, z] of perim) {
       this.outward(x, z, _n);
       const yaw = Math.atan2(_n.x, _n.z) + Math.PI / 2;
+      if (fence) {
+        // One panel, every so often one of a different colour
+        M.compose(new THREE.Vector3(x + _n.x * 0.7, -0.1, z + _n.z * 0.7), Q.setFromAxisAngle(_up, yaw - Math.PI / 2), new THREE.Vector3(1, 1, 1));
+        cubes.setMatrixAt(i, M);
+        cubes.setColorAt(i, c.set(rand() < 0.15 ? sheets[Math.floor(rand() * sheets.length)] : sheets[Math.floor(i / 5) % sheets.length]));
+        i++;
+        continue;
+      }
       for (let k = 0; k < 3; k++) {
         if (i >= 1200) break;
         Q.setFromEuler(new THREE.Euler((rand() - 0.5) * 0.12, yaw + (rand() - 0.5) * 0.25, (rand() - 0.5) * 0.1));
@@ -368,11 +390,22 @@ export class Arena {
       for (let s = 0; s < stack; s++) parts.push([new THREE.BoxGeometry(12, 2.6, 2.5).rotateY(rot).translate(x, 1.3 + s * 2.6, z), shade(cont[(k + s) % cont.length], 0.9)]);
       void col;
     }
-    for (let k = 0; k < 10; k++) {
+    for (let k = 0; k < 12; k++) {
       const a = rand() * Math.PI * 2, x = Math.sin(a) * (W / 2 + 10 + rand() * 40), z = Math.cos(a) * (H / 2 + 10 + rand() * 40);
-      const g = new THREE.DodecahedronGeometry(4 + rand() * 4, 1).scale(1.4, 0.55, 1.1);
-      g.translate(x, 0, z);
-      parts.push([g, (y, f) => shade(rust[f % rust.length], 0.85)]);
+      if (sceneryGeo('crushed')) {
+        // A heap of squashed toy cars: a wide bottom layer, fewer on top
+        const cars = [];
+        for (let l = 0, n = 4 + Math.floor(rand() * 3); n > 0; l++, n -= 2)
+          for (let j = 0; j < n; j++) cars.push([(j - (n - 1) / 2) * 2.2 + (rand() - 0.5) * 0.5, l * 0.82, (rand() - 0.5) * 2.4, rand() * 6]);
+        const pile = crushedPile(cars, 1.5, rand);
+        pile.position.set(x, 0, z);
+        pile.rotation.y = rand() * 6;
+        this.group.add(pile);
+      } else {
+        const g = new THREE.DodecahedronGeometry(4 + rand() * 4, 1).scale(1.4, 0.55, 1.1);
+        g.translate(x, 0, z);
+        parts.push([g, (y, f) => shade(rust[f % rust.length], 0.85)]);
+      }
     }
     // Crane: tower, jib, counterweight, hook
     const cx = -W / 2 - 16, cz = -H / 2 - 6;
@@ -387,7 +420,7 @@ export class Arena {
     this.group.add(m);
     this.group.add(adBoards(0, 0, 0, this));
     this.floodlights([[W / 2 + 4, H / 2 + 4], [-W / 2 - 4, H / 2 + 4], [W / 2 + 4, -H / 2 - 4], [-W / 2 - 4, -H / 2 - 4]], 22, () => 0);
-    this.outskirts(Math.hypot(W, H) / 2 + 1, -0.15, '#8cc456');
+    this.outskirts(Math.hypot(W, H) / 2 + 1, -0.15, '#8cc456', 'scrap');
   }
 
   dressDeck() {
@@ -449,12 +482,13 @@ export class Arena {
   }
 
   // Grass, trees and mountains beyond the walls (from radius r0 out)
-  outskirts(r0, y, colour) {
+  outskirts(r0, y, colour, theme) {
     const ground = new THREE.Mesh(new THREE.RingGeometry(r0, 900, 96, 1).rotateX(-Math.PI / 2).translate(0, y - 0.05, 0),
       addDetail(new THREE.MeshLambertMaterial({ color: colour }), { map: grassTexture, fine: 0.35, strength: 0.3, coarse: 0.02, coarseStrength: 0.3, flat: true }));
     ground.receiveShadow = true;
     this.group.add(ground);
     const sc = new Scatter(9), rand = this.rand;
+    if (theme === 'farm') this.farm(r0, y, sc);
     for (let k = 0; k < 160; k++) {
       const a = rand() * Math.PI * 2, d = r0 + 26 + rand() * 160;
       sc.add(rand() < 0.5 ? 'pine' : 'round', Math.sin(a) * d, y, Math.cos(a) * d, 1 + rand() * 1.1);
@@ -471,6 +505,29 @@ export class Arena {
     }
     const mm = new THREE.Mesh(merge(geos), new THREE.MeshLambertMaterial({ vertexColors: true }));
     this.group.add(mm, this.clouds());
+  }
+
+  // Farmland round the Dust Bowl: striped fields of crops and wheat with hay bales, red barns and windmills
+  farm(r0, y, sc) {
+    const rand = this.rand, fields = [];
+    const crops = [['#9ad04a', '#7fbf3e'], ['#f2cf5a', '#e2b845'], ['#c99a62', '#b88654'], ['#b8e070', '#9ad04a']];
+    for (let k = 0; k < 12; k++) {
+      const a = (k + rand() * 0.5) / 12 * Math.PI * 2, d = r0 + 40 + rand() * 50;
+      const w = 26 + rand() * 18, l = 34 + rand() * 20, [c1, c2] = crops[k % crops.length];
+      const g = new THREE.PlaneGeometry(w, l, 12, 1).rotateX(-Math.PI / 2).rotateY(a + (rand() - 0.5) * 0.3).translate(Math.sin(a) * d, y + 0.04, Math.cos(a) * d);
+      fields.push([g, (yy, f) => ((f >> 1) % 2 ? c1 : c2)]);
+      // Wheat fields have bales lying about
+      if (c1 === '#f2cf5a') for (let b = 0; b < 6; b++) sc.add('bale', Math.sin(a) * d + (rand() - 0.5) * w * 0.6, y, Math.cos(a) * d + (rand() - 0.5) * l * 0.6, 1.4);
+    }
+    const m = new THREE.Mesh(merge(fields), new THREE.MeshLambertMaterial({ vertexColors: true }));
+    m.receiveShadow = true;
+    this.group.add(m);
+    // Barns and windmills between the fields, facing the arena
+    for (let k = 0; k < 5; k++) {
+      const a = (k + 0.5) / 5 * Math.PI * 2 + rand() * 0.3, d = r0 + 70 + rand() * 40;
+      const x = Math.sin(a) * d, z = Math.cos(a) * d;
+      sc.add(k % 2 ? 'windmill' : 'barn', x, y, z, k % 2 ? 1.6 : 1.3, Math.atan2(-x, -z));
+    }
   }
 
   // Puffy clouds, grey-blue after dark
@@ -495,6 +552,30 @@ export class Arena {
 const _c = new THREE.Color();
 const _p = new THREE.Vector3(), _r = new THREE.Vector3(), _pv = new THREE.Vector3(), _t1 = new THREE.Vector3(), _t2 = new THREE.Vector3(),
   _J = new THREE.Vector3(), _vt = new THREE.Vector3();
+
+// Vertex-coloured kit models (pillars, fence panels, piles of squashed cars)
+let kMat = null;
+function kitMat() {
+  if (!kMat) {
+    kMat = addDetail(new THREE.MeshLambertMaterial({ vertexColors: true }), { fine: 0.8, strength: 0.1, coarse: 0.05, coarseStrength: 0.08 });
+    kMat.userData.shared = true;
+  }
+  return kMat;
+}
+
+// A heap of the kit's squashed toy cars, in toy colours: [[x, y, z, yaw], ...] at scale `s`
+const TOYS = ['#e8333a', '#2f6fe0', '#ffd23a', '#3cbf4a', '#ff8cc6', '#20c4c8', '#8e5bea', '#ff8a1e', '#f7f9ff'];
+function crushedPile(cars, s, rand) {
+  const m = new THREE.InstancedMesh(sceneryGeo('crushed'), kitMat(), cars.length);
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), E = new THREE.Euler(), c = new THREE.Color();
+  cars.forEach(([x, y, z, yaw], i) => {
+    m.setMatrixAt(i, M.compose(new THREE.Vector3(x * s, y * s, z * s), Q.setFromEuler(E.set((rand() - 0.5) * 0.1, yaw, (rand() - 0.5) * 0.1)), new THREE.Vector3(s, s * (0.8 + rand() * 0.3), s)));
+    m.setColorAt(i, c.set(TOYS[Math.floor(rand() * TOYS.length)]));
+  });
+  m.castShadow = m.receiveShadow = true;
+  m.computeBoundingSphere();
+  return m;
+}
 
 let vcMat = null;
 function detailVC() {

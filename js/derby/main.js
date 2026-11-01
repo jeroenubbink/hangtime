@@ -17,8 +17,8 @@ import { loadSceneryKit } from '../scenery.js';
 const $ = id => document.getElementById(id);
 const DEBRIS = { door: 'debris-door', doorWin: 'debris-door-window', bumper: 'debris-bumper', plate: 'debris-plate-a', plateB: 'debris-plate-b',
   plateS: 'debris-plate-small-a', spoiler: 'debris-spoiler-a', tyre: 'debris-tire', axle: 'debris-drivetrain-axle' };
-await Promise.all([loadCarKits([...new Set(Object.values(ROSTER).map(c => c.file)), 'cone', ...Object.values(DEBRIS)]).catch(e => console.warn('Models not loaded:', e)),
-  loadSceneryKit().catch(e => console.warn('Scenery not loaded:', e))]);
+await Promise.all([loadCarKits([...new Set(Object.values(ROSTER).map(c => c.file)), ...Object.values(DEBRIS)]).catch(e => console.warn('Models not loaded:', e)),
+  loadSceneryKit().catch(e => console.warn('Scenery not loaded:', e)), loadSceneryKit('derby').catch(e => console.warn('Arena kit not loaded:', e))]);
 $('loading').remove();
 
 const DT = 1 / 120;
@@ -78,6 +78,7 @@ function clearWorld() {
   vehicles = [];
   halves = [];
   if (showroom) { scene.remove(showroom.model); showroom = null; }
+  mystery.visible = false;
   pickups?.dispose(); props?.dispose(); mines?.clear(); debris?.clear();
   pickups = props = null;
   smoke.clear();
@@ -419,7 +420,7 @@ function step() {
       debris.add(p.mesh, p.pos, p.vel, { radius: p.radius * 0.6, spin: 9, life: 10 });
       sound.thud(3);
     }
-    if (p.vehicle.alive) award(p.vehicle, 15, p.prop.kind === 'cone' ? 'CONE' : 'BARREL', p.pos, true);
+    if (p.vehicle.alive) award(p.vehicle, 15, p.prop.kind === 'cone' ? 'CONE' : arena.key === 'bowl' ? 'HAY BALE' : 'OIL DRUM', p.pos, true);
     if (p.vehicle.player && M.type === 'spree') gainTime(1);
   }
   rules();
@@ -1207,6 +1208,7 @@ function keepInside(p) {
 
 function menuCamera(dt) {
   if (!showroom) return;
+  if (mystery.visible) { mystery.rotation.y += dt * 0.9; mystery.position.y = showroom.car.pos.y + 0.7 + Math.sin(cam.menuA * 9) * 0.12; }
   cam.menuA += dt * 0.22;
   const p = showroom.car.pos;
   const R = 8.8;
@@ -1378,6 +1380,36 @@ function toMenu() {
   showScreen('menu');
 }
 
+// The present that stands in for a locked car: purple, a yellow ribbon, a question mark on each side
+const mystery = (() => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#8e5bea'; g.fillRect(0, 0, 256, 256);
+  g.fillStyle = '#ffd23a'; g.fillRect(108, 0, 40, 256);
+  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(128, 128, 62, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#8e5bea'; g.font = 'bold 96px Rubik, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 128, 134);
+  const side = new THREE.CanvasTexture(c);
+  side.colorSpace = THREE.SRGBColorSpace;
+  const top = document.createElement('canvas');
+  top.width = top.height = 64;
+  const t = top.getContext('2d');
+  t.fillStyle = '#8e5bea'; t.fillRect(0, 0, 64, 64); t.fillStyle = '#ffd23a'; t.fillRect(27, 0, 10, 64); t.fillRect(0, 27, 64, 10);
+  const lid = new THREE.CanvasTexture(top);
+  lid.colorSpace = THREE.SRGBColorSpace;
+  const sm = new THREE.MeshLambertMaterial({ map: side }), tm = new THREE.MeshLambertMaterial({ map: lid });
+  const box = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), [sm, sm, tm, tm, sm, sm]);
+  const bow = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.12, 8, 16), new THREE.MeshLambertMaterial({ color: '#ffd23a' }));
+  const bow2 = bow.clone();
+  bow.position.set(-0.3, 1.2, 0); bow.rotation.y = Math.PI / 2; bow.rotation.x = 0.5;
+  bow2.position.set(0.3, 1.2, 0); bow2.rotation.y = Math.PI / 2; bow2.rotation.x = -0.5;
+  const grp = new THREE.Group();
+  grp.add(box, bow, bow2);
+  grp.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  grp.visible = false;
+  return grp;
+})();
+
 function buildShowroom() {
   if (showroom) scene.remove(showroom.model);
   const [x, z] = SHOWROOM[arena.key];
@@ -1386,7 +1418,11 @@ function buildShowroom() {
   for (let i = 0; i < 120; i++) showroom.car.step(DT, HOLD);
   showroom.setLights(TIMES[settings.time].lamps);
   showroom.pose();
-  if (isLocked(settings.car)) showroom.model.userData.paint.color.set('#222');
+  // A locked car stays a surprise: a wrapped present sits in its place
+  const locked = isLocked(settings.car);
+  showroom.model.visible = !locked;
+  mystery.visible = locked;
+  if (locked) { mystery.position.copy(showroom.car.pos).setY(showroom.car.pos.y + 0.6); scene.add(mystery); }
 }
 
 function renderMenu() {
@@ -1402,12 +1438,13 @@ function renderMenu() {
   $('menu').classList.toggle('cup', settings.event === 'cup');
   const def = ROSTER[settings.car], locked = isLocked(settings.car);
   const wins = records.wins[settings.car] || 0;
-  $('car-name').innerHTML = `${def.name}${wins ? `<span class="wins">★ ${wins} win${wins > 1 ? 's' : ''}</span>` : ''}${locked ? '<span class="lock">🔒 locked</span>' : ''}`;
-  $('car-blurb').textContent = def.blurb;
-  $('car-stats').innerHTML = statBars(def).map(([n, f]) => `<span>${n}</span><div class="bar"><i style="width:${Math.round(f * 100)}%"></i></div>`).join('');
+  // Locked cars are a mystery until won: no name, stats or paint, only how to unlock them
+  $('car-name').innerHTML = locked ? '???<span class="lock">🔒 locked</span>' : `${def.name}${wins ? `<span class="wins">★ ${wins} win${wins > 1 ? 's' : ''}</span>` : ''}`;
+  $('car-blurb').textContent = locked ? `Unlock: ${def.blurb.match(/\(([^)]*)\)/)?.[1] ?? '?'}` : def.blurb.replace(/\s*\([^)]*\)$/, '');
+  $('car-stats').innerHTML = locked ? '' : statBars(def).map(([n, f]) => `<span>${n}</span><div class="bar"><i style="width:${Math.round(f * 100)}%"></i></div>`).join('');
   const pp = $('paints');
   pp.innerHTML = '';
-  const own = ROSTER[settings.car].livery, opts = HOUSE[own] ? [own, ...Object.keys(LIVERIES)] : Object.keys(LIVERIES);
+  const own = ROSTER[settings.car].livery, opts = locked ? [] : HOUSE[own] ? [own, ...Object.keys(LIVERIES)] : Object.keys(LIVERIES);
   for (const k of opts) {
     const { name, c } = liveryOf(k);
     const b = document.createElement('button');
@@ -1418,10 +1455,12 @@ function renderMenu() {
     b.onclick = () => { settings.paints[settings.car] = k; saveSettings(); buildShowroom(); renderMenu(); };
     pp.appendChild(b);
   }
-  const label = document.createElement('span');
-  label.className = 'livery-name';
-  label.textContent = liveryOf(paintOf(settings.car)).name;
-  pp.appendChild(label);
+  if (!locked) {
+    const label = document.createElement('span');
+    label.className = 'livery-name';
+    label.textContent = liveryOf(paintOf(settings.car)).name;
+    pp.appendChild(label);
+  }
 
   const ar = $('arenas');
   ar.innerHTML = '';
