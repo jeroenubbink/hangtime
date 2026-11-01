@@ -96,7 +96,8 @@ export function addDetail(material, { map = gritTexture, fine = 0.5, coarse = 0.
   material.onBeforeCompile = sh => {
     sh.uniforms.detailMap = { value: map };
     sh.uniforms.blotchMap = { value: blotchTexture };
-    sh.uniforms.detailK = { value: new THREE.Vector4(fine, coarse, strength, coarseStrength) };
+    // Toned down to two thirds: the toybox look wants clean colour more than grit
+    sh.uniforms.detailK = { value: new THREE.Vector4(fine, coarse, strength * 0.66, coarseStrength * 0.66) };
     sh.uniforms.detailStripes = { value: stripes };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vDetailPos;\nvarying vec3 vDetailN;')

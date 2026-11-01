@@ -276,3 +276,5 @@ body.touch #nitro kbd { display: none; }
   body.touch #stunt-feed { top: 212px; }
   body.touch #attitude { bottom: 210px; width: 176px; height: 80px; }
 }
+.livery-name { text-transform: none; letter-spacing: 0.5px; opacity: 1; margin-left: 6px; font-weight: 700; }
+.seg.swatches { flex-wrap: wrap; max-width: 300px; }

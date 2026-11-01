@@ -404,13 +404,15 @@ function extrudeAcross(points, width, mat) {
 
 
 // ---------- Kit models ----------
-// The cars are Kenney's Car Kit (CC0, see assets/cars/LICENSE.txt), loaded once at startup. Each one is
-// scaled to the chassis size; its wheels are re-mounted on the suspension. The kit colours everything from
-// one palette texture, so a paint job is a copy of that texture with the body's colour swatch replaced.
+// Hangtime's three cars are round toy cars modelled in Blender (assets/cars/toy-*.glb); the derby uses
+// Kenney's Car Kit (CC0, see assets/cars/LICENSE.txt). Both are laid out the same way: a `body` and four
+// `wheel-*` nodes, coloured from one shared palette texture, so a paint job is a copy of that texture with
+// the body's colour swatch replaced. Each is scaled to the chassis size; its wheels are re-mounted on the
+// suspension.
 const KITS = {
-  comet: { file: 'sedan-sports', len: 4.4 },
-  hopper: { file: 'race', len: 4.3 },
-  brute: { file: 'hatchback-sports', len: 4.6 },
+  comet: { file: 'toy-comet', len: 4.2 },
+  hopper: { file: 'toy-hopper', len: 4.3 },
+  brute: { file: 'toy-brute', len: 4.3 },
 };
 const WHEEL_VIS = 0.42;    // drawn wheel radius; the physics wheel is RADIUS
 const kits = {};           // loaded kit scenes by file name
@@ -427,6 +429,45 @@ export async function loadCarKits(files = Object.values(KITS).map(k => k.file)) 
   if (any) any.traverse(o => { if (o.isMesh && !palette) palette = o.material.map.image; });
 }
 export const kitScene = file => kits[file];
+
+// Liveries for the toy cars: five colours each, for the body, a second colour (skirts, roof, wings), the
+// accent (stripes, badges, hub caps), the trim (bumpers, grille, arches) and the wheel hubs. One colour
+// leads, one supports, one pops, and the trim is a deep tone of the theme rather than black.
+export const LIVERIES = {
+  cherry: { name: 'Cherry Pop', c: ['#e8333a', '#2f6fe0', '#ffd23a', '#2a2f5a', '#ffffff'] },
+  lemon: { name: 'Lemonade', c: ['#ffd23a', '#38a8f0', '#e8333a', '#2a3f66', '#ffffff'] },
+  leafy: { name: 'Leafy', c: ['#3cbf4a', '#f6f1df', '#ff9a2e', '#2b4a2f', '#fff5d6'] },
+  lagoon: { name: 'Lagoon', c: ['#20c4c8', '#ffffff', '#ff6f59', '#16506b', '#ffe9a8'] },
+  bubble: { name: 'Bubblegum', c: ['#ff8cc6', '#ff3b5c', '#ffe14a', '#7a2e5a', '#ffffff'] },
+  royal: { name: 'Royal', c: ['#3a5bdc', '#ffd23a', '#ffffff', '#1d2550', '#ffd23a'] },
+  tangerine: { name: 'Tangerine', c: ['#ff8a1e', '#3d3a8c', '#ffffff', '#2a2550', '#ffe14a'] },
+  grape: { name: 'Grape Soda', c: ['#8e5bea', '#5ee6c8', '#ffd23a', '#3a2766', '#ffffff'] },
+  snow: { name: 'Snowcone', c: ['#f7f9ff', '#4fb6ff', '#ff5a7a', '#3a4a6a', '#4fb6ff'] },
+  mint: { name: 'Choc Mint', c: ['#7fe0b5', '#7a4a2e', '#fff3d6', '#4a2e1e', '#fff3d6'] },
+  sunset: { name: 'Sunset', c: ['#ff6b5a', '#7a4fd8', '#ffd23a', '#3a2766', '#ffffff'] },
+  midnight: { name: 'Midnight', c: ['#2c3a7a', '#ff4f9a', '#5ef0ff', '#151a33', '#5ef0ff'] },
+};
+// The palette cells (32×128 px, column and row) the toy models paint each livery colour from
+const LIVERY_CELLS = [[4, 3], [6, 3], [12, 2], [12, 3], [1, 3]];
+// A livery key or a plain colour, as one colour (for sparks, map dots and the like)
+export const paintOf = p => LIVERIES[p]?.c[0] ?? p;
+
+const liveryTextures = new Map();
+function liveryTexture(key) {
+  if (liveryTextures.has(key)) return liveryTextures.get(key);
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(palette, 0, 0);
+  LIVERY_CELLS.forEach(([x, y], i) => { ctx.fillStyle = LIVERIES[key].c[i]; ctx.fillRect(x * 32, y * 128, 32, 128); });
+  const tex = new THREE.CanvasTexture(c);
+  tex.flipY = false;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+  liveryTextures.set(key, tex);
+  return tex;
+}
 export const kitPalette = () => palette;
 
 // Which 32×128 palette swatch the body is painted with: the most used saturated one.
@@ -490,7 +531,7 @@ function buildKitModel(colour, ghost, file, { len, scale } = {}) {
   const lift = rest - axleY;
   const mat = ghost
     ? new THREE.MeshBasicMaterial({ color: '#9fe3ff', transparent: true, opacity: 0.32, depthWrite: false })
-    : new THREE.MeshStandardMaterial({ map: colour ? paintedTexture(file, colour, body.geometry) : body.material.map, roughness: 0.38, metalness: 0.15, envMapIntensity: 0.9 });
+    : new THREE.MeshStandardMaterial({ map: LIVERIES[colour] ? liveryTexture(colour) : colour ? paintedTexture(file, colour, body.geometry) : body.material.map, roughness: 0.38, metalness: 0.15, envMapIntensity: 0.9 });
   body.updateMatrixWorld(true);
   src.updateMatrixWorld(true);
   const bodyMeshes = [];

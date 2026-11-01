@@ -22,7 +22,7 @@ export const ARENAS = {
   },
   deck: {
     name: 'Sky Deck', blurb: 'A rooftop with no walls, 300 m up. Shove them off the edge!',
-    shape: 'oct', R: 42, fall: true, colour: '#5d6b80',
+    shape: 'oct', R: 42, fall: true, colour: '#a9a39b',
   },
 };
 
@@ -435,7 +435,7 @@ export class Arena {
     this.lit.push([mat, '#ffe2a0', '#000000', 'emissive']);
     const towers = new THREE.InstancedMesh(box, mat, N);
     const M = new THREE.Matrix4(), c = new THREE.Color();
-    const tones = ['#9aa4b5', '#b5a99a', '#7d8a9c', '#c4c8cf', '#8a8f99', '#a3907a'];
+    const tones = ['#ffd9a8', '#a8dcff', '#ffbfcf', '#c6efae', '#fff0a8', '#d6c8ff'];   // a sugar-coloured skyline
     for (let i = 0; i < N; i++) {
       const a = rand() * Math.PI * 2, d = 90 + Math.pow(rand(), 0.7) * 520;
       const w = 18 + rand() * 26, h = 200 + rand() * 260 - d * 0.25;
@@ -444,7 +444,7 @@ export class Arena {
       towers.setColorAt(i, c.set(tones[i % tones.length]));
     }
     towers.computeBoundingSphere();
-    const streets = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400).rotateX(-Math.PI / 2).translate(0, -300, 0), new THREE.MeshLambertMaterial({ color: '#3a3f47' }));
+    const streets = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400).rotateX(-Math.PI / 2).translate(0, -300, 0), new THREE.MeshLambertMaterial({ color: '#6a7088' }));
     this.group.add(towers, streets);
   }
 
@@ -465,7 +465,7 @@ export class Arena {
       const a = k / 16 * Math.PI * 2 + rand() * 0.3, d = 650 + rand() * 200;
       geos.push([mountainGeometry(120 + rand() * 90, 90 + rand() * 120, k + 3).translate(Math.sin(a) * d, y - 2, Math.cos(a) * d), null]);
     }
-    const mm = new THREE.Mesh(merge(geos), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+    const mm = new THREE.Mesh(merge(geos), new THREE.MeshLambertMaterial({ vertexColors: true }));
     this.group.add(mm);
   }
 
@@ -616,12 +616,12 @@ function windowTexture(glow = false) {
   const key = glow ? 'glow' : 'day';
   if (!windowTex[key]) {
     windowTex[key] = canvasTexture(128, 128, (ctx, n) => {
-      ctx.fillStyle = glow ? '#000000' : '#c9ccd2';
+      ctx.fillStyle = glow ? '#000000' : '#f4f1ea';
       ctx.fillRect(0, 0, n, n);
       const rand = rng(77);
       for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) {
         const lit = rand() < 0.45;
-        ctx.fillStyle = glow ? (lit ? '#ffe7a8' : '#000000') : (lit ? '#6f8299' : '#5a6b80');
+        ctx.fillStyle = glow ? (lit ? '#ffe7a8' : '#000000') : (lit ? '#9fd4f5' : '#78b4e2');
         ctx.fillRect(x * 32 + 5, y * 16 + 3, 22, 10);
       }
     });

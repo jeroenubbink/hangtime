@@ -20,7 +20,7 @@ textures are generated in code.
 - **Race a rival:** an AI driver (Rookie, Pro or Ace) on a racing line, plus a ghost of your best lap,
   split times and bronze/silver/gold medals.
 - **Stunt attack:** 90 seconds to score as many points as you can.
-- **Three cars:** Comet, Hopper and Brute, each with its own handling and engine note, in any of seven paints.
+- **Three toy cars:** Comet, Hopper and Brute, each with its own handling and engine note, in any of twelve five-colour liveries (body, second colour, accent stripes, trim and hubs).
 - **Day, dusk, rain or night:** street lamps and working headlights after dark.
 - **Replays:** trackside TV cameras and automatic slow motion on big air.
 - **Controls:** keyboard, gamepad and touch screens.
@@ -161,7 +161,10 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
 - `js/editor.js`: the 2D track editor
 - `js/audio.js`: synthesised engine, tyre and crash sounds (WebAudio)
 - `js/textures.js`: procedural textures (asphalt grit, grass, blotches), applied in world space, and the water shader
-- `js/scenery.js`: instanced trees, bushes, rocks and tyre walls, the grandstand, and the mountains
+- `js/scenery.js`: instanced trees, bushes, flowers, rocks and tyre walls, the grandstand, and the rounded hills
+- `assets/cars/toy-*.glb`, `assets/scenery/nature.glb`: Hangtime's toy cars and the round trees, bushes and flowers,
+  modelled in Blender (source: `assets/src/toys.blend`)
+- `js/toon.js`: the shared toybox look for both games: two-tone shading, rim light and a colour boost, patched into three.js's shaders
 - `js/derby/`: Crunchtime
   - `main.js`: events, scoring, hits and damage rules, cameras, HUD, menus, and the balancing simulator
   - `vehicle.js`: a derby car: model, dents, lost wheels and parts, splitting in two, and car-to-car impacts

@@ -70,8 +70,8 @@ export const KICK_H = 1.05;
 
 const col = c => new THREE.Color(c);
 const C = {
-  asphalt: col('#45484f'), line: col('#efeee6'), red: col('#d8352b'), white: col('#f3f3f3'),
-  concrete: col('#a29c90'), steel: col('#2f6fbd'), dirt: col('#7a5634'), yellow: col('#f2c230'),
+  asphalt: col('#5b6070'), line: col('#efeee6'), red: col('#d8352b'), white: col('#f3f3f3'),
+  concrete: col('#c9bfae'), steel: col('#2f6fbd'), dirt: col('#7a5634'), yellow: col('#f2c230'),
   check1: col('#111111'), check2: col('#f5f5f5'), orange: col('#ff7a1a'),
   dirt1: col('#8a6440'), dirt2: col('#9b7650'), rut: col('#6e4e30'),
   ice1: col('#cfe8f5'), ice2: col('#b4d8ee'), ice3: col('#e9f6fc'), lamp: col('#ffe6a0'),

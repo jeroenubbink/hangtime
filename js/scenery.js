@@ -1,6 +1,7 @@
 // Scenery models: trees, bushes, rocks, mountains, tyre stacks and a grandstand. They are built from
 // primitives with per-face colours and drawn instanced, so a few draw calls cover hundreds of them.
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { addDetail } from './textures.js';
 
 // Merge primitive geometries into one flat-shaded, vertex-coloured geometry. Each part is
@@ -9,8 +10,9 @@ export function merge(parts) {
   const P = [], N = [], K = [];
   const c = new THREE.Color();
   for (const [geo, colour] of parts) {
+    // Normals from the indexed shape are smooth across shared corners; flat ones need no index
+    if (colour != null) geo.computeVertexNormals();
     const g = geo.index ? geo.toNonIndexed() : geo;
-    if (colour != null) g.computeVertexNormals();
     const pos = g.attributes.position, nor = g.attributes.normal, col = g.attributes.color;
     for (let i = 0; i < pos.count; i += 3) {
       const y = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
@@ -69,6 +71,8 @@ const MODELS = {
       [blob(1.3, -1.0, 4.3, -0.6, 7), shade('#4f9a3c', 1.05)],
     ]);
   },
+  flowers: () => merge([0, 1, 2, 3, 4, 5].map(i => [new THREE.IcosahedronGeometry(0.14, 0).scale(1, 0.65, 1)
+    .translate(Math.cos(i * 2.4) * i * 0.25, 0.4, Math.sin(i * 2.4) * i * 0.25), ['#ffffff', '#ff8fc8', '#ffe14a', '#ff6f6f', '#b48cff'][i % 5]])),
   bush: () => merge([
     [jitter(new THREE.IcosahedronGeometry(0.9, 1), 0.25, 11, false).scale(1, 0.75, 1).translate(0, 0.45, 0), '#3f8a36'],
     [jitter(new THREE.IcosahedronGeometry(0.7, 1), 0.2, 13, false).scale(1, 0.8, 1).translate(0.8, 0.4, 0.3), shade('#3f8a36', 1.15)],
@@ -89,12 +93,24 @@ const MODELS = {
     y => (y > 0.6 ? (x === 0 ? '#e8e8e8' : '#d8352b') : '#222326')])),
 };
 
+// The toy-style kit modelled in Blender (assets/scenery/nature.glb): round trees, toy pines, flowering
+// bushes, pebbles and flower patches, vertex-coloured. Loaded once at startup; whatever it holds replaces
+// the primitive models above, which stay as the fallback if it fails to load.
+export async function loadSceneryKit() {
+  const g = await new GLTFLoader().loadAsync('assets/scenery/nature.glb');
+  g.scene.traverse(o => {
+    if (!o.isMesh || !MODELS[o.name]) return;
+    const geo = o.geometry;
+    MODELS[o.name] = () => geo;
+  });
+}
+
 // Instanced placement: add(kind, x, y, z, scale, rotation), then build() returns the meshes
 export class Scatter {
   constructor(seed) {
     this.items = {};
     this.rand = rng(seed);
-    this.mat = addDetail(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { fine: 0.9, strength: 0.22, coarse: 0.05, coarseStrength: 0.1 });
+    this.mat = addDetail(new THREE.MeshLambertMaterial({ vertexColors: true }), { fine: 0.9, strength: 0.12, coarse: 0.05, coarseStrength: 0.1 });
   }
 
   add(kind, x, y, z, s = 1, rot = this.rand() * 6.28) {
@@ -120,20 +136,27 @@ export class Scatter {
   }
 }
 
-// One jagged mountain: forest at the foot, rock, and snow above a ragged snow line on the tall ones
+// One soft rounded hill for the horizon: a squashed dome, gently lumpy. Every third one is a tall
+// lavender-blue mountain with a snowy top; the rest are green, lighter towards the top.
 export function mountainGeometry(r, h, seed) {
   const rand = rng(seed);
-  const segs = 7 + Math.floor(rand() * 4);
-  const g = new THREE.ConeGeometry(r, h, segs, 4).translate(0, h / 2, 0);
+  const tall = seed % 3 === 0;
+  const g = new THREE.SphereGeometry(r, 18, 9, 0, Math.PI * 2, 0, Math.PI / 2);
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const t = pos.getY(i) / r;
+    // Gumdrop profile: steeper sides and a rounder top than a plain dome
+    const k = Math.pow(Math.max(0, 1 - t), 0.8), side = Math.sqrt(1 - k * k * 0.15);
+    pos.setXYZ(i, pos.getX(i) * side, Math.pow(t, 0.85) * h * (tall ? 0.95 : 0.75), pos.getZ(i) * side);
+  }
   g.computeBoundingBox();
-  jitter(g, r * 0.22, seed);
-  const snowLine = h > 140 ? h * (0.6 + rand() * 0.1) : Infinity;
-  const rock = ['#7d8f9e', '#73879a', '#8696a3'][seed % 3];
+  jitter(g, r * 0.07, seed);
+  const top = tall ? h * 0.95 : h * 0.75, snow = tall && h > 120 ? top * (0.72 + rand() * 0.08) : Infinity;
+  const [lo, hi] = tall ? ['#7f8fd8', '#b9b6f0'] : [['#3f9e48', '#4aa84a', '#58b04a'][seed % 3], '#a6e35e'];
   return merge([[g, (y, f) => {
-    const n = ((f * 7919) % 13) / 13;   // per-face variation
-    if (y > snowLine + (n - 0.5) * h * 0.08) return shade('#f3f6fa', 0.94 + n * 0.08);
-    if (y < h * (0.1 + n * 0.12)) return shade('#3f7a3a', 0.85 + n * 0.25);
-    return shade(rock, 0.88 + n * 0.22);
+    const n = ((f * 7919) % 13) / 13;
+    if (y > snow + (n - 0.5) * top * 0.05) return '#ffffff';
+    return new THREE.Color(lo).lerp(new THREE.Color(hi), Math.min(1, y / top + (n - 0.5) * 0.08));
   }]]);
 }
 

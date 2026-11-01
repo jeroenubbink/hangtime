@@ -1,10 +1,11 @@
 // Renderer, sky, lights and camera for Crunchtime, with the same look as Hangtime: filmic tone mapping,
 // a gradient sky the cars' paint reflects, and resolution that drops if the frame rate does.
 import * as THREE from 'three';
+import { TONE } from '../toon.js';
 
 export const TIMES = {
-  day: { label: 'Day', sky: ['#2f7fd6', '#9ccdf2', '#d9eefa'], fog: ['#c4e0f2', 160, 700], hemi: ['#e4f3ff', '#6a5a40', 1.45],
-    sun: ['#fff1d6', 2.1, [60, 110, 40]], orb: '#fffbe8', stars: 0, lamps: 0 },
+  day: { label: 'Day', sky: ['#2a86f0', '#80c8ff', '#d8f2ff'], fog: ['#c8e8ff', 160, 700], hemi: ['#b9d4ff', '#7a6040', 1.55],
+    sun: ['#fff0d2', 2.2, [60, 110, 40]], orb: '#fffbe8', stars: 0, lamps: 0 },
   sunset: { label: 'Sunset', sky: ['#2b2f6b', '#c8679a', '#ffb066'], fog: ['#d99a8a', 140, 650], hemi: ['#ffc4a8', '#3c3550', 1.1],
     sun: ['#ff9b55', 2.2, [-120, 40, -70]], orb: '#ffcf8a', stars: 0.3, lamps: 0.6 },
   night: { label: 'Floodlit', sky: ['#01030a', '#081230', '#16244a'], fog: ['#0a1228', 120, 600], hemi: ['#6f86c0', '#1a1a22', 0.75],
@@ -17,7 +18,7 @@ export function createStage(canvas) {
   renderer.setPixelRatio(Math.min(coarse ? 1.5 : 2, window.devicePixelRatio));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMapping = TONE;
   renderer.toneMappingExposure = 1.15;
 
   const scene = new THREE.Scene();

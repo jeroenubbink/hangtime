@@ -1,19 +1,20 @@
 import * as THREE from 'three';
 import { TILE, HALF, GRID, DIRS } from './pieces.js';
 import { World, walk, BUILTIN, cellOf, cellCenter, trackId, deserialize, medalFor, MEDALS } from './track.js';
-import { CarPhysics, buildCarModel, loadCarKits, poseCarModel, setCarLights, MASS, CARS, WHEELS, WHEEL_RADIUS, WHEEL_REST } from './car.js';
+import { CarPhysics, buildCarModel, loadCarKits, poseCarModel, setCarLights, MASS, CARS, WHEELS, WHEEL_RADIUS, WHEEL_REST, LIVERIES, paintOf } from './car.js';
 import { Sound } from './audio.js';
 import { Editor, drawPiece, customTracks } from './editor.js';
 import { Driver, SKILLS } from './ai.js';
 import { Stunts } from './stunts.js';
 import * as store from './store.js';
 import { waterTime } from './textures.js';
+import { TONE } from './toon.js';
+import { loadSceneryKit } from './scenery.js';
 
 // Car models; the built-in box cars stand in if they can't be loaded
-await loadCarKits().catch(e => console.warn('Car models not loaded:', e));
+await Promise.all([loadCarKits().catch(e => console.warn('Car models not loaded:', e)), loadSceneryKit().catch(e => console.warn('Scenery not loaded:', e))]);
 
 const DT = 1 / 120;
-const PAINTS = ['#e8352b', '#ffcf2e', '#2f7fe0', '#22b35a', '#f2f2f2', '#9b4dff', '#ff7a1a'];
 const CAMS = ['Chase', 'Far chase', 'Bumper', 'TV'];
 const $ = id => document.getElementById(id);
 
@@ -23,8 +24,8 @@ const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: true })
 renderer.setPixelRatio(Math.min(matchMedia('(pointer: coarse)').matches ? 1.5 : 2, window.devicePixelRatio));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-// Filmic tone mapping: softer highlights and richer shadows than plain clamping
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
+// Filmic tone mapping with the colour pushed back up (see toon.js)
+renderer.toneMapping = TONE;
 renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
@@ -110,8 +111,8 @@ const rain = (() => {
 
 // Time of day: sky gradient, fog, lights, street lamps and headlights
 const TOD = {
-  day: { label: 'Day', sky: ['#2f7fd6', '#9ccdf2', '#d9eefa'], fog: ['#bfe0f5', 260, 1300], hemi: ['#e4f3ff', '#4d6a35', 1.5],
-    sun: ['#fff1d6', 2.1, [70, 120, 45]], orb: '#fffbe8', stars: 0, lamps: 0, clouds: ['#ffffff', '#b8c4d0'] },
+  day: { label: 'Day', sky: ['#2a86f0', '#80c8ff', '#d8f2ff'], fog: ['#c8e8ff', 260, 1300], hemi: ['#b9d4ff', '#5e8f3a', 1.6],
+    sun: ['#fff0d2', 2.2, [70, 120, 45]], orb: '#fffbe8', stars: 0, lamps: 0, clouds: ['#ffffff', '#c6d6f0'] },
   dusk: { label: 'Dusk', sky: ['#2b2f6b', '#c8679a', '#ffb066'], fog: ['#d99a8a', 200, 1150], hemi: ['#ffc4a8', '#3c3550', 1.05],
     sun: ['#ff9b55', 2.1, [-140, 34, -70]], orb: '#ffcf8a', stars: 0.35, lamps: 0.55, clouds: ['#e3a39a', '#7a4060'] },
   rain: { label: 'Rain', sky: ['#5d6873', '#8a96a1', '#a9b3bb'], fog: ['#9aa5ae', 90, 700], hemi: ['#c9d3dc', '#4a5a40', 1.3],
@@ -248,7 +249,7 @@ const skids = new SkidMarks();
 function explode(pos, paint = game.paint) {
   particles.emit(pos, { count: 40, colours: ['#ffb02e', '#ff5a1f', '#ffe36e'], speed: 14, up: 6, size: 0.6, life: 1.1 });
   particles.emit(pos, { count: 26, colours: ['#333', '#555', '#222'], speed: 5, up: 4, size: 1.2, life: 2.2, gravity: -1, grow: 0.8 });
-  particles.emit(pos, { count: 14, colours: [paint, '#222'], speed: 12, up: 9, size: 0.35, life: 2.5 });
+  particles.emit(pos, { count: 14, colours: [paintOf(paint), '#222'], speed: 12, up: 9, size: 0.35, life: 2.5 });
 }
 function splash(pos) {
   particles.emit(new THREE.Vector3(pos.x, -1, pos.z), { count: 60, colours: ['#ffffff', '#bfe4ff', '#7cc4f2'], speed: 6, up: 11, size: 0.5, life: 1.6 });
@@ -257,7 +258,7 @@ function splash(pos) {
 // ---------- Game state ----------
 const game = {
   mode: 'menu',
-  paint: store.load('paint', PAINTS[0]),
+  paint: store.load('livery', 'cherry'),
   laps: store.load('laps', 2),
   trackKey: store.load('track', 'b0'),
   rival: store.load('rival', 'pro'),
@@ -274,6 +275,7 @@ window.game = game;
 if (game.rival !== 'off' && !SKILLS[game.rival]) game.rival = 'pro';
 if (!TOD[game.tod]) game.tod = 'day';
 if (!CARS[game.carKind]) game.carKind = 'comet';
+if (!LIVERIES[game.paint]) game.paint = 'cherry';
 if (!['race', 'attack'].includes(game.gameMode)) game.gameMode = 'race';
 
 const keys = new Set();
@@ -355,7 +357,7 @@ function parkAtStart() {
 
 function setPaint(c) {
   game.paint = c;
-  store.save('paint', c);
+  store.save('livery', c);
   rebuildPlayerModel();
   setRivalModel();
   applyTimeOfDay();
@@ -379,8 +381,8 @@ function setCar(kind) {
   }
 }
 
-// The rival wears blue, or orange when the player already does.
-const rivalPaint = () => (game.paint === '#2f7fe0' ? '#ff7a1a' : '#2f7fe0');
+// The rival wears the livery half way round the list from the player's, so the two never look alike
+const rivalPaint = () => { const k = Object.keys(LIVERIES); return k[(k.indexOf(game.paint) + 6) % k.length]; };
 function setRivalModel() {
   if (game.rivalModel && game.rivalModel.userData.colour === rivalPaint()) return;
   if (game.rivalModel) scene.remove(game.rivalModel);
@@ -473,6 +475,7 @@ function startRace() {
 function setMode(m) {
   game.mode = m;
   if (m !== 'race') game.timeScale = 1;
+  if (game.model) game.model.visible = true;
   $('replaybar').classList.toggle('hidden', m !== 'replay');
   $('hud').classList.toggle('hidden', !['countdown', 'race', 'finished', 'paused'].includes(m));
 }
@@ -943,6 +946,8 @@ function buildTvCams() {
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
 
 function updateCamera(dt, pos, q, mode, opts = {}) {
+  // From the bumper, the toy cars' own roofs, helmets and lamps would fill the view, so the car hides
+  if (game.model) game.model.visible = mode !== 2;
   const k = 1 - Math.exp(-dt * 5), ku = 1 - Math.exp(-dt * 3);
   const fwd = _v.set(0, 0, -1).applyQuaternion(q);
   const up = _w.set(0, 1, 0).applyQuaternion(q);
@@ -1025,8 +1030,8 @@ function drawMinimap(carPos, ghostPos, rivalPos) {
   ctx.drawImage(mini.base, 0, 0);
   const dot = (p, col, r) => { const [x, y] = toMini(p); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke(); };
   if (ghostPos) dot(ghostPos, 'rgba(160,230,255,0.8)', 4);
-  if (rivalPos) dot(rivalPos, rivalPaint(), 4.5);
-  dot(carPos, game.paint, 5.5);
+  if (rivalPos) dot(rivalPos, paintOf(rivalPaint()), 4.5);
+  dot(carPos, paintOf(game.paint), 5.5);
 }
 
 function drawDial(speedKmh, rpm, gear) {
@@ -1219,14 +1224,17 @@ function renderMenu() {
     k => { game.tod = k; store.save('tod', k); applyTimeOfDay(); });
   const cols = $('colours');
   cols.innerHTML = '';
-  for (const c of PAINTS) {
+  for (const [k, { name, c }] of Object.entries(LIVERIES)) {
     const b = document.createElement('button');
-    b.className = 'swatch' + (c === game.paint ? ' active' : '');
-    b.style.background = c;
-    b.setAttribute('aria-label', 'Paint ' + c);
-    b.onclick = () => { setPaint(c); renderMenu(); };
+    b.className = 'swatch' + (k === game.paint ? ' active' : '');
+    // Body colour, then a band of the second colour with the accent through it, as on the car
+    b.style.background = `linear-gradient(135deg, ${c[0]} 0 52%, ${c[2]} 52% 60%, ${c[1]} 60%)`;
+    b.title = name;
+    b.setAttribute('aria-label', name + ' livery');
+    b.onclick = () => { setPaint(k); renderMenu(); };
     cols.append(b);
   }
+  $('livery-name').textContent = LIVERIES[game.paint].name;
 }
 
 function segmented(el, options, current, pick) {

@@ -12,11 +12,13 @@ import { Vehicle, contact, damageFrom } from './vehicle.js';
 import { DerbyDriver } from './ai.js';
 import { ROSTER, CORE, DRIVERS, PAINTS, statBars } from './roster.js';
 import { Pickups, Mines, Props, ITEMS, drawIcon } from './pickups.js';
+import { loadSceneryKit } from '../scenery.js';
 
 const $ = id => document.getElementById(id);
 const DEBRIS = { door: 'debris-door', doorWin: 'debris-door-window', bumper: 'debris-bumper', plate: 'debris-plate-a', plateB: 'debris-plate-b',
   plateS: 'debris-plate-small-a', spoiler: 'debris-spoiler-a', tyre: 'debris-tire', axle: 'debris-drivetrain-axle' };
-await loadCarKits([...new Set(Object.values(ROSTER).map(c => c.file)), 'cone', ...Object.values(DEBRIS)]).catch(e => console.warn('Models not loaded:', e));
+await Promise.all([loadCarKits([...new Set(Object.values(ROSTER).map(c => c.file)), 'cone', ...Object.values(DEBRIS)]).catch(e => console.warn('Models not loaded:', e)),
+  loadSceneryKit().catch(e => console.warn('Scenery not loaded:', e))]);
 $('loading').remove();
 
 const DT = 1 / 120;

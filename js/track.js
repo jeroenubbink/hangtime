@@ -212,7 +212,7 @@ export class World {
     // Mown in stripes inside the arena; rougher grass outside it
     const lawn = { map: grassTexture, fine: 0.4, coarse: 0.025, strength: 0.32, coarseStrength: 0.28, flat: true };
     const grassMats = [addDetail(new THREE.MeshLambertMaterial({ color: '#5a8c3f', ...behind }), { ...lawn, stripes: 3.5 })];
-    const hillMat = addDetail(new THREE.MeshLambertMaterial({ color: '#578a3d', flatShading: true, ...behind }), lawn);
+    const hillMat = addDetail(new THREE.MeshLambertMaterial({ color: '#578a3d', ...behind }), lawn);
     for (let z = 0; z < GRID; z++) for (let x = 0; x < GRID; x++) {
       const c = this.grid[z][x];
       if (c && c.t === 'water') continue;
@@ -252,7 +252,7 @@ export class World {
         pos.setY(i, h);
       }
       geo.computeVertexNormals();
-      const hills = new THREE.Mesh(geo, addDetail(new THREE.MeshLambertMaterial({ color: '#4f7a38', flatShading: true }), { ...lawn, fine: 0.2, coarse: 0.012, coarseStrength: 0.45 }));
+      const hills = new THREE.Mesh(geo, addDetail(new THREE.MeshLambertMaterial({ color: '#4f7a38' }), { ...lawn, fine: 0.2, coarse: 0.012, coarseStrength: 0.45 }));
       hills.receiveShadow = true;
       g.add(hills);
       this.outerHill = (x, z) => {
@@ -327,7 +327,8 @@ export class World {
       for (let i = 0; i < n; i++) addTree(cx + (rand() - 0.5) * spread, cz + (rand() - 0.5) * spread, 0.8 + rand() * 0.6);
       for (let i = 0, nb = Math.floor(rand() * 4); i < nb; i++) {
         const bx = cx + (rand() - 0.5) * spread, bz = cz + (rand() - 0.5) * spread;
-        sc.add(rand() < 0.75 ? 'bush' : 'rock', bx, groundAt(bx, bz) - 0.1, bz, 0.7 + rand() * 0.7);
+        const k = rand(), kind = k < 0.5 ? 'bush' : k < 0.85 ? 'flowers' : 'rock';
+        sc.add(kind, bx, groundAt(bx, bz) - (kind === 'flowers' ? 0 : 0.1), bz, 0.7 + rand() * 0.7);
       }
     }
     for (let i = 0; i < 260; i++) {
@@ -363,7 +364,7 @@ export class World {
     const headGeo = new THREE.BoxGeometry(0.9, 0.22, 0.5).translate(-3.3, 6.78, 0);
     const beamGeo = new THREE.CylinderGeometry(0.4, 5.5, 6.7, 16, 1, true).translate(-3.3, 3.35, 0);
     const poolGeo = new THREE.CircleGeometry(8, 28).rotateX(-Math.PI / 2).translate(-3.3, 0.08, 0);
-    const poleMat = new THREE.MeshLambertMaterial({ color: '#5d636b', flatShading: true });
+    const poleMat = new THREE.MeshLambertMaterial({ color: '#f0ece2' });
     this.lampHeadMat = new THREE.MeshLambertMaterial({ color: '#fff4d0', emissive: '#ffd27a', emissiveIntensity: 0 });
     const glow = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 };
     this.lampPoolMat = new THREE.MeshBasicMaterial({ color: '#ffcf7a', ...glow, polygonOffset: true, polygonOffsetFactor: -2 });
@@ -407,18 +408,22 @@ export class World {
         const h = 70 + rand() * 150, r = 70 + rand() * 90;
         geos.push(mountainGeometry(r, h, i + 1).rotateY(rand() * 6).translate(Math.cos(a) * d, -2, Math.sin(a) * d));
       }
-      const m = new THREE.Mesh(merge(geos.map(g => [g, null])), addDetail(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
+      const m = new THREE.Mesh(merge(geos.map(g => [g, null])), addDetail(new THREE.MeshLambertMaterial({ vertexColors: true }),
         { fine: 0.02, coarse: 0.004, strength: 0.2, coarseStrength: 0.25 }));
       g.add(m);
     }
     // Clouds
-    const cloudMat = this.cloudMat = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#b8c4d0', flatShading: true });
+    // Clouds: round puffs, a big one in the middle and smaller ones either side, on a flat base
+    const cloudMat = this.cloudMat = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#c6d6f0' });
+    const puff = new THREE.IcosahedronGeometry(1, 2);
     for (let i = 0; i < 18; i++) {
       const c = new THREE.Group();
-      for (let k = 0; k < 4; k++) {
-        const b = new THREE.Mesh(new THREE.IcosahedronGeometry(10 + rand() * 10, 0), cloudMat);
-        b.position.set(k * 14 - 20, rand() * 5, rand() * 10);
-        b.scale.y = 0.5;
+      const n = 4 + Math.floor(rand() * 3);
+      for (let k = 0; k < n; k++) {
+        const t = k / (n - 1) - 0.5, r = (14 - Math.abs(t) * 14) * (0.8 + rand() * 0.4);
+        const b = new THREE.Mesh(puff, cloudMat);
+        b.position.set(t * 52, r * 0.35, (rand() - 0.5) * 10);
+        b.scale.set(r, r * 0.8, r);
         c.add(b);
       }
       const a = rand() * Math.PI * 2, d = 200 + rand() * 500;
