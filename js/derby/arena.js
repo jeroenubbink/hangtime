@@ -2,6 +2,7 @@
 // a second); the walls are a distance function the cars are kept inside. Each arena dresses itself with
 // stands, scrap, floodlights or a city, built from merged and instanced primitives.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { addDetail, grassTexture } from '../textures.js';
 import { merge, Scatter, grandstand, mountainGeometry, puffyClouds, sceneryGeo } from '../scenery.js';
 
@@ -248,9 +249,9 @@ export class Arena {
     if (d.fall) {
       const tex = deckTexture(d.R);
       geo.setAttribute('uv', new THREE.Float32BufferAttribute(Array.from({ length: pos.count }, (_, i) => [pos.getX(i) / (d.R * 2.4) + 0.5, pos.getZ(i) / (d.R * 2.4) + 0.5]).flat(), 2));
-      mat = addDetail(new THREE.MeshLambertMaterial({ map: tex, vertexColors: true }), { fine: 0.5, strength: 0.25, coarse: 0.04, coarseStrength: 0.2 });
+      mat = addDetail(new THREE.MeshLambertMaterial({ map: tex, vertexColors: true }), { fine: 0.5, strength: 0.25, coarse: 0.04, coarseStrength: 0.2, relief: 0.3 });
     } else {
-      mat = addDetail(new THREE.MeshLambertMaterial({ vertexColors: true }), { fine: 0.45, strength: 0.34, coarse: 0.04, coarseStrength: 0.26 });
+      mat = addDetail(new THREE.MeshLambertMaterial({ vertexColors: true }), { fine: 0.45, strength: 0.34, coarse: 0.04, coarseStrength: 0.26, relief: 0.4 });
     }
     const m = new THREE.Mesh(geo, mat);
     m.receiveShadow = true;
@@ -262,7 +263,7 @@ export class Arena {
     const kit = sceneryGeo({ bales: 'balestack', tyres: 'tyrestack' }[t.kind]);
     if (kit) return this.place(new THREE.Mesh(kit, kitMat()), t);
     if (t.kind === 'cubes' && sceneryGeo('crushed')) {
-      const pile = crushedPile([[0, 0, 0, 0.3], [0.1, 0.9, 0.2, 1.9], [-0.1, 1.8, -0.1, 0.9], [0, 2.7, 0.1, 2.4]], 1.3, this.rand);
+      const pile = crushedPile([[0, 0, 0, 0.3], [0.1, 1, 0.2, 1.9], [-0.1, 2, -0.1, 0.9], [0, 3, 0.1, 2.4]], 1.3, this.rand);
       return this.place(pile, t);
     }
     let geo;
@@ -396,7 +397,7 @@ export class Arena {
         // A heap of squashed toy cars: a wide bottom layer, fewer on top
         const cars = [];
         for (let l = 0, n = 4 + Math.floor(rand() * 3); n > 0; l++, n -= 2)
-          for (let j = 0; j < n; j++) cars.push([(j - (n - 1) / 2) * 2.2 + (rand() - 0.5) * 0.5, l * 0.82, (rand() - 0.5) * 2.4, rand() * 6]);
+          for (let j = 0; j < n; j++) cars.push([(rand() - 0.5) * 0.5, l, (j - (n - 1) / 2) * 1.5, (rand() - 0.5) * 0.3]);   // side by side, each row on the roofs below
         const pile = crushedPile(cars, 1.5, rand);
         pile.position.set(x, 0, z);
         pile.rotation.y = rand() * 6;
@@ -458,27 +459,82 @@ export class Arena {
     this.city();
   }
 
-  // Skyscrapers round the deck, with lit windows after dark, and streets far below
+  // Skyscrapers round the deck: pastel towers that step in as they rise, with coloured roofs, water tanks,
+  // domes and spires, windows sized to each building (lit after dark), and the streets far below lost in
+  // layers of mist and low cloud, so a fall off the edge drops into haze
   city() {
-    const rand = this.rand, N = 140;
-    const box = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
-    const mat = new THREE.MeshLambertMaterial({ map: windowTexture(), emissiveMap: windowTexture(true), color: '#ffffff' });
-    mat.map.repeat.set(3, 10);
-    mat.emissiveMap.repeat.set(3, 10);
-    this.lit.push([mat, '#ffe2a0', '#000000', 'emissive']);
-    const towers = new THREE.InstancedMesh(box, mat, N);
-    const M = new THREE.Matrix4(), c = new THREE.Color();
-    const tones = ['#ffd9a8', '#a8dcff', '#ffbfcf', '#c6efae', '#fff0a8', '#d6c8ff'];   // a sugar-coloured skyline
+    const rand = this.rand, N = 120, parts = [];
+    const tones = ['#ffd9a8', '#a8dcff', '#ffbfcf', '#c6efae', '#fff0a8', '#d6c8ff', '#f4f1ea'];
+    const roofs = ['#ff6b5a', '#2f6fe0', '#8e5bea', '#20c4c8', '#ffb02e', '#3cbf4a'];
+    const C = new THREE.Color();
+    // A part: geometry, colour, and how many window tiles (12 m wide, 28 m tall) its sides hold (0: plain wall)
+    const add = (g, colour, tile, place) => {
+      const uv = g.attributes.uv, pos = g.attributes.position;
+      g.computeBoundingBox();
+      const bb = g.boundingBox, w = bb.max.x - bb.min.x, h = bb.max.y - bb.min.y, d = bb.max.z - bb.min.z;
+      const nor = g.attributes.normal;
+      for (let i = 0; i < uv.count; i++) {
+        const ny = Math.abs(nor.getY(i));
+        if (!tile || ny > 0.5) uv.setXY(i, 0.02, 0.99);
+        else uv.setXY(i, uv.getX(i) * (Math.abs(nor.getX(i)) > 0.5 ? d : g.parameters?.radiusTop ? 2 * Math.PI * g.parameters.radiusTop : w) / 12, uv.getY(i) * h / 28);
+      }
+      C.set(colour);
+      g.setAttribute('color', new THREE.Float32BufferAttribute(new Array(pos.count).fill(0).flatMap(() => [C.r, C.g, C.b]), 3));
+      parts.push(place(g));
+    };
     for (let i = 0; i < N; i++) {
       const a = rand() * Math.PI * 2, d = 90 + Math.pow(rand(), 0.7) * 520;
-      const w = 18 + rand() * 26, h = 200 + rand() * 260 - d * 0.25;
-      M.compose(new THREE.Vector3(Math.sin(a) * d, -300, Math.cos(a) * d), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * 1.5), new THREE.Vector3(w, h, w * (0.7 + rand() * 0.6)));
-      towers.setMatrixAt(i, M);
-      towers.setColorAt(i, c.set(tones[i % tones.length]));
+      const x = Math.sin(a) * d, z = Math.cos(a) * d, yaw = rand() * 1.5;
+      const w = 18 + rand() * 24, dp = w * (0.7 + rand() * 0.5), H = 200 + rand() * 260 - d * 0.25;
+      const tone = tones[i % tones.length], roof = roofs[Math.floor(rand() * roofs.length)];
+      const at = g => g.rotateY(yaw).translate(x, 0, z);
+      let y = -300, top;
+      if (rand() < 0.22) {
+        // A round tower with a dome
+        const r = w * 0.5;
+        add(new THREE.CylinderGeometry(r, r, H, 20, 1, true).translate(0, y + H / 2, 0), tone, true, at);
+        add(new THREE.CylinderGeometry(r * 1.06, r * 1.06, 2.5, 20).translate(0, y + H + 1.2, 0), roof, false, at);
+        add(new THREE.SphereGeometry(r * 0.8, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, y + H + 2.4, 0), roof, false, at);
+        continue;
+      }
+      // Up to three tiers, each narrower than the last
+      const tiers = rand() < 0.5 ? 1 : rand() < 0.6 ? 2 : 3;
+      let tw = w, td = dp, th = H * (tiers === 1 ? 1 : 0.62);
+      for (let t = 0; t < tiers; t++) {
+        add(new THREE.BoxGeometry(tw, th, td).translate(0, y + th / 2, 0), tone, true, at);
+        y += th;
+        add(new THREE.BoxGeometry(tw + 1.2, 1.6, td + 1.2).translate(0, y + 0.8, 0), roof, false, at);   // a coloured ledge
+        tw *= 0.68; td *= 0.68; th = H * (0.38 / (tiers - 1 || 1)) * (0.8 + rand() * 0.4);
+      }
+      top = y + 1.6;
+      // Something on the roof
+      const pick = rand();
+      if (pick < 0.35) {
+        add(new THREE.CylinderGeometry(2.4, 2.4, 4, 12).translate(tw * 0.3, top + 3.4, td * 0.2), roof, false, at);   // water tank on legs
+        add(new THREE.ConeGeometry(2.7, 1.6, 12).translate(tw * 0.3, top + 6.2, td * 0.2), roof, false, at);
+        add(new THREE.BoxGeometry(3.6, 1.6, 3.6).translate(tw * 0.3, top + 0.8, td * 0.2), '#7a8094', false, at);
+      } else if (pick < 0.6) {
+        add(new THREE.CylinderGeometry(0.4, 1.2, 22, 6).translate(0, top + 11, 0), '#e8e4dc', false, at);   // spire
+        add(new THREE.SphereGeometry(1.1, 8, 6).translate(0, top + 22.5, 0), '#ff4030', false, at);
+      } else if (pick < 0.8) {
+        add(new THREE.BoxGeometry(tw * 0.5, 3, td * 0.4).translate(-tw * 0.15, top + 1.5, 0), '#cfd3dc', false, at);   // plant room
+      }
     }
-    towers.computeBoundingSphere();
+    const geo = mergeGeometries(parts);
+    const mat = new THREE.MeshLambertMaterial({ map: windowTexture(), emissiveMap: windowTexture(true), vertexColors: true });
+    this.lit.push([mat, '#ffe2a0', '#000000', 'emissive']);
+    const towers = new THREE.Mesh(geo, mat);
     const streets = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400).rotateX(-Math.PI / 2).translate(0, -300, 0), new THREE.MeshLambertMaterial({ color: '#6a7088' }));
     this.group.add(towers, streets, this.clouds());
+    // Mist: see-through layers between the deck and the streets, and low clouds among the towers
+    const mist = new THREE.MeshBasicMaterial({ color: '#e6f2ff', transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide });
+    this.lit.push([mist, '#1a2440', '#e6f2ff', 'mix']);
+    for (const y of [-45, -85, -130, -180, -235]) {
+      const layer = new THREE.Mesh(new THREE.CircleGeometry(1600, 48).rotateX(-Math.PI / 2).translate(0, y, 0), mist);
+      layer.renderOrder = 1;
+      this.group.add(layer);
+    }
+    this.group.add(this.clouds({ n: 26, near: 70, far: 520, y: -110 }));
   }
 
   // Grass, trees and mountains beyond the walls (from radius r0 out)
@@ -531,10 +587,10 @@ export class Arena {
   }
 
   // Puffy clouds, grey-blue after dark
-  clouds() {
+  clouds(opts) {
     const mat = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#c6d6f0' });
     this.lit.push([mat, '#3a4466', '#ffffff', 'mix'], [mat, '#0c1226', '#c6d6f0', 'mixEmissive']);
-    return puffyClouds(this.rand, mat);
+    return puffyClouds(this.rand, mat, opts);
   }
 
   // Lamps for the time of day (0 = daylight, 1 = night)
@@ -563,13 +619,16 @@ function kitMat() {
   return kMat;
 }
 
-// A heap of the kit's squashed toy cars, in toy colours: [[x, y, z, yaw], ...] at scale `s`
+// A heap of the kit's squashed toy cars, in toy colours: [[x, layer, z, yaw], ...] at scale `s`. Each layer
+// lies on the roofs of the one below (the model is 0.75 tall; they sink in a little so none float).
 const TOYS = ['#e8333a', '#2f6fe0', '#ffd23a', '#3cbf4a', '#ff8cc6', '#20c4c8', '#8e5bea', '#ff8a1e', '#f7f9ff'];
 function crushedPile(cars, s, rand) {
   const m = new THREE.InstancedMesh(sceneryGeo('crushed'), kitMat(), cars.length);
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), E = new THREE.Euler(), c = new THREE.Color();
-  cars.forEach(([x, y, z, yaw], i) => {
-    m.setMatrixAt(i, M.compose(new THREE.Vector3(x * s, y * s, z * s), Q.setFromEuler(E.set((rand() - 0.5) * 0.1, yaw, (rand() - 0.5) * 0.1)), new THREE.Vector3(s, s * (0.8 + rand() * 0.3), s)));
+  const layers = Math.max(...cars.map(([, l]) => l)) + 1, squash = [], base = [0];
+  for (let l = 0; l < layers; l++) { squash.push(0.75 + rand() * 0.25); base.push(base[l] + 0.66 * s * squash[l]); }
+  cars.forEach(([x, l, z, yaw], i) => {
+    m.setMatrixAt(i, M.compose(new THREE.Vector3(x * s, base[l] - (l ? 0.04 : 0), z * s), Q.setFromEuler(E.set((rand() - 0.5) * 0.05, yaw, (rand() - 0.5) * 0.05)), new THREE.Vector3(s, s * squash[l], s)));
     m.setColorAt(i, c.set(TOYS[Math.floor(rand() * TOYS.length)]));
   });
   m.castShadow = m.receiveShadow = true;
@@ -604,16 +663,26 @@ function rampMesh(r) {
   const P = ([u, v], y) => [r.x + u * c - v * s, y, r.z + u * s + v * c];
   const tris = [];
   const quad = (a, b, cc, d, col) => tris.push([a, b, cc, col], [a, cc, d, col]);
-  quad(P(U[0], r.h), P(U[3], r.h), P(U[2], r.h), P(U[1], r.h), '#8f7d68');
+  // Toy colours that stand out from the ground, so you can see where a ramp starts, how steep it is and how
+  // long it goes: orange run-ups crossed by white bands (the first one where the ramp leaves the ground),
+  // blue sides, a cream top
+  quad(P(U[0], r.h), P(U[3], r.h), P(U[2], r.h), P(U[1], r.h), '#fff1d0');
+  const lerp = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
   for (let k = 0; k < 4; k++) {
-    const k1 = (k + 1) % 4;
-    quad(P(B[k], 0), P(U[k], r.h), P(U[k1], r.h), P(B[k1], 0), k % 2 ? '#7a6955' : '#a3907a');
+    const k1 = (k + 1) % 4, end = k % 2 === 1;
+    const b0 = P(B[k], 0), b1 = P(B[k1], 0), t0 = P(U[k], r.h), t1 = P(U[k1], r.h);
+    // Bands from the bottom edge (0) to the top edge (1)
+    const cuts = end ? [0, 0.08, 0.3, 0.36, 0.58, 0.64, 0.86, 0.92, 1] : [0, 0.1, 1];
+    for (let i = 0; i < cuts.length - 1; i++) {
+      const lo = cuts[i], hi = cuts[i + 1], white = i % 2 === 0;
+      quad(lerp(b0, t0, lo), lerp(b0, t0, hi), lerp(b1, t1, hi), lerp(b1, t1, lo), white ? '#ffffff' : end ? '#ff8a1e' : '#3a8ee8');
+    }
   }
   const pos = [], col = [];
   const C = new THREE.Color();
   for (const [a, b, cc, colour] of tris) {
     C.set(colour);
-    for (const p of [a, cc, b]) { pos.push(...p); col.push(C.r, C.g, C.b); }
+    for (const p of [a, b, cc]) { pos.push(...p); col.push(C.r, C.g, C.b); }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));

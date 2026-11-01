@@ -92,13 +92,17 @@ export const blotchTexture = toTexture(128, (ctx, n) => noiseInto(ctx, n, fbm(n,
 // Add world-space detail to a material. `fine`/`coarse` are texture repeats per metre; `strength` and
 // `coarseStrength` how far the colour is pushed darker/lighter. `stripes` > 0 adds mown-lawn stripes of
 // that width (m) along x. `flat` projects from above only, which is cheaper, for ground.
-export function addDetail(material, { map = gritTexture, fine = 0.5, coarse = 0.03, strength = 0.35, coarseStrength = 0.25, stripes = 0, flat = false } = {}) {
+// `relief` (m): ground that should read its own shape. Slopes are shaded as if lit from one fixed side
+// (whatever the sun does), and get contour lines every `relief` metres of height, so you can see where a
+// rise starts, how steep it is (lines bunch up) and where it levels off. Flat ground stays clean.
+export function addDetail(material, { map = gritTexture, fine = 0.5, coarse = 0.03, strength = 0.35, coarseStrength = 0.25, stripes = 0, flat = false, relief = 0 } = {}) {
   material.onBeforeCompile = sh => {
     sh.uniforms.detailMap = { value: map };
     sh.uniforms.blotchMap = { value: blotchTexture };
     // Toned down to two thirds: the toybox look wants clean colour more than grit
     sh.uniforms.detailK = { value: new THREE.Vector4(fine, coarse, strength * 0.66, coarseStrength * 0.66) };
     sh.uniforms.detailStripes = { value: stripes };
+    sh.uniforms.detailRelief = { value: relief };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vDetailPos;\nvarying vec3 vDetailN;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -116,6 +120,7 @@ export function addDetail(material, { map = gritTexture, fine = 0.5, coarse = 0.
         uniform sampler2D blotchMap;
         uniform vec4 detailK;
         uniform float detailStripes;
+        uniform float detailRelief;
         float triplanar(sampler2D m, vec3 p, vec3 w) {
           ${flat ? 'return texture2D(m, p.xz).r;' : 'return texture2D(m, p.zy).r * w.x + texture2D(m, p.xz).r * w.y + texture2D(m, p.xy).r * w.z;'}
         }`)
@@ -129,9 +134,20 @@ export function addDetail(material, { map = gritTexture, fine = 0.5, coarse = 0.
           float k = 1.0 + (f - 0.5) * detailK.z * 2.0 + (c - 0.5) * detailK.w * 2.0;
           if (detailStripes > 0.0) k *= 1.0 + 0.045 * sign(sin(vDetailPos.x * 3.14159 / detailStripes));
           diffuseColor.rgb *= k;
+          if (detailRelief > 0.0) {
+            vec3 n = normalize(vDetailN);
+            float slope = 1.0 - n.y;                                   // 0 flat, 0.13 at 30°
+            float on = smoothstep(0.002, 0.012, slope);                // ignore tiny bumps
+            vec3 L = normalize(vec3(-0.55, 0.62, -0.56));
+            diffuseColor.rgb *= 1.0 + clamp((dot(n, L) - n.y * L.y) * 1.6, -0.35, 0.35);
+            float h = vDetailPos.y / detailRelief;
+            float d = abs(fract(h + 0.5) - 0.5) / max(fwidth(h), 1e-4);
+            float line = 1.0 - smoothstep(0.6, 1.6, d);
+            diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.25 + 0.08, line * on * 0.85);
+          }
         }`);
   };
-  material.customProgramCacheKey = () => 'detail' + map.uuid + stripes + flat;
+  material.customProgramCacheKey = () => 'detail' + map.uuid + stripes + flat + (relief > 0);
   return material;
 }
 
