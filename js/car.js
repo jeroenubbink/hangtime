@@ -447,10 +447,17 @@ export const LIVERIES = {
   sunset: { name: 'Sunset', c: ['#ff6b5a', '#7a4fd8', '#ffd23a', '#3a2766', '#ffffff'] },
   midnight: { name: 'Midnight', c: ['#2c3a7a', '#ff4f9a', '#5ef0ff', '#151a33', '#5ef0ff'] },
 };
+// House colours for Crunchtime's working cars: not on Hangtime's menu
+export const HOUSE = {
+  police: { name: 'Police', c: ['#f7f9ff', '#2f6fe0', '#e8333a', '#1d2550', '#ffffff'] },
+  taxi: { name: 'Taxi', c: ['#ffd23a', '#2a2f3a', '#ffffff', '#2a2f3a', '#ffffff'] },
+  council: { name: 'Council', c: ['#3cbf4a', '#ff8a1e', '#ffe14a', '#2b4a2f', '#ffffff'] },
+};
+export const liveryOf = k => LIVERIES[k] || HOUSE[k];
 // The palette cells (32×128 px, column and row) the toy models paint each livery colour from
 const LIVERY_CELLS = [[4, 3], [6, 3], [12, 2], [12, 3], [1, 3]];
 // A livery key or a plain colour, as one colour (for sparks, map dots and the like)
-export const paintOf = p => LIVERIES[p]?.c[0] ?? p;
+export const paintOf = p => liveryOf(p)?.c[0] ?? p;
 
 const liveryTextures = new Map();
 function liveryTexture(key) {
@@ -459,7 +466,7 @@ function liveryTexture(key) {
   c.width = c.height = 512;
   const ctx = c.getContext('2d');
   ctx.drawImage(palette, 0, 0);
-  LIVERY_CELLS.forEach(([x, y], i) => { ctx.fillStyle = LIVERIES[key].c[i]; ctx.fillRect(x * 32, y * 128, 32, 128); });
+  LIVERY_CELLS.forEach(([x, y], i) => { ctx.fillStyle = liveryOf(key).c[i]; ctx.fillRect(x * 32, y * 128, 32, 128); });
   const tex = new THREE.CanvasTexture(c);
   tex.flipY = false;
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -531,7 +538,7 @@ function buildKitModel(colour, ghost, file, { len, scale } = {}) {
   const lift = rest - axleY;
   const mat = ghost
     ? new THREE.MeshBasicMaterial({ color: '#9fe3ff', transparent: true, opacity: 0.32, depthWrite: false })
-    : new THREE.MeshStandardMaterial({ map: LIVERIES[colour] ? liveryTexture(colour) : colour ? paintedTexture(file, colour, body.geometry) : body.material.map, roughness: 0.38, metalness: 0.15, envMapIntensity: 0.9 });
+    : new THREE.MeshStandardMaterial({ map: liveryOf(colour) ? liveryTexture(colour) : colour ? paintedTexture(file, colour, body.geometry) : body.material.map, roughness: 0.38, metalness: 0.15, envMapIntensity: 0.9 });
   body.updateMatrixWorld(true);
   src.updateMatrixWorld(true);
   const bodyMeshes = [];

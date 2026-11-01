@@ -27,8 +27,8 @@ textures are generated in code.
 
 ## Crunchtime
 
-- **Eight cars, eight drivers.** Pick from eight (plus two to unlock) Kenney kit cars, from a 1-tonne hot hatch to
-  a 1.8-tonne van; the other seven are driven by computer opponents with their own temper: some go for the weak,
+- **Eight cars, eight drivers.** Pick from eight (plus two to unlock) toy cars, from a 1-tonne hot hatch to
+  a 1.8-tonne van, each in any of the twelve liveries (the taxi, police car and garbage truck also have their own); the other seven are driven by computer opponents with their own temper: some go for the weak,
   some hold grudges, some ram in reverse to spare their engine.
 - **Damage where you hit.** Bodywork dents where it's struck. The nose is built to take hits, the doors aren't, so a
   T-bone hurts far more than a head-on. A battered nose loses engine power; hits near a wheel knock it off (the car
@@ -162,7 +162,7 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
 - `js/audio.js`: synthesised engine, tyre and crash sounds (WebAudio)
 - `js/textures.js`: procedural textures (asphalt grit, grass, blotches), applied in world space, and the water shader
 - `js/scenery.js`: instanced trees, bushes, flowers, rocks and tyre walls, the grandstand, and the rounded hills
-- `assets/cars/toy-*.glb`, `assets/scenery/nature.glb`: Hangtime's toy cars and the round trees, bushes and flowers,
+- `assets/cars/toy-*.glb`, `assets/scenery/nature.glb`: both games' toy cars and the round trees, bushes and flowers,
   modelled in Blender (source: `assets/src/toys.blend`)
 - `js/toon.js`: the shared toybox look for both games: two-tone shading, rim light and a colour boost, patched into three.js's shaders
 - `js/derby/`: Crunchtime
@@ -185,4 +185,4 @@ map. Phones and tablets start at 1.5× pixel density.
 
 ## Credits
 
-Car, debris and cone models: [Car Kit](https://kenney.nl/assets/car-kit) by Kenney, CC0 (see `assets/cars/LICENSE.txt`).
+Debris and cone models: [Car Kit](https://kenney.nl/assets/car-kit) by Kenney, CC0 (see `assets/cars/LICENSE.txt`).

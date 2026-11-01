@@ -1,33 +1,34 @@
-// Crunchtime's cars and drivers. Each car is a Kenney kit model with its own weight, engine, grip and
+// Crunchtime's cars and drivers. Each car is a toy model (assets/cars/toy-*.glb, made in Blender) with its own weight, engine, grip and
 // armour. They trade off along one line: light cars are quick and turn sharp but fold up when hit; heavy
 // ones shrug off hits and shove others around but are slow to get going. Balanced by AI-only tournaments
 // (see `simulate` in main.js), where every car wins about as often as any other.
 //
 // power: drive force (N); top: top speed (m/s); grip: tyre friction; mass (kg); armour: damage taken ×;
-// hp: hit points; size: [width, length] of the collision shape (m); scale: kit model scale.
+// hp: hit points; size: [width, length] of the collision shape (m), which the model is scaled to;
+// livery: the colours it wears unless you pick others.
 
 export const ROSTER = {
-  zipper: { name: 'Zipper', file: 'hatchback-sports', blurb: 'Hot hatch. Darts in, darts out. Folds like paper.',
-    mass: 1000, power: 12700, top: 47, grip: 1.86, armour: 1.02, hp: 100, size: [1.9, 4.5], scale: 1.62, paint: '#ff7a1a', tone: 1.25 },
-  comet: { name: 'Comet', file: 'sedan-sports', blurb: 'Sports coupe with a wing. Quick and keen to turn.',
-    mass: 1120, power: 13100, top: 45, grip: 1.82, armour: 1.0, hp: 100, size: [1.9, 4.3], scale: 1.7, paint: '#e8352b', tone: 1.15 },
-  cabbie: { name: 'Cabbie', file: 'taxi', blurb: 'Seen it all. Takes a knock, gives one back.',
-    mass: 1250, power: 12700, top: 43, grip: 1.78, armour: 1.0, hp: 102, size: [2.0, 4.6], scale: 1.68, paint: null, tone: 1 },
-  sedan: { name: 'Sunday', file: 'sedan', blurb: 'Family saloon. Steady, honest, underestimated.',
-    mass: 1300, power: 13500, top: 42, grip: 1.76, armour: 0.97, hp: 106, size: [2.0, 4.3], scale: 1.7, paint: '#2f7fe0', tone: 0.95 },
-  police: { name: 'Interceptor', file: 'police', blurb: 'Pursuit special. Big engine, push bar up front.',
-    mass: 1360, power: 14700, top: 46, grip: 1.74, armour: 0.98, hp: 100, size: [2.0, 4.8], scale: 1.66, paint: null, tone: 0.9 },
-  truck: { name: 'Mule', file: 'truck', blurb: 'Pickup with a heavy nose. Hits hard going forward.',
-    mass: 1550, power: 14400, top: 41, grip: 1.68, armour: 0.95, hp: 106, size: [2.1, 5.0], scale: 1.7, paint: '#22b35a', tone: 0.8 },
-  suv: { name: 'Boulder', file: 'suv', blurb: 'Tall, heavy four-by-four. Hard to stop, slow to turn.',
-    mass: 1650, power: 15000, top: 40, grip: 1.64, armour: 0.95, hp: 104, size: [2.1, 4.6], scale: 1.72, paint: '#ffcf2e', tone: 0.75 },
-  van: { name: 'Brick', file: 'van', blurb: 'A delivery van that delivers dents. Heaviest of the lot.',
-    mass: 1800, power: 15600, top: 38, grip: 1.58, armour: 0.93, hp: 116, size: [2.1, 4.8], scale: 1.74, paint: '#f2f2f2', tone: 0.68 },
+  zipper: { name: 'Zipper', file: 'toy-zipper', blurb: 'Hot hatch. Darts in, darts out. Folds like paper.',
+    mass: 1000, power: 12700, top: 47, grip: 1.86, armour: 1.02, hp: 100, size: [1.9, 4.5], livery: 'tangerine', tone: 1.25 },
+  comet: { name: 'Comet', file: 'toy-comet', blurb: 'Sports coupe with a wing. Quick and keen to turn.',
+    mass: 1120, power: 13100, top: 45, grip: 1.82, armour: 1.0, hp: 100, size: [1.9, 4.3], livery: 'cherry', tone: 1.15 },
+  cabbie: { name: 'Cabbie', file: 'toy-cabbie', blurb: 'Seen it all. Takes a knock, gives one back.',
+    mass: 1250, power: 12700, top: 43, grip: 1.78, armour: 1.0, hp: 102, size: [2.0, 4.6], livery: 'taxi', tone: 1 },
+  sedan: { name: 'Sunday', file: 'toy-sunday', blurb: 'Family saloon. Steady, honest, underestimated.',
+    mass: 1300, power: 13500, top: 42, grip: 1.76, armour: 0.97, hp: 106, size: [2.0, 4.3], livery: 'lagoon', tone: 0.95 },
+  police: { name: 'Interceptor', file: 'toy-interceptor', blurb: 'Pursuit special. Big engine, push bar up front.',
+    mass: 1360, power: 14700, top: 46, grip: 1.74, armour: 0.98, hp: 100, size: [2.0, 4.8], livery: 'police', tone: 0.9 },
+  truck: { name: 'Mule', file: 'toy-mule', blurb: 'Pickup with a heavy nose. Hits hard going forward.',
+    mass: 1550, power: 14400, top: 41, grip: 1.68, armour: 0.95, hp: 106, size: [2.1, 5.0], livery: 'leafy', tone: 0.8 },
+  suv: { name: 'Boulder', file: 'toy-brute', blurb: 'Tall, heavy four-by-four. Hard to stop, slow to turn.',
+    mass: 1650, power: 15000, top: 40, grip: 1.64, armour: 0.95, hp: 104, size: [2.1, 4.6], livery: 'lemon', tone: 0.75 },
+  van: { name: 'Brick', file: 'toy-brick', blurb: 'A delivery van that delivers dents. Heaviest of the lot.',
+    mass: 1800, power: 15600, top: 38, grip: 1.58, armour: 0.93, hp: 116, size: [2.1, 4.8], livery: 'snow', tone: 0.68 },
   // Unlockables
-  dumpster: { name: 'Dumpster', file: 'garbage-truck', blurb: 'Garbage truck. Unstoppable, unhurried. (Win a championship.)',
-    mass: 2300, power: 18800, top: 35, grip: 1.52, armour: 0.9, hp: 116, size: [2.3, 5.6], scale: 1.6, paint: null, tone: 0.55, locked: 'cup' },
-  proto: { name: 'Prototype', file: 'race-future', blurb: 'Track car from the future. Blink and it\'s gone. (Win with 4 different cars.)',
-    mass: 950, power: 12800, top: 50, grip: 2.0, armour: 1.08, hp: 94, size: [1.8, 4.4], scale: 1.65, paint: '#9b4dff', tone: 1.4, locked: 'four' },
+  dumpster: { name: 'Dumpster', file: 'toy-dumpster', blurb: 'Garbage truck. Unstoppable, unhurried. (Win a championship.)',
+    mass: 2300, power: 18800, top: 35, grip: 1.52, armour: 0.9, hp: 116, size: [2.3, 5.6], livery: 'council', tone: 0.55, locked: 'cup' },
+  proto: { name: 'Prototype', file: 'toy-hopper', blurb: 'Track car from the future. Blink and it\'s gone. (Win with 4 different cars.)',
+    mass: 950, power: 12800, top: 50, grip: 2.0, armour: 1.08, hp: 94, size: [1.8, 4.4], livery: 'grape', tone: 1.4, locked: 'four' },
 };
 export const CORE = ['zipper', 'comet', 'cabbie', 'sedan', 'police', 'truck', 'suv', 'van'];
 
@@ -43,8 +44,6 @@ export const DRIVERS = [
   { name: 'Crash', aggro: 1.35, skill: 0.65, caution: 0.1, grudge: 1.0, reverse: 0 },
   { name: 'Duchess', aggro: 0.95, skill: 0.85, caution: 0.5, grudge: 1.3, reverse: 0.3 },
 ];
-
-export const PAINTS = ['#e8352b', '#ff7a1a', '#ffcf2e', '#22b35a', '#2f7fe0', '#9b4dff', '#f2f2f2', '#2a2d33'];
 
 // Stat bars for the garage, 0..1
 export function statBars(c) {

@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { TILE, HALF, GRID, DIRS, PIECE_TYPES, sidesOf, pieceParts, trackMaterial, collisionMaterial, onRoadLocal } from './pieces.js';
 import { addDetail, grassTexture } from './textures.js';
-import { Scatter, grandstand, mountainGeometry, merge } from './scenery.js';
+import { Scatter, grandstand, mountainGeometry, merge, puffyClouds } from './scenery.js';
 
 export const emptyGrid = () => Array.from({ length: GRID }, () => Array(GRID).fill(null));
 
@@ -413,23 +413,8 @@ export class World {
       g.add(m);
     }
     // Clouds
-    // Clouds: round puffs, a big one in the middle and smaller ones either side, on a flat base
-    const cloudMat = this.cloudMat = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#c6d6f0' });
-    const puff = new THREE.IcosahedronGeometry(1, 2);
-    for (let i = 0; i < 18; i++) {
-      const c = new THREE.Group();
-      const n = 4 + Math.floor(rand() * 3);
-      for (let k = 0; k < n; k++) {
-        const t = k / (n - 1) - 0.5, r = (14 - Math.abs(t) * 14) * (0.8 + rand() * 0.4);
-        const b = new THREE.Mesh(puff, cloudMat);
-        b.position.set(t * 52, r * 0.35, (rand() - 0.5) * 10);
-        b.scale.set(r, r * 0.8, r);
-        c.add(b);
-      }
-      const a = rand() * Math.PI * 2, d = 200 + rand() * 500;
-      c.position.set(Math.cos(a) * d, 130 + rand() * 80, Math.sin(a) * d);
-      g.add(c);
-    }
+    this.cloudMat = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#c6d6f0' });
+    g.add(puffyClouds(rand, this.cloudMat));
   }
 
   // Time-of-day look: lamp strength (0 by day) and cloud tint.

@@ -3,7 +3,7 @@
 // stands, scrap, floodlights or a city, built from merged and instanced primitives.
 import * as THREE from 'three';
 import { addDetail, grassTexture } from '../textures.js';
-import { merge, Scatter, grandstand, mountainGeometry } from '../scenery.js';
+import { merge, Scatter, grandstand, mountainGeometry, puffyClouds } from '../scenery.js';
 
 function rng(seed) {
   return () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -175,7 +175,7 @@ export class Arena {
     this.groundColour = (x, z, h) => {
       const r = Math.hypot(x, z);
       const ring = Math.abs(Math.sin(r * 0.9)) > 0.93 ? 0.88 : 1;   // worn rings where cars circle
-      return shade(r > 42 ? '#a77c52' : r < 12 ? '#b8905e' : '#b0835a', ring * (0.94 + 0.06 * Math.sin(x * 0.2 + z * 0.13)));
+      return shade(r > 42 ? '#d39a62' : r < 12 ? '#e6b77c' : '#dcaa70', ring * (0.94 + 0.06 * Math.sin(x * 0.2 + z * 0.13)));
     };
     this.dressBowl();
   }
@@ -194,9 +194,9 @@ export class Arena {
     this.pads = [[-22, 6], [0, -22], [0, 22], [-40, -4], [42, 20], [42, -24], [-30, 28]];
     this.groundColour = (x, z) => {
       const m = mudK(x, z);
-      if (m > 0) return shade('#5a4430', 0.85 + 0.15 * (1 - m));
+      if (m > 0) return shade('#7a5636', 0.85 + 0.15 * (1 - m));
       const n = Math.sin(x * 0.17) * Math.cos(z * 0.21) + 0.5 * Math.sin((x - z) * 0.4);
-      return shade(n > 0.6 ? '#8a7f70' : '#7d7062', 0.95 + 0.05 * Math.sin(x * 1.3 + z));
+      return shade(n > 0.6 ? '#b3a48c' : '#a8977d', 0.95 + 0.05 * Math.sin(x * 1.3 + z));
     };
     this.dressYard(W, H);
   }
@@ -301,9 +301,9 @@ export class Arena {
     const R = this.def.R, rim = 3.6, rand = this.rand;
     // Concrete wall with a band of tyres in front
     const wall = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.8, R + 0.8, 3.4, 96, 1, true).translate(0, rim + 0.9, 0),
-      addDetail(new THREE.MeshLambertMaterial({ color: '#b8b2a6', side: THREE.DoubleSide }), { fine: 0.6, strength: 0.3 }));
+      addDetail(new THREE.MeshLambertMaterial({ color: '#f2e6cf', side: THREE.DoubleSide }), { fine: 0.6, strength: 0.2 }));
     wall.receiveShadow = true;
-    const cap = new THREE.Mesh(new THREE.RingGeometry(R + 0.8, R + 1.6, 96).rotateX(-Math.PI / 2).translate(0, rim + 2.6, 0), new THREE.MeshLambertMaterial({ color: '#cfc9bc' }));
+    const cap = new THREE.Mesh(new THREE.RingGeometry(R + 0.8, R + 1.6, 96).rotateX(-Math.PI / 2).translate(0, rim + 2.6, 0), new THREE.MeshLambertMaterial({ color: '#ff5a5f' }));
     this.group.add(wall, cap);
     const tyres = new Scatter(5);
     const n = Math.round(2 * Math.PI * R / 2.3);
@@ -324,7 +324,7 @@ export class Arena {
       this.group.add(s);
     }
     this.floodlights([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(k => k % 2 === 0).map(k => { const a = k / 10 * Math.PI * 2; return [Math.sin(a) * (R + 9), Math.cos(a) * (R + 9)]; }), 24, () => rim);
-    this.outskirts(R + 1, rim, '#6d8a3e');
+    this.outskirts(R + 1, rim, '#6cc04a');
     void rand;
   }
 
@@ -333,7 +333,7 @@ export class Arena {
     // Walls of crushed cars round the edge, three high
     const cubes = new THREE.InstancedMesh(merge([[new THREE.BoxGeometry(2.4, 1.0, 1.5), (y, f) => shade('#ffffff', f < 4 ? 0.85 : f < 8 ? 1 : 0.75)]]), detailVC(), 1200);
     const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), c = new THREE.Color();
-    const rust = ['#8b4a2f', '#4e6a8a', '#a8a39a', '#6b7d3a', '#9b3328', '#c9a227', '#5a5f66', '#2f5e8a', '#7a3b5c'];
+    const rust = ['#e8333a', '#2f6fe0', '#ffd23a', '#3cbf4a', '#ff8cc6', '#20c4c8', '#8e5bea', '#ff8a1e', '#f7f9ff'];   // squashed toys
     let i = 0;
     const perim = [];
     for (let t = 0; t < 1; t += 0.0015) {
@@ -352,7 +352,7 @@ export class Arena {
         Q.setFromEuler(new THREE.Euler((rand() - 0.5) * 0.12, yaw + (rand() - 0.5) * 0.25, (rand() - 0.5) * 0.1));
         M.compose(new THREE.Vector3(x + _n.x * (1 + rand() * 0.3), 0.5 + k * 1.0, z + _n.z * (1 + rand() * 0.3)), Q, new THREE.Vector3(1, 0.85 + rand() * 0.3, 1));
         cubes.setMatrixAt(i, M);
-        cubes.setColorAt(i++, c.set(rust[Math.floor(rand() * rust.length)]).multiplyScalar(0.75 + rand() * 0.3));
+        cubes.setColorAt(i++, c.set(rust[Math.floor(rand() * rust.length)]).multiplyScalar(0.8 + rand() * 0.2));
       }
     }
     cubes.count = i;
@@ -361,7 +361,7 @@ export class Arena {
     this.group.add(cubes);
     // Shipping containers and scrap heaps outside, a crane
     const parts = [];
-    const cont = ['#b5442e', '#2e6fb5', '#3a8a4a', '#c99a2e', '#7d8590'];
+    const cont = ['#e8333a', '#2f6fe0', '#3cbf4a', '#ffd23a', '#8e5bea', '#ff8a1e'];
     for (let k = 0; k < 14; k++) {
       const a = rand() * Math.PI * 2, x = Math.sin(a) * (W / 2 + 14 + rand() * 30), z = Math.cos(a) * (H / 2 + 14 + rand() * 30);
       const stack = 1 + Math.floor(rand() * 3), col = cont[k % cont.length], rot = rand() * Math.PI;
@@ -372,12 +372,12 @@ export class Arena {
       const a = rand() * Math.PI * 2, x = Math.sin(a) * (W / 2 + 10 + rand() * 40), z = Math.cos(a) * (H / 2 + 10 + rand() * 40);
       const g = new THREE.DodecahedronGeometry(4 + rand() * 4, 1).scale(1.4, 0.55, 1.1);
       g.translate(x, 0, z);
-      parts.push([g, (y, f) => shade(rust[f % rust.length], 0.7)]);
+      parts.push([g, (y, f) => shade(rust[f % rust.length], 0.85)]);
     }
     // Crane: tower, jib, counterweight, hook
     const cx = -W / 2 - 16, cz = -H / 2 - 6;
-    parts.push([new THREE.BoxGeometry(2, 34, 2).translate(cx, 17, cz), '#e0b020']);
-    parts.push([new THREE.BoxGeometry(44, 1.6, 1.6).translate(cx + 16, 34, cz), '#e0b020']);
+    parts.push([new THREE.BoxGeometry(2, 34, 2).translate(cx, 17, cz), '#ffd23a']);
+    parts.push([new THREE.BoxGeometry(44, 1.6, 1.6).translate(cx + 16, 34, cz), '#ffd23a']);
     parts.push([new THREE.BoxGeometry(5, 3, 3).translate(cx - 5, 32.5, cz), '#5a5f66']);
     parts.push([new THREE.BoxGeometry(3, 2.2, 2.2).translate(cx + 1.5, 31.6, cz), '#2a2d33']);
     parts.push([new THREE.CylinderGeometry(0.06, 0.06, 18).translate(cx + 30, 25, cz), '#2a2d33']);
@@ -387,7 +387,7 @@ export class Arena {
     this.group.add(m);
     this.group.add(adBoards(0, 0, 0, this));
     this.floodlights([[W / 2 + 4, H / 2 + 4], [-W / 2 - 4, H / 2 + 4], [W / 2 + 4, -H / 2 - 4], [-W / 2 - 4, -H / 2 - 4]], 22, () => 0);
-    this.outskirts(Math.hypot(W, H) / 2 + 1, -0.15, '#7a7a52');
+    this.outskirts(Math.hypot(W, H) / 2 + 1, -0.15, '#8cc456');
   }
 
   dressDeck() {
@@ -445,7 +445,7 @@ export class Arena {
     }
     towers.computeBoundingSphere();
     const streets = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400).rotateX(-Math.PI / 2).translate(0, -300, 0), new THREE.MeshLambertMaterial({ color: '#6a7088' }));
-    this.group.add(towers, streets);
+    this.group.add(towers, streets, this.clouds());
   }
 
   // Grass, trees and mountains beyond the walls (from radius r0 out)
@@ -459,6 +459,10 @@ export class Arena {
       const a = rand() * Math.PI * 2, d = r0 + 26 + rand() * 160;
       sc.add(rand() < 0.5 ? 'pine' : 'round', Math.sin(a) * d, y, Math.cos(a) * d, 1 + rand() * 1.1);
     }
+    for (let k = 0; k < 220; k++) {
+      const a = rand() * Math.PI * 2, d = r0 + 14 + rand() * 120, t = rand();
+      sc.add(t < 0.45 ? 'bush' : t < 0.85 ? 'flowers' : 'rock', Math.sin(a) * d, y, Math.cos(a) * d, t < 0.85 ? 1.2 + rand() * 0.8 : 0.8 + rand());
+    }
     for (const m of sc.build()) { m.castShadow = false; this.group.add(m); }
     const geos = [];
     for (let k = 0; k < 16; k++) {
@@ -466,18 +470,29 @@ export class Arena {
       geos.push([mountainGeometry(120 + rand() * 90, 90 + rand() * 120, k + 3).translate(Math.sin(a) * d, y - 2, Math.cos(a) * d), null]);
     }
     const mm = new THREE.Mesh(merge(geos), new THREE.MeshLambertMaterial({ vertexColors: true }));
-    this.group.add(mm);
+    this.group.add(mm, this.clouds());
+  }
+
+  // Puffy clouds, grey-blue after dark
+  clouds() {
+    const mat = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#c6d6f0' });
+    this.lit.push([mat, '#3a4466', '#ffffff', 'mix'], [mat, '#0c1226', '#c6d6f0', 'mixEmissive']);
+    return puffyClouds(this.rand, mat);
   }
 
   // Lamps for the time of day (0 = daylight, 1 = night)
   setLighting(level) {
     for (const [mat, on, off, slot] of this.lit) {
       if (slot === 'emissive') { mat.emissive.set(level > 0 ? on : off); mat.emissiveIntensity = level; }
+      // Clouds fade towards their night colour as the light goes (sunset is in between)
+      else if (slot === 'mix') mat.color.set(off).lerp(_c.set(on), level ** 2);
+      else if (slot === 'mixEmissive') mat.emissive.set(off).lerp(_c.set(on), level ** 2);
       else mat.color.set(level > 0 ? on : off);
     }
   }
 }
 
+const _c = new THREE.Color();
 const _p = new THREE.Vector3(), _r = new THREE.Vector3(), _pv = new THREE.Vector3(), _t1 = new THREE.Vector3(), _t2 = new THREE.Vector3(),
   _J = new THREE.Vector3(), _vt = new THREE.Vector3();
 

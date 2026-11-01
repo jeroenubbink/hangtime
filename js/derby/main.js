@@ -2,7 +2,7 @@
 // and tear each other apart. Events: Last Car Standing, Brawl (timed, for points), Wrecking Spree (the clock
 // only runs on carnage) and a three-round Championship.
 import * as THREE from 'three';
-import { loadCarKits, kitScene, WHEELS, WHEEL_RADIUS, WHEEL_REST } from '../car.js';
+import { loadCarKits, kitScene, LIVERIES, HOUSE, liveryOf, paintOf as colourOf, WHEELS, WHEEL_RADIUS, WHEEL_REST } from '../car.js';
 import { Sound } from '../audio.js';
 import * as store from '../store.js';
 import { createStage, TIMES } from './stage.js';
@@ -10,7 +10,7 @@ import { Arena, ARENAS } from './arena.js';
 import { Puffs, Debris } from './fx.js';
 import { Vehicle, contact, damageFrom } from './vehicle.js';
 import { DerbyDriver } from './ai.js';
-import { ROSTER, CORE, DRIVERS, PAINTS, statBars } from './roster.js';
+import { ROSTER, CORE, DRIVERS, statBars } from './roster.js';
 import { Pickups, Mines, Props, ITEMS, drawIcon } from './pickups.js';
 import { loadSceneryKit } from '../scenery.js';
 
@@ -40,8 +40,6 @@ const SPREE_START = 60;
 const AFTERTOUCH = 2.5;              // seconds you can steer your own wreck
 const _af = new THREE.Vector3();
 const SHOWROOM = { bowl: [0, 0], yard: [-30, -22], deck: [16, 8] };
-// Livery cars keep their own colours (repainting would recolour the light bar)
-const LIVERY = { police: '#9fb4d0', cabbie: '#ffcf2e', dumpster: '#3a8a4a' };
 
 // ---------- Stage ----------
 const stage = createStage($('view'));
@@ -65,7 +63,8 @@ const isLocked = key => {
   if (l === 'four') return Object.values(records.wins).filter(n => n > 0).length < 4;
   return false;
 };
-const paintOf = key => (LIVERY[key] && !settings.paints[key] ? null : settings.paints[key] || ROSTER[key].paint || PAINTS[0]);
+// The livery a car wears: the one you picked for it, or its own
+const paintOf = key => (liveryOf(settings.paints[key]) ? settings.paints[key] : ROSTER[key].livery);
 
 // ---------- World state ----------
 let arena = null, pickups = null, mines = null, props = null, debris = null;
@@ -265,11 +264,12 @@ function lineup() {
   const cars = CORE.filter(k => k !== settings.car);
   if (cars.length > 7) cars.splice(Math.floor(Math.random() * cars.length), 1);
   const drivers = shuffle(DRIVERS.slice());
+  // Each opponent in its own livery, none the same as yours (house colours stay put)
   const used = new Set([paintOf(settings.car)]);
   return cars.map((car, i) => {
-    let paint = LIVERY[car] ? null : ROSTER[car].paint;
-    if (paint && used.has(paint)) paint = PAINTS.find(p => !used.has(p));
-    if (paint) used.add(paint);
+    let paint = ROSTER[car].livery;
+    if (used.has(paint) && !HOUSE[paint]) paint = Object.keys(LIVERIES).find(p => !used.has(p));
+    used.add(paint);
     return { car, driver: drivers[i], paint };
   });
 }
@@ -282,13 +282,13 @@ function startMatch(type, arenaKey, { sim = false } = {}) {
   const ups = lineup();
   if (sim) {
     // Balancing runs: all eight core cars, all computer-driven
-    vehicles = CORE.map((car, i) => new Vehicle(arena, scene, i, ROSTER[car], ROSTER[car].paint, { driver: new DerbyDriver(DRIVERS[i % 7]), name: ROSTER[car].name }));
+    vehicles = CORE.map((car, i) => new Vehicle(arena, scene, i, ROSTER[car], ROSTER[car].livery, { driver: new DerbyDriver(DRIVERS[i % 7]), name: ROSTER[car].name }));
   } else {
     const me = new Vehicle(arena, scene, 0, ROSTER[settings.car], paintOf(settings.car), { player: true, name: 'You' });
     vehicles = [me, ...ups.map((u, i) => new Vehicle(arena, scene, i + 1, ROSTER[u.car], u.paint, { driver: new DerbyDriver(u.driver), name: u.driver.name }))];
   }
   vehicles.forEach((v, i) => {
-    v.colour = v.paint || LIVERY[Object.keys(ROSTER).find(k => ROSTER[k] === v.def)] || '#cccccc';
+    v.colour = colourOf(v.paint);
     v.respawn(spawns[i]);
     v.setLights(t.lamps);
   });
@@ -1407,18 +1407,22 @@ function renderMenu() {
   $('car-stats').innerHTML = statBars(def).map(([n, f]) => `<span>${n}</span><div class="bar"><i style="width:${Math.round(f * 100)}%"></i></div>`).join('');
   const pp = $('paints');
   pp.innerHTML = '';
-  if (settings.car === 'police') pp.innerHTML = '<span class="note">Police livery</span>';
-  else {
-    const opts = LIVERY[settings.car] ? [null, ...PAINTS] : PAINTS;
-    for (const c of opts) {
-      const b = document.createElement('button');
-      b.className = 'swatch' + (paintOf(settings.car) === c ? ' active' : '');
-      b.style.background = c || `conic-gradient(${LIVERY[settings.car]} 0 50%, #222 0)`;
-      b.title = c ? c : 'Original';
-      b.onclick = () => { settings.paints[settings.car] = c; saveSettings(); buildShowroom(); renderMenu(); };
-      pp.appendChild(b);
-    }
+  const own = ROSTER[settings.car].livery, opts = HOUSE[own] ? [own, ...Object.keys(LIVERIES)] : Object.keys(LIVERIES);
+  for (const k of opts) {
+    const { name, c } = liveryOf(k);
+    const b = document.createElement('button');
+    b.className = 'swatch' + (paintOf(settings.car) === k ? ' active' : '');
+    b.style.background = `linear-gradient(135deg, ${c[0]} 0 52%, ${c[2]} 52% 60%, ${c[1]} 60%)`;
+    b.title = name;
+    b.setAttribute('aria-label', name);
+    b.onclick = () => { settings.paints[settings.car] = k; saveSettings(); buildShowroom(); renderMenu(); };
+    pp.appendChild(b);
   }
+  const label = document.createElement('span');
+  label.className = 'livery-name';
+  label.textContent = liveryOf(paintOf(settings.car)).name;
+  pp.appendChild(label);
+
   const ar = $('arenas');
   ar.innerHTML = '';
   for (const [k, a] of Object.entries(ARENAS)) {

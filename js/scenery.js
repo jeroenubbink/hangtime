@@ -160,6 +160,28 @@ export function mountainGeometry(r, h, seed) {
   }]]);
 }
 
+// Puffy clouds: round puffs, a big one in the middle and smaller ones either side, on a flat base.
+// `n` clouds between `near` and `far` metres out, at about `y` metres up.
+export function puffyClouds(rand, mat, { n = 18, near = 200, far = 700, y = 130 } = {}) {
+  const g = new THREE.Group();
+  const puff = new THREE.IcosahedronGeometry(1, 2);
+  for (let i = 0; i < n; i++) {
+    const c = new THREE.Group();
+    const parts = 4 + Math.floor(rand() * 3);
+    for (let k = 0; k < parts; k++) {
+      const t = k / (parts - 1) - 0.5, r = (14 - Math.abs(t) * 14) * (0.8 + rand() * 0.4);
+      const b = new THREE.Mesh(puff, mat);
+      b.position.set(t * 52, r * 0.35, (rand() - 0.5) * 10);
+      b.scale.set(r, r * 0.8, r);
+      c.add(b);
+    }
+    const a = rand() * Math.PI * 2, d = near + rand() * (far - near);
+    c.position.set(Math.cos(a) * d, y + rand() * 80, Math.sin(a) * d);
+    g.add(c);
+  }
+  return g;
+}
+
 // A grandstand 22 m long (along x), facing -z: concrete terraces, a crowd, a roof on posts
 export function grandstand(seed) {
   const rand = rng(seed);

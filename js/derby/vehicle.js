@@ -72,7 +72,7 @@ export class Vehicle {
 
   // The kit model, with its bodywork cut into small triangles so that hits crumple it locally
   build() {
-    const model = buildCarModel(this.paint, { file: this.def.file, scale: this.def.scale, lights: this.player });
+    const model = buildCarModel(this.paint, { file: this.def.file, len: this.def.size[1], lights: this.player });
     for (const m of model.userData.bodyMeshes) {
       const key = this.def.file + ':' + m.name;
       if (!fine.has(key)) fine.set(key, subdivide(m.geometry, 0.42));
@@ -173,7 +173,7 @@ export class Vehicle {
     return { mesh: holder, roll, pos: p };
   }
 
-  // Detach a named body part (the Comet's spoiler, the Interceptor's push bar)
+  // Detach a named body part (a spoiler, the grille or the Interceptor's push bar)
   losePart(name) {
     if (this.lostParts.has(name)) return null;
     const m = this.model.userData.bodyMeshes.find(b => b.name === name);
