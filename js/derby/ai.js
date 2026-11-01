@@ -19,6 +19,9 @@ export class DerbyDriver {
     this.useItem = false;
     this.aimErr = 0;
     this.swoop = null;
+    this.turn = 0;         // a three-point turn in progress: seconds of reversing left
+    this.turnSteer = 0;
+    this.turnCool = 0;
   }
 
   // `me`: this Vehicle; `ctx`: { vehicles, arena, pickups, time, sudden }
@@ -56,6 +59,15 @@ export class DerbyDriver {
         }
         if (!this.swoop) this.swoop = { x: tc.pos.x * 0.3, z: tc.pos.z * 0.3, t: 1.5 };
       }
+    }
+    // Mid three-point turn: keep reversing on full lock, commit to it rather than rock back and forth
+    this.turnCool -= dt;
+    if (this.turn > 0) {
+      this.turn -= dt;
+      if (this.turn <= 0) this.turnCool = 1.6;
+      Object.assign(inp, { throttle: 0, brake: 1, steer: this.turnSteer, handbrake: false, boost: false });
+      this.phase = 'threepoint';
+      return inp;
     }
     // Stuck against something: back out, turning the other way
     if (this.backup > 0) {
@@ -114,9 +126,11 @@ export class DerbyDriver {
     let throttle = 1, brake = 0, handbrake = false;
     this.phase = this.swoop ? 'swoop' : this.mode;
     if (reverse) { throttle = 0; brake = 1; steer = -steer; this.phase = 'revram'; }
-    else if (Math.abs(err) > 2.2 && Math.abs(speed) < 6 && edgeAhead > -8) {
-      // Target well behind: three-point turn (reverse with opposite lock)
-      throttle = 0; brake = 1; steer = Math.sign(err);
+    else if (Math.abs(err) > 2.2 && Math.abs(speed) < 6 && edgeAhead > -8 && this.turnCool <= 0 && arena.edge(c.pos.x - fx * 5, c.pos.z - fz * 5) < -2.5) {
+      // Target well behind, no room ahead: three-point turn (reverse with opposite lock), if there's room behind
+      this.turn = 1.1 + Math.random() * 0.4;
+      this.turnSteer = Math.sign(err);
+      throttle = 0; brake = 1; steer = this.turnSteer;
       this.phase = 'threepoint';
     } else if (Math.abs(err) > 1.1 && speed > 14) {
       // Sharp turn at speed: lift and yank the handbrake
@@ -188,6 +202,14 @@ export class DerbyDriver {
     }
     if (me.item === 'shock') return near >= 2 || (near >= 1 && me.hp < me.maxHp * 0.4);
     if (me.item === 'mine') return tail;
+    if (me.item === 'hop') {
+      // Jump onto a target dead ahead (we stay up about 1.5 s, so come down on it), or over trouble on our tail
+      const t = this.target;
+      if (!t || !t.alive || c.grounded === 0) return false;
+      const dx = t.car.pos.x - c.pos.x, dz = t.car.pos.z - c.pos.z, d = Math.hypot(dx, dz);
+      const ahead = (dx * fx + dz * fz) / (d || 1), rel = Math.max(4, c.speed - (t.car.vel.x * fx + t.car.vel.z * fz));
+      return (ahead > 0.96 && Math.abs(d - rel * 1.4) < 3 && c.speed > 6) || (tail && me.hp < me.maxHp * 0.3);
+    }
     return false;
   }
 }

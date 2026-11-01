@@ -42,9 +42,12 @@ textures are generated in code.
   - **Wrecking Spree:** a 60-second clock that only stops for carnage: damage, takedowns and smashed props buy
     time, a wreck costs 15 seconds, and points buy repairs (<kbd>X</kbd>).
   - **Championship:** three rounds across the three arenas, with points for placing.
-- **Pickups:** repair, nitro, shield and spikes (double damage from the nose) work at once; shockwaves and mines wait
-  for <kbd>E</kbd>.
-- **Points** for damage, T-bones, reverse rams, air strikes, spin-outs, wheels knocked off, takedowns, ring-outs,
+- **Pickups:** repair, nitro, shield and spikes (double damage from the nose) work at once; shockwaves, mines (which
+  launch cars a few metres into the air) and hops wait for <kbd>E</kbd>. Hop onto someone and land on their roof for a
+  **roof crush**: big damage, and a car finished that way is flattened.
+- **Arcade hits:** solid hits pop cars up and twist them, wrecks blow up and leap into the air, damage numbers fly out
+  of every hit you deal or take, and big ones freeze the frame for a moment.
+- **Points** for damage, T-bones, roof crushes, reverse rams, air strikes, spin-outs, wheels knocked off, takedowns, ring-outs,
   revenge, double takedowns and smashed cones and barrels, with a combo for keeping it up.
 - **Unlocks:** win a championship for the Dumpster (a garbage truck); win with four different cars for the Prototype.
 - Day, sunset or floodlit night; keyboard, gamepad and touch.
@@ -56,7 +59,7 @@ textures are generated in code.
 | ↑ ↓ ← → or W A S D | Drive (↓ brakes, then reverses) |
 | Space | Handbrake |
 | Shift | Nitro (refills slowly, and faster as you deal damage) |
-| E | Use item (shockwave, mine) |
+| E | Use item (shockwave, mine, hop) |
 | Q (hold) | Look back |
 | R | Flip back over / get unstuck |
 | X | Wrecking Spree: buy a repair |

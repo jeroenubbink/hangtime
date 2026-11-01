@@ -11,6 +11,7 @@ export const ITEMS = {
   ram: { name: 'Spikes', colour: '#ff4a3d', instant: true, note: 'Spikes: double damage, 8 s', secs: 8 },
   shock: { name: 'Shockwave', colour: '#b46bff', note: 'Shockwave ready: E' },
   mine: { name: 'Mine', colour: '#ffa31a', note: 'Mine ready: E' },
+  hop: { name: 'Hop', colour: '#ff5fd2', note: 'Hop ready: E. Land on someone!' },
   time: { name: '+Time', colour: '#ffd23a', instant: true, note: '+10 seconds' },
 };
 
@@ -44,6 +45,13 @@ export function drawIcon(ctx, type, x, y, s) {
     ctx.arc(0, 4, 22, 0, Math.PI * 2); ctx.fill();
     for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; ctx.moveTo(Math.cos(a) * 22, 4 + Math.sin(a) * 22); ctx.lineTo(Math.cos(a) * 34, 4 + Math.sin(a) * 34); }
     ctx.stroke();
+  } else if (type === 'hop') {
+    // A spring with an arrow up
+    ctx.moveTo(-20, 34); ctx.lineTo(20, 34);
+    for (let k = 0; k < 4; k++) ctx.lineTo(k % 2 ? 20 : -20, 26 - k * 9);
+    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(-18, -18); ctx.lineTo(18, -18); ctx.closePath(); ctx.fill();
+    ctx.fillRect(-6, -20, 12, 12);
   } else if (type === 'time') {
     ctx.arc(0, 0, 32, 0, Math.PI * 2); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(0, 0); ctx.lineTo(14, 10); ctx.stroke();

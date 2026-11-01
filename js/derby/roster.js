@@ -22,7 +22,7 @@ export const ROSTER = {
   suv: { name: 'Boulder', file: 'suv', blurb: 'Tall, heavy four-by-four. Hard to stop, slow to turn.',
     mass: 1650, power: 15000, top: 40, grip: 1.64, armour: 0.95, hp: 104, size: [2.1, 4.6], scale: 1.72, paint: '#ffcf2e', tone: 0.75 },
   van: { name: 'Brick', file: 'van', blurb: 'A delivery van that delivers dents. Heaviest of the lot.',
-    mass: 1800, power: 15600, top: 38, grip: 1.58, armour: 0.97, hp: 110, size: [2.1, 4.8], scale: 1.74, paint: '#f2f2f2', tone: 0.68 },
+    mass: 1800, power: 15600, top: 38, grip: 1.58, armour: 0.93, hp: 116, size: [2.1, 4.8], scale: 1.74, paint: '#f2f2f2', tone: 0.68 },
   // Unlockables
   dumpster: { name: 'Dumpster', file: 'garbage-truck', blurb: 'Garbage truck. Unstoppable, unhurried. (Win a championship.)',
     mass: 2300, power: 18800, top: 35, grip: 1.52, armour: 0.9, hp: 116, size: [2.3, 5.6], scale: 1.6, paint: null, tone: 0.55, locked: 'cup' },

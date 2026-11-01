@@ -134,9 +134,10 @@ export class CarPhysics {
     this.grounded = 0;
     for (let i = 0; i < 4; i++) {
       const W = WHEELS[i], ws = this.wheels[i];
-      if (ws.lost) { ws.contact = false; ws.slip = 0; ws.comp = 0; continue; }
+      // A lost wheel leaves the bare hub: lower, slippery and undriven, so the car limps rather than sticks
+      const rad = ws.lost ? RADIUS * 0.4 : RADIUS;
       _mount.copy(W.p).applyQuaternion(q).add(this.pos);
-      const hit = world.raycast(_mount, _down, REST + RADIUS);
+      const hit = world.raycast(_mount, _down, REST + rad);
       if (!hit) {
         ws.comp = Math.max(0, ws.comp - dt * 3);
         ws.contact = false;
@@ -148,7 +149,7 @@ export class CarPhysics {
       ws.contact = true;
       if (hit.object && hit.object.userData.loop) { this.loopRef = hit.object.userData.loop; this.loopTimer = 0.4; }
       if (hit.object && hit.object.userData.cork && this.railCool <= 0 && this.enterRail(hit.object.userData.cork)) return this.railStep(dt, input);
-      const comp = REST + RADIUS - hit.dist;
+      const comp = REST + rad - hit.dist;
       const cv = (comp - ws.comp) / dt;
       ws.comp = comp;
       let fs = (SPRING * comp + DAMP * cv) * K;
@@ -171,13 +172,13 @@ export class CarPhysics {
 
       let lat = -vs * 7000 * K * (input.handbrake && !W.front ? 0.3 : 1);
       let lon = -vf * 15 * K;
-      if (!W.front) lon += driveForce / 2;
+      if (!W.front && !ws.lost) lon += driveForce / 2;
       const bF = brake * (W.front ? 5000 : 3800) * K;
       if (bF > 0) lon -= clamp(vf * 6000 * K, -bF, bF);
       if (input.handbrake && !W.front) lon -= clamp(vf * 6000 * K, -3500 * K, 3500 * K);
 
       const mu = (ws.road ? this.spec.grip * world.surfaceGrip(hit.point.x, hit.point.z) : this.spec.grip / 1.5) * (W.front ? 1 : 1.1) * (world.wet ? 0.94 : 1);
-      const maxF = mu * Math.min(fs, 9000 * K);
+      const maxF = mu * Math.min(fs, 9000 * K) * (ws.lost ? 0.35 : 1);
       const mag = Math.hypot(lat, lon);
       ws.slip = maxF > 0 ? mag / maxF : 0;
       if (mag > maxF && mag > 0) { lat *= maxF / mag; lon *= maxF / mag; }

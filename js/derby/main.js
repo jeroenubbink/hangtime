@@ -81,6 +81,8 @@ function clearWorld() {
   pickups = props = null;
   smoke.clear();
   glow.clear();
+  clearScorches();
+  pops.length = 0;
 }
 
 function loadArena(key) {
@@ -158,7 +160,59 @@ function explosion(p, big = 1) {
   }
   for (let i = 0; i < 24 * big; i++) puff(p, ['#2a2622', '#3a3632', '#1e1c1a'][i % 3], 1.6 + Math.random() * 1.5, 2.5 + Math.random() * 1.5, 2 + Math.random() * 3, 0.7, 2.5);
   sparks(p, 30 * big, 14);
+  // A fireball column, a burst of light, a scorch mark
+  for (let i = 0; i < 18 * big; i++) {
+    glow.emit(p.x + (Math.random() - 0.5), p.y + 0.5, p.z + (Math.random() - 0.5), (Math.random() - 0.5) * 2, 6 + Math.random() * 7, (Math.random() - 0.5) * 2,
+      { life: 0.6 + Math.random() * 0.5, size: 1.6 + Math.random() * 1.6, grow: -0.6, drag: 2.5, colour: i % 2 ? '#ff7a1a' : '#ffd27a', alpha: 0.9 });
+  }
+  // The flash: one big, brief glow (cheaper than a real light, which would cost every pixel every frame)
+  glow.emit(p.x, p.y + 1.2, p.z, 0, 0, 0, { life: 0.18, size: 14 * big, grow: 2, colour: '#ffe0a0', alpha: 0.9 });
+  scorch(p, 4 + 2.5 * big);
 }
+
+// Shattered glass: little glinting bits
+function glassBurst(p, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, u = 2 + Math.random() * 5;
+    glow.emit(p.x, p.y + 0.4, p.z, Math.cos(a) * u, 2 + Math.random() * 4, Math.sin(a) * u,
+      { life: 0.5 + Math.random() * 0.6, size: 0.07 + Math.random() * 0.07, gravity: 15, colour: i % 3 ? '#cfefff' : '#ffffff', alpha: 0.9 });
+  }
+}
+
+// Scorch marks where things blew up
+const scorchTex = (() => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const x = c.getContext('2d'), g = x.createRadialGradient(64, 64, 4, 64, 64, 62);
+  g.addColorStop(0, 'rgba(10,8,6,0.9)'); g.addColorStop(0.55, 'rgba(20,16,12,0.6)'); g.addColorStop(1, 'rgba(20,16,12,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+})();
+const scorchGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+const scorchMat = new THREE.MeshBasicMaterial({ map: scorchTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 });
+const scorches = [];
+function scorch(p, size) {
+  if (G.sim) return;
+  const y = arena.groundHeight(p.x, p.z);
+  if (y < -50 || Math.abs(p.y - y) > 3) return;
+  const m = new THREE.Mesh(scorchGeo, scorchMat);
+  m.position.set(p.x, y + 0.05, p.z);
+  m.scale.setScalar(size);
+  m.rotation.y = Math.random() * 6;
+  const nrm = arena.groundNormal(p.x, p.z);
+  if (nrm) m.quaternion.setFromUnitVectors(_up, nrm).multiply(new THREE.Quaternion().setFromAxisAngle(_up, Math.random() * 6));
+  scene.add(m);
+  scorches.push(m);
+  if (scorches.length > 12) scene.remove(scorches.shift());
+}
+function clearScorches() { for (const m of scorches) scene.remove(m); scorches.length = 0; }
+// Compile its shader up front, so the first explosion doesn't stutter
+renderer.compile(new THREE.Mesh(scorchGeo, scorchMat), camera);
+
+const _up = new THREE.Vector3(0, 1, 0), _kick = new THREE.Vector3();
+
+// Damage numbers that pop out of hits
+const pops = [];
 
 // A shockwave ring that expands from a car
 const ringMat = new THREE.MeshBasicMaterial({ color: '#c79bff', transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
@@ -237,7 +291,7 @@ function startMatch(type, arenaKey, { sim = false } = {}) {
     v.setLights(t.lamps);
   });
   for (let i = 0; i < 90; i++) for (const v of vehicles) v.car.step(DT, HOLD);
-  pickups = new Pickups(scene, arena, type === 'spree' ? ['repair', 'nitro', 'shield', 'ram', 'shock', 'mine', 'time', 'time'] : ['repair', 'nitro', 'shield', 'ram', 'shock', 'mine']);
+  pickups = new Pickups(scene, arena, type === 'spree' ? ['repair', 'nitro', 'shield', 'ram', 'shock', 'mine', 'hop', 'time', 'time'] : ['repair', 'nitro', 'shield', 'ram', 'shock', 'mine', 'hop']);
   props = new Props(scene, arena, sim ? 0 : 26, Math.floor(Math.random() * 1000));
   G.match = { type, arena: arenaKey, time: 0, countdown: sim ? 0 : 3.4, out: [], over: false, sudden: false,
     timeLeft: type === 'brawl' ? EVENTS.brawl.secs : type === 'spree' ? SPREE_START : Infinity,
@@ -281,7 +335,11 @@ function step() {
   aiCtx.time = M.time;
   aiCtx.playerBias = M.type === 'spree' ? 1 + M.time / 90 : 1.1;
   for (const v of vehicles) {
-    if (v.gone || v.halved) continue;
+    if (v.gone || v.halved) {
+      // Fell off or torn in half: nothing to drive, but the respawn clock still runs
+      if (v.respawnT != null && (v.respawnT -= DT) <= 0) respawnVehicle(v);
+      continue;
+    }
     const c = v.car;
     let inp = NONE;
     if (G.state === 'countdown') inp = HOLD;
@@ -291,6 +349,11 @@ function step() {
         inp = v.driver.drive(v, aiCtx, DT);
         if (v.driver.useItem) useItem(v);
         if (v.flipT > 1.6) unflip(v);
+        // Crippled and going nowhere: the marshals call it (real derbies have a no-hit clock too)
+        // (pushing in a scrum counts as trying)
+        if (!v.anchor || c.pos.distanceTo(v.anchor) > 3 || M.time - (v.bumpT ?? -9) < 1) { v.anchor = c.pos.clone(); v.stillT = 0; }
+        else v.stillT += DT;
+        if (v.stillT > 12) { v.stillT = 0; v.anchor = null; kill(v, v.lastHit && M.time - v.lastHit.t < 10 ? v.lastHit.by : null, 'front', 0, 'stalled'); }
       }
     }
     // Nitro: burns while held on the ground; refills slowly, and with damage dealt
@@ -306,6 +369,7 @@ function step() {
     }
     c.wallHit = null;
     c.step(DT, inp);
+    v.vy0 = c.vel.y;     // before car-on-car contact this step: how fast it's coming down
     inp.boost = want;
     if (c.wallHit && v.alive) wallHit(v, c.wallHit);
     v.shield = Math.max(0, v.shield - DT);
@@ -313,7 +377,9 @@ function step() {
     v.invuln = Math.max(0, v.invuln - DT);
     // Upside down or on its side and nearly stopped
     const up = v.up;
-    v.flipT = up.y < 0.35 && Math.abs(c.speed) < 4 && v.alive ? v.flipT + DT : 0;
+    // (on its roof it counts whatever the speed: it can slide about up there for a long time)
+    const flipped = v.alive && (up.y < -0.2 || (up.y < 0.35 && Math.abs(c.speed) < 4));
+    v.flipT = flipped ? v.flipT + DT : Math.max(0, v.flipT - DT * 2);
     if (v.player && v.flipT > 4) unflip(v);
     // Spun round by a hit
     if (v.spinRef) {
@@ -359,7 +425,7 @@ function step() {
 
 // Tips for the first couple of matches
 const TIPS = [[4, 'Hit them in the side: T-bones hurt most'], [16, 'Crates on the glowing pads: repairs, nitro, shields…'],
-  [30, 'Nitro refills as you deal damage'], [46, 'Reversing into them spares your engine'], [62, 'Stuck or upside down? Press R / FLIP']];
+  [30, 'Nitro refills as you deal damage'], [46, 'Reversing into them spares your engine'], [54, 'Pink crates: hop, and land on a roof'], [62, 'Stuck or upside down? Press R / FLIP']];
 function tips() {
   const M = G.match;
   if (G.sim || records.played >= 2 || M.type === 'spree') return;
@@ -397,7 +463,7 @@ function collided(A, B, h) {
   if (!G.sim && h.speed > 2.5) {
     const near = G.follow && h.point.distanceTo(G.follow.car.pos) < 30;
     if (base > 0 || h.speed > 5) {
-      sparks(h.point, Math.min(40, 4 + Math.round(base * 1.2)));
+      sparks(h.point, Math.min(70, 6 + Math.round(base * 2)), 9 + Math.min(10, base * 0.3));
       if (near || base > 15) sound.crunch(Math.min(1, (base + 3) / 30) * (near ? 1 : 0.5));
       if (base > 18) sound.glass();
     }
@@ -406,7 +472,13 @@ function collided(A, B, h) {
   if (G.hitLog && va && vb) G.hitLog.push([+h.speed.toFixed(1), +base.toFixed(1), +(h.j / 1000).toFixed(1)]);
   if (va) va.bumpT = G.match.time;
   if (vb) vb.bumpT = G.match.time;
-  if (base <= 0 || G.state !== 'play') return;
+  if (G.state !== 'play') return;
+  // Coming down on someone's roof (the normal points from B to A)
+  if (va && vb && Math.abs(h.normal.y) > 0.45) {
+    const [L, X] = h.normal.y > 0 ? [va, vb] : [vb, va];
+    if (L.vy0 < -3 && L.car.pos.y > X.car.pos.y + 0.5 && X.alive) { crush(L, X, h); return; }
+  }
+  if (base <= 0) return;
   if (va && vb) {
     // The car that drove into the other takes less of the hit
     const kA = h.sa > h.sb + 1.5 ? 0.7 : h.sb > h.sa + 1.5 ? 1.15 : 1;
@@ -444,7 +516,27 @@ function hitBy(X, Y, base, point, n, zX, zY) {
   hurt(X, Y, base * mult, point, n, { zone: zX, kind });
 }
 
-const BONUS = { AFTERTOUCH: 60, 'T-BONE': 20, 'REVERSE RAM': 30, 'AIR STRIKE': 40, 'HEAD-ON': 10, 'REAR-END': 10, SIDESWIPE: 5 };
+// L landed on X's roof
+function crush(L, X, h) {
+  const M = G.match, fall = -L.vy0;
+  let by = L;
+  if (!L.alive) by = M.time - L.diedAt < AFTERTOUCH ? L : null;
+  const kind = fall > 9 ? 'DEATH FROM ABOVE' : 'ROOF CRUSH';
+  const dmg = (damageFrom(h.j) + 4 + fall * 2.6) * 1.4;
+  hurt(X, by, dmg, h.point, _down, { zone: 'roof', kind });
+  // The lander bounces off; the one underneath is pinned
+  L.car.vel.y = Math.max(L.car.vel.y, 3.5);
+  X.car.vel.x *= 0.55; X.car.vel.z *= 0.55;
+  if (G.sim) return;
+  glassBurst(X.car.pos.clone().setY(X.car.pos.y + 0.6), 34);
+  for (let i = 0; i < 10; i++) puff(X.car.pos, '#9a9288', 1.2, 1.2, 0.8, 0.4, 3);
+  sound.crunch(1); sound.glass(); sound.cheer(0.8);
+  if (X === G.follow || L === G.follow) { G.shake = 1; G.hitstop = 0.14; G.punch = 10; }
+  if (L.player) { G.slowmo = Math.max(G.slowmo, 0.5); callout(kind, 'big'); }
+}
+const _down = new THREE.Vector3(0, -1, 0);
+
+const BONUS = { 'ROOF CRUSH': 80, 'DEATH FROM ABOVE': 140, MEGA: 50, AFTERTOUCH: 60, 'T-BONE': 20, 'REVERSE RAM': 30, 'AIR STRIKE': 40, 'HEAD-ON': 10, 'REAR-END': 10, SIDESWIPE: 5 };
 
 // Damage X by `dmg` at world point `point`, the hit pushing along `n` (into X). `by` gets the credit.
 function hurt(X, by, dmg, point, n, { zone, kind = 'HIT', quiet = false } = {}) {
@@ -457,10 +549,24 @@ function hurt(X, by, dmg, point, n, { zone, kind = 'HIT', quiet = false } = {}) 
   X.hp -= dmg;
   const lp = X.localPoint(point).clone();
   zone = zone || X.zoneOf(lp);
-  X.zones[zone] = Math.min(1.6, X.zones[zone] + dmg / 55);
+  const roof = zone === 'roof';
+  if (roof) for (const k in X.zones) X.zones[k] = Math.min(1.6, X.zones[k] + dmg / 160);
+  else X.zones[zone] = Math.min(1.6, X.zones[zone] + dmg / 55);
   const q = X.car.q.clone().invert();
   const dir = n.clone().applyQuaternion(q);
-  if (!G.sim) X.dent(lp, dir, dmg);
+  if (!G.sim) { if (roof) X.crushRoof(dmg); else X.dent(lp, dir, dmg); }
+  // Arcade knockback: a solid hit pops the car up and twists it
+  if (dmg > 6 && !roof) {
+    const k = Math.min(1, (dmg - 6) / 30);
+    X.car.vel.y = Math.min(X.car.vel.y + 1 + 3 * k, 9);
+    X.car.w.addScaledVector(_kick.crossVectors(_up, n), 2.2 * k);
+  }
+  if (!G.sim) {
+    X.flashT = 0.14;
+    if (dmg > 9) glassBurst(point, Math.min(30, dmg * 0.8));
+    if (by?.player || X.player) pops.push({ p: point.clone(), text: String(Math.round(dmg)), colour: X.player ? '#ff4a3d' : dmg > 25 ? '#ff7a1a' : '#ffd23a', t: 0, size: Math.min(46, 18 + dmg * 0.8) });
+    if (dmg > 12 && (by === G.follow || X === G.follow)) { G.hitstop = Math.max(G.hitstop, Math.min(0.1, dmg * 0.003)); G.punch = Math.max(G.punch || 0, Math.min(9, dmg * 0.25)); }
+  }
   X.car.powerK = clamp(1 - 0.5 * Math.max(0, X.zones.front - 0.5), 0.5, 1);
   const out = n.clone().negate();
   const side = zone === 'left' || zone === 'right';
@@ -477,7 +583,8 @@ function hurt(X, by, dmg, point, n, { zone, kind = 'HIT', quiet = false } = {}) 
   // Loose parts
   if (!G.sim) {
     const vel = X.car.vel.clone().addScaledVector(out, 4 + dmg * 0.15).add(new THREE.Vector3(0, 3 + dmg * 0.1, 0));
-    if (zone === 'rear' && dmg > 9) { const p = X.losePart('spoiler'); if (p) debris.add(p.mesh, p.pos, vel, { radius: 0.2 }); }
+    if (roof) { /* glass and the roof take it; nothing falls off */ }
+    else if (zone === 'rear' && dmg > 9) { const p = X.losePart('spoiler'); if (p) debris.add(p.mesh, p.pos, vel, { radius: 0.2 }); }
     if (zone === 'front' && dmg > 9) { const p = X.losePart('grill'); if (p) debris.add(p.mesh, p.pos, vel, { radius: 0.2 }); }
     if (side && dmg > 11 && !X.lostParts.has('door-' + zone)) { X.lostParts.add('door-' + zone); fling(Math.random() < 0.5 ? 'door' : 'doorWin', X.colour, point, vel); }
     else if (!side && dmg > 13 && !X.lostParts.has('bumper-' + zone)) { X.lostParts.add('bumper-' + zone); fling('bumper', null, point, vel); }
@@ -489,7 +596,9 @@ function hurt(X, by, dmg, point, n, { zone, kind = 'HIT', quiet = false } = {}) 
     by.dealt += dmg;
     by.nitro = Math.min(1, by.nitro + dmg / 220);
     if (by.player && M.type === 'spree') gainTime(dmg * 0.15);
-    award(by, Math.round(dmg * 2) + (BONUS[kind.replace('NITRO ', '')] || 0) + (kind.startsWith('NITRO') ? 15 : 0), kind, point, quiet || dmg < 4);
+    let pts = Math.round(dmg * 2) + (BONUS[kind.replace('NITRO ', '')] || 0) + (kind.startsWith('NITRO') ? 15 : 0);
+    if (dmg > 28 && kind !== 'HIT') { kind = 'MEGA ' + kind; pts += BONUS.MEGA; }
+    award(by, pts, kind, point, quiet || dmg < 4);
   }
   if (X.hp <= 0) kill(X, by, zone, dmg);
 }
@@ -510,13 +619,23 @@ function wallHit(v, w) {
 function kill(X, by, zone, dmg, cause) {
   if (!X.alive) return;
   const M = G.match;
-  const split = cause !== 'ring' && cause !== 'heat' && (((zone === 'left' || zone === 'right') && dmg >= 20) || X.zones.left + X.zones.right >= 2);
+  const split = !cause && (((zone === 'left' || zone === 'right') && dmg >= 20) || X.zones.left + X.zones.right >= 2);
   if (split) {
     const hs = X.split();
     X.halved = true;
     halves.push(...hs);
     while (halves.length > 8) scene.remove(halves.shift().model);
   } else X.wreck();
+  // Burnout-style: a wreck goes up in the air, tumbling
+  if (cause !== 'ring' && !split) {
+    X.car.vel.y += 6.5;
+    X.car.w.add(_kick.set((Math.random() - 0.5) * 5, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 5));
+    if (!G.sim) {
+      const i = Math.floor(Math.random() * 4), w = X.loseWheel(i);
+      if (w) debris.add(w.mesh, w.pos, X.car.vel.clone().add(new THREE.Vector3((Math.random() - 0.5) * 10, 7, (Math.random() - 0.5) * 10)), { radius: 0.42, roll: w.roll, life: 16 });
+      for (let k = 0; k < 3; k++) fling(['plate', 'plateB', 'bumper'][k], X.colour, X.car.pos.clone().setY(X.car.pos.y + 0.8), X.car.vel.clone().add(new THREE.Vector3((Math.random() - 0.5) * 12, 6 + Math.random() * 6, (Math.random() - 0.5) * 12)));
+    }
+  }
   X.diedAt = M.time;
   X.respawnT = M.type === 'brawl' || M.type === 'spree' ? 3.5 : null;
   // In the spree the clock is your life: a wreck costs time, not the run
@@ -528,10 +647,11 @@ function kill(X, by, zone, dmg, cause) {
     sound.cheer(split ? 1 : 0.7);
     if (X === G.follow || by === G.follow) G.shake = 1;
   }
-  const how = cause === 'ring' ? 'ring out' : cause === 'heat' ? 'overheated' : split ? 'torn in half' : zone === 'front' ? 'engine blown' : 'wrecked';
+  const how = zone === 'roof' ? 'flattened' : cause === 'ring' ? 'ring out' : cause === 'heat' ? 'overheated' : cause === 'stalled' ? 'stalled' : split ? 'torn in half' : zone === 'front' ? 'engine blown' : 'wrecked';
+  if (G.tally) G.tally['kill: ' + how] = (G.tally['kill: ' + how] || 0) + 1;
   if (by && by !== X) {
     by.takedowns++;
-    award(by, 250, split ? 'TORN IN HALF' : 'TAKEDOWN', X.car.pos, false, true);
+    award(by, 250, split ? 'TORN IN HALF' : zone === 'roof' ? 'PANCAKED' : 'TAKEDOWN', X.car.pos, false, true);
     if (split) award(by, 150, 'SPLIT BONUS', X.car.pos, true);
     if (by.player && M.lastKiller === X) award(by, 150, 'REVENGE', X.car.pos, false, true);
     const recent = M.kills.filter(k => k.by === by && M.time - k.t < 3);
@@ -589,6 +709,7 @@ function unflip(v) {
 // ---------- Items ----------
 function collect(v, type, pos) {
   const it = ITEMS[type];
+  if (G.tally) G.tally['item: ' + type] = (G.tally['item: ' + type] || 0) + 1;
   if (type === 'repair') {
     v.hp = Math.min(v.maxHp, v.hp + v.maxHp * 0.45);
     for (const k in v.zones) v.zones[k] *= 0.5;
@@ -609,6 +730,7 @@ function collect(v, type, pos) {
 function useItem(v) {
   if (!v.item || !v.alive) return;
   const c = v.car;
+  if (G.tally) G.tally['use: ' + v.item] = (G.tally['use: ' + v.item] || 0) + 1;
   if (v.item === 'shock') {
     for (const o of vehicles) {
       if (o === v || !o.alive) continue;
@@ -621,6 +743,16 @@ function useItem(v) {
       hurt(o, v, 8 + 18 * f, o.car.pos.clone().addScaledVector(dir, -1), dir, { kind: 'SHOCKWAVE' });
     }
     if (!G.sim) { ring(c.pos, ITEMS.shock.colour); ring(c.pos.clone().setY(c.pos.y + 0.6), '#ffffff'); sound.boom(0.5); }
+  } else if (v.item === 'hop') {
+    if (c.grounded === 0 && c.airTime > 0.3) return;   // keep it for when we're down again
+    c.vel.y = Math.max(0, c.vel.y) + 7.5;
+    c.vel.addScaledVector(v.forward, 2.5);
+    c.w.multiplyScalar(0.3);
+    if (!G.sim) {
+      ring(c.pos.clone().setY(c.pos.y - 0.6), ITEMS.hop.colour);
+      for (let i = 0; i < 14; i++) puff(c.pos.clone().setY(c.pos.y - 0.7), '#b8ab98', 1.1, 1.1, 0.6, 0.45, 2.4);
+      sound.thud(6);
+    }
   } else if (v.item === 'mine') {
     const back = c.pos.clone().addScaledVector(v.forward, -(v.len / 2 + 1.4));
     mines.drop(v, back, arena.groundHeight(back.x, back.z));
@@ -634,13 +766,19 @@ function mineBlast(owner, pos) {
     const d = o.car.pos.distanceTo(pos);
     if (d > 6) continue;
     const f = 1 - d / 6;
-    o.car.vel.y += 9 * f;
-    o.car.vel.addScaledVector(o.car.pos.clone().sub(pos).setY(0).normalize(), 6 * f);
-    o.car.w.x += (Math.random() - 0.5) * 6 * f;
-    o.car.w.z += (Math.random() - 0.5) * 6 * f;
+    // Up it goes: a few metres into the air (v² = 2gh), flipping
+    o.car.vel.y = Math.min(11, Math.max(0, o.car.vel.y) + 5 + 4.5 * f);
+    o.car.vel.addScaledVector(o.car.pos.clone().sub(pos).setY(0).normalize(), 5 * f);
+    o.car.w.x += (Math.random() - 0.5) * 7 * f;
+    o.car.w.z += (Math.random() - 0.5) * 7 * f;
     hurt(o, owner === o ? null : owner, 10 + 22 * f, pos.clone().setY(o.car.pos.y - 0.4), new THREE.Vector3(0, 1, 0), { kind: 'MINE' });
   }
-  if (!G.sim) { explosion(pos, 0.7); sound.boom(0.8); }
+  if (!G.sim) {
+    explosion(pos, 0.9);
+    ring(pos, ITEMS.mine.colour);
+    sound.boom(0.9);
+    if (G.follow.car.pos.distanceTo(pos) < 14) G.shake = Math.max(G.shake, 0.8);
+  }
 }
 
 // ---------- Scoring ----------
@@ -653,6 +791,7 @@ function gainTime(s) {
 function award(v, pts, label, pos, quiet = false, big = false) {
   if (!v || !pts) return;
   const M = G.match;
+  if (G.tally) G.tally[label] = (G.tally[label] || 0) + 1;
   if (v.player) {
     if (M.time - M.chain.t < 4) M.chain.n = Math.min(8, M.chain.n + 1); else M.chain.n = 0;
     M.chain.t = M.time;
@@ -973,6 +1112,24 @@ function drawLabels() {
     lctx.fillStyle = f > 0.5 ? '#3ddc84' : f > 0.25 ? '#ffcf2e' : '#ff4a3d'; lctx.fillRect(x - 24, y - 4, 48 * f, 6);
     if (v.driver?.target === me && me?.alive) { lctx.fillStyle = '#ff4a3d'; lctx.fillText('!', x + 32, y + 2); }
   }
+  // Damage numbers: pop in big, drift up, fade
+  lctx.lineJoin = 'round';
+  for (let i = pops.length - 1; i >= 0; i--) {
+    const q = pops[i];
+    q.t += 1 / 60;
+    if (q.t > 1.1) { pops.splice(i, 1); continue; }
+    _pv.copy(q.p); _pv.y += 1 + q.t * 1.6;
+    _pv.project(camera);
+    if (_pv.z > 1) continue;
+    const x = (_pv.x * 0.5 + 0.5) * w, y = (-_pv.y * 0.5 + 0.5) * h;
+    const k = q.t < 0.12 ? 0.6 + q.t / 0.12 * 0.7 : q.t < 0.25 ? 1.3 - (q.t - 0.12) * 2.3 : 1;
+    lctx.globalAlpha = Math.min(1, (1.1 - q.t) * 3);
+    lctx.font = `${Math.round(q.size * k)}px 'Russo One', sans-serif`;
+    lctx.lineWidth = 5; lctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    lctx.strokeText(q.text, x, y);
+    lctx.fillStyle = q.colour;
+    lctx.fillText(q.text, x, y);
+  }
   lctx.globalAlpha = 1;
 }
 
@@ -1035,7 +1192,8 @@ function updateCamera(dt) {
     camera.position.z += (Math.random() - 0.5) * G.shake * 0.6;
   }
   G.shake *= Math.exp(-dt * 6);
-  camera.fov += (stage.fitFov(fov) - camera.fov) * Math.min(1, dt * 6);
+  if (G.punch > 0.05) { fov += G.punch; G.punch *= Math.exp(-dt * 7); }
+  camera.fov += (stage.fitFov(fov) - camera.fov) * Math.min(1, dt * (G.punch > 0.5 ? 20 : 6));
   camera.updateProjectionMatrix();
 }
 
@@ -1070,6 +1228,13 @@ function effects(dt) {
     if (v.gone || v.halved) continue;
     const c = v.car;
     const f = 1 - v.hp / v.maxHp;
+    // A white flash on the car that was just hit
+    const pm = v.model.userData.paint;
+    if (pm && (v.flashT > 0 || v.flashOn)) {
+      v.flashT -= dt;
+      v.flashOn = v.flashT > 0;
+      pm.emissive.setRGB(1, 0.9, 0.8).multiplyScalar(v.flashOn ? Math.min(1, v.flashT * 9) * 0.9 : 0);
+    }
     const engine = _pv.set(0, 0.5, -v.len / 2 + 0.7).applyQuaternion(c.q).add(c.pos);
     if (!v.alive) {
       const age = G.match.time - v.diedAt;
@@ -1325,6 +1490,7 @@ function frame(now) {
   // Time: slow motion after the player's takedowns, a short freeze on big hits, fast forward when spectating
   let scale = 1;
   if (G.slowmo > 0) { G.slowmo -= raw; scale = 0.3; }
+  if (G.hitstop > 0) { G.hitstop -= raw; scale = 0.04; }
   if (G.ff) scale = 3;
   if (G.state === 'countdown') {
     const before = Math.ceil(G.match.countdown);
@@ -1352,7 +1518,7 @@ function frame(now) {
   const me = vehicles[0], fc = G.follow.car;
   if (G.state !== 'over') {
     sound.engine(me.alive ? me.car.rpm * (me.def.tone || 1) : 0, playerInput.throttle, me.alive);
-    const slip = me.alive ? Math.max(...me.car.wheels.map(w => (w.contact && w.slip > 1 ? Math.min(2, w.slip) - 1 : 0))) : 0;
+    const slip = me.alive ? Math.max(...me.car.wheels.map(w => (w.contact && !w.lost && w.slip > 1 ? Math.min(2, w.slip) - 1 : 0))) : 0;
     sound.skid(slip * Math.min(1, Math.abs(me.car.speed) / 6) * 0.7);
     sound.boost(me.boosting ? 1 : 0);
     sound.voices(vehicles.filter(v => !v.player && v.alive).map(v => ({ rpm: v.car.rpm, tone: v.def.tone || 1, d: v.car.pos.distanceTo(fc.pos) }))
@@ -1397,7 +1563,7 @@ G.simulate = async (n = 10, type = 'elim', arenaKey = 'bowl', maxTime = 300) => 
   G.state = saved;
   return stats;
 };
-G.debug = { get vehicles() { return vehicles; }, get arena() { return arena; }, step, startMatch, kill, hurt, playerInput, collect, stage };
+G.debug = { get vehicles() { return vehicles; }, get arena() { return arena; }, step, startMatch, kill, hurt, playerInput, collect, useItem, stage };
 
 toMenu();
 if (!store.load('derby.seenHelp', false)) showScreen('help');

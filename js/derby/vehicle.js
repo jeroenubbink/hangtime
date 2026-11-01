@@ -50,6 +50,8 @@ export class Vehicle {
     this.lastHit = null;     // { by, t }
     this.spinRef = null;
     this.flipT = 0;
+    this.stillT = 0;
+    this.anchor = null;
     this.invuln = 0;
     this.lostParts = new Set();
     const c = this.car;
@@ -120,7 +122,8 @@ export class Vehicle {
 
   // ---------- Bodywork ----------
   // Push the body in around local point `lp` along `dir` (local, pointing into the car)
-  dent(lp, dir, amount) {
+  // `lift`: how much of the push goes into height (side hits mostly move panels sideways; a roof is crushed down)
+  dent(lp, dir, amount, lift = 0.4) {
     const depth = Math.min(0.7, 0.08 + amount * 0.025), radius = 0.75 + Math.min(1.0, amount * 0.025);
     const maxCrush = 0.75;
     for (const m of this.model.userData.bodyMeshes) {
@@ -131,7 +134,7 @@ export class Vehicle {
         const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (d >= radius) continue;
         const f = (1 - d / radius) ** 2 * (0.65 + 0.7 * hash(o[i], o[i + 1], o[i + 2])) * depth;
-        let x = a[i] + dir.x * f - o[i], y = a[i + 1] + dir.y * f * 0.4 - o[i + 1], z = a[i + 2] + dir.z * f - o[i + 2];
+        let x = a[i] + dir.x * f - o[i], y = a[i + 1] + dir.y * f * lift - o[i + 1], z = a[i + 2] + dir.z * f - o[i + 2];
         const t = Math.hypot(x, y, z);
         if (t > maxCrush) { x *= maxCrush / t; y *= maxCrush / t; z *= maxCrush / t; }
         a[i] = o[i] + x; a[i + 1] = o[i + 1] + y; a[i + 2] = o[i + 2] + z;
@@ -139,6 +142,16 @@ export class Vehicle {
       }
       if (moved) { m.userData.dirty = true; this.dented = true; }
     }
+  }
+
+  // Something landed on the roof: crush it flat across its length
+  crushRoof(amount) {
+    if (this.top == null) {
+      this.top = -Infinity;
+      for (const m of this.model.userData.bodyMeshes) { const o = m.userData.orig; for (let i = 1; i < o.length; i += 3) this.top = Math.max(this.top, o[i]); }
+    }
+    const down = _t.set(0, -1, 0);
+    for (const z of [-0.7, 0, 0.7]) this.dent(_lp.set((Math.random() - 0.5) * 0.4, this.top, z * this.len / 4.5), down, amount, 1);
   }
 
   // Take wheel i off the car; returns the wheel as a separate object (for the debris)
