@@ -34,6 +34,8 @@ export class Lane {
     Object.assign(this, def);
     this.index = index;
     this.city = city;
+    // (a lane on the road under a bridge stays under it)
+    this.under = !!city.roads.find(o => o.name === def.road)?.under;
     let pts;
     if (def.path) pts = def.path;
     else {
@@ -305,7 +307,8 @@ export class Traffic {
   place(v) {
     const L = v.lane, c = v.car, s = v.s;
     const x = L.x(s), z = L.z(s);
-    const h0 = this.city.groundHeight(L.x(s - 2), L.z(s - 2)), h1 = this.city.groundHeight(L.x(s + 2), L.z(s + 2));
+    const y = L.under ? -Infinity : Infinity;
+    const h0 = this.city.groundHeight(L.x(s - 2), L.z(s - 2), y), h1 = this.city.groundHeight(L.x(s + 2), L.z(s + 2), y);
     c.pos.set(x, (h0 + h1) / 2 + RIDE, z);
     const [dx, dz] = L.dir(s);
     _f.set(dx, (h1 - h0) / 4, dz).normalize();

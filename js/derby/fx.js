@@ -127,7 +127,7 @@ export class Debris {
       if (d.rest > 1.5) continue;
       d.vel.y -= 9.81 * dt;
       m.position.addScaledVector(d.vel, dt);
-      const gy = this.ground(m.position.x, m.position.z);
+      const gy = this.ground(m.position.x, m.position.z, m.position.y);
       if (gy < -50 && m.position.y < -60) { this.remove(i); continue; }
       if (m.position.y < gy + d.radius) {
         m.position.y = gy + d.radius;

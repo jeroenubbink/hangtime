@@ -89,12 +89,14 @@ through them. Things to know:
 
 ## Rushtime
 
-- **Four junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
+- **Five junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
   **Dockside Drop**, a downhill run with a crest that throws you, ending at a six-lane harbour road with the
   water behind it; **Gridlock Leap**, where your way is jammed solid back from the lights and the roadworks left
-  a ramp: fly onto the jam and shove it into the busy junction; and **Last Chance Gas**, a T-junction with
-  Fuel's Paradise straight across it, a petrol station with a sunset-and-flaming-palm logo on its roof. Anything
-  that hits it hard enough sets it off: your car under the canopy at speed or through a pump or pillar, or, once
+  a ramp: fly onto the jam and shove it into the busy junction; **Over the Edge**, a jam backed up across a bridge,
+  two lanes each way, over a busy road (one lane each way) that dips under it through wide open grass: hit the jam
+  at an angle and the wrecks go through the crash barrier and down the banks into the traffic below; and
+  **Last Chance Gas**, a T-junction with Fuel's Paradise straight across it, a petrol station with a
+  sunset-and-flaming-palm logo on its roof. Anything that hits it hard enough sets it off: your car under the canopy at speed or through a pump or pillar, or, once
   you've crashed, the traffic you've thrown at it, or a blast beside it. Then the pumps go, the canopy and its logo
   fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction.
 - **The opening shot** pans across the junction, then flies back down the road to your car and round behind it
@@ -252,11 +254,13 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
 - `js/rush/`: Rushtime
   - `main.js`: your car's handling, the run-up (heat, rush, near misses), the crash (chains, explosions, slow motion,
     crash camera), speed effects (radial blur, streaks), HUD and menus
-  - `city.js`: streets as axis-aligned roads with lane markings, kerbs and pavements, buildings, the quay
-  - `levels.js`: the junctions: roads, traffic lanes, red lights and queues, ramps, and the timed tanker and bus
+  - `city.js`: streets as axis-aligned roads with lane markings, kerbs and pavements, buildings, the quay, and
+    bridges (the ground is one height everywhere, except over a bridge deck, where it depends on whether you're
+    above or below it)
+  - `levels.js`: the junctions: roads, traffic lanes, red lights and queues, ramps, bridges, and the timed tanker and bus
   - `traffic.js`: lanes and drivers (following, stopping at red, reacting late, swerving); far traffic glides along
     its lane without physics
-  - `props.js`: lamp posts, trees, traffic lights, bins, hydrants and bollards that get knocked flying
+  - `props.js`: lamp posts, trees, traffic lights, bins, hydrants, bollards and crash barriers that get knocked flying
   - `roster.js`: your cars and the traffic
 - `assets/cars/toy-bus.glb`, `toy-tanker.glb`, `toy-lorry.glb`, `toy-flatbed.glb`: Rushtime's big vehicles, made in
   Blender (source: `assets/src/rush-vehicles.blend`)

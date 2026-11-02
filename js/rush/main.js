@@ -127,7 +127,7 @@ function loadLevel(key) {
   props?.dispose();
   city = new City(scene, LEVELS[key]);
   city.key = key;
-  debris = new Debris(scene, (x, z) => city.groundHeight(x, z));
+  debris = new Debris(scene, (x, z, y) => city.groundHeight(x, z, y));
   stage.setTime(settings.time);
 }
 
@@ -248,7 +248,7 @@ const scorchTex = (() => {
 function scorch(p, size) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ map: scorchTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }));
-  m.position.set(p.x, city.groundHeight(p.x, p.z) + 0.03, p.z);
+  m.position.set(p.x, city.groundHeight(p.x, p.z, p.y) + 0.03, p.z);
   scene.add(m);
   scorches.push(m);
   if (scorches.length > 20) dropMesh(scorches.shift());
@@ -262,7 +262,7 @@ function ring(p, colour, opts = {}) {
 }
 // The shock wave on the road: a pale ring spreading at 35 m/s out to its reach
 function wave(p, R) {
-  ring(new THREE.Vector3(p.x, city.groundHeight(p.x, p.z) + 0.08, p.z), '#fff6dc', { grow: 35, life: R / 35, alpha: 0.35 });
+  ring(new THREE.Vector3(p.x, city.groundHeight(p.x, p.z, p.y) + 0.08, p.z), '#fff6dc', { grow: 35, life: R / 35, alpha: 0.35 });
 }
 function explosion(p, big = 1) {
   for (let i = 0; i < 50 * big; i++) {
@@ -1055,22 +1055,25 @@ function interest(v, all) {
   if (sp < 2.5) return { k: 0, at: null };
   const C = G.crash, d = C ? Math.hypot(c.pos.x - C.focus.x, c.pos.z - C.focus.z) : 0;
   if (v !== player && v.driver && !v.driver.out && v.alive) {
-    // Still driving: what's in its path?
+    // Still driving: what's in its path? (not if it's braking: then it mostly stops short, or swerves past)
+    if (v.input?.brake > 0.2) return { k: 0, at: null };
     const hx = c.vel.x / sp, hz = c.vel.z / sp;
     let eta = Infinity, at = null;
     for (const b of all) {
-      if (b === v) continue;
+      // (only the crash itself counts: a startled car swerving at the traffic often gets away with it)
+      if (b === v || !(b === player || b.gen > 0 || b.half || b.wrecked)) continue;
       const dx = b.car.pos.x - c.pos.x, dz = b.car.pos.z - c.pos.z;
-      if (Math.abs(dx) > 50 || Math.abs(dz) > 50) continue;
+      if (Math.abs(dx) > 50 || Math.abs(dz) > 50 || Math.abs(b.car.pos.y - c.pos.y) > 3) continue;
       const along = dx * hx + dz * hz, miss = Math.abs(dx * hz - dz * hx);
       if (along < 3 || miss > (b.len || 4) / 2 + 1.2) continue;
       // Only something already wrecked, stopped or crossing counts: not the car ahead going the same way
       const bv = b.car.vel.x * hx + b.car.vel.z * hz;
-      if (sp - bv < 5) continue;
+      // (and fast: one braking hard for it mostly stops short)
+      if (sp - bv < 8) continue;
       const t = along / (sp - bv);
       if (t < eta) { eta = t; at = b; }
     }
-    if (eta < 2.5) return { k: (30 + sp * 0.5 - eta * 6) * (d < 45 ? 1 : 0.5), at };
+    if (eta < 1.8) return { k: (30 + sp * 0.5 - eta * 6) * (d < 45 ? 1 : 0.5), at };
     return { k: 0, at: null };
   }
   // A wreck on the move: worth watching near the pile, hardly at all once it's rolled off down the street
@@ -1085,7 +1088,7 @@ function intro() {
   const r = city.roads.find(o => { const [a, v] = o.local(s.x, s.z); return a >= 0 && a <= o.len && v >= o.vLo && v <= o.vHi; });
   let w = new THREE.Vector3(-u.z, 0, u.x);
   if (r) { const [, v] = r.local(s.x, s.z), mid = (r.vLo + r.vHi) / 2; w.set(r.rv[0], 0, r.rv[1]).multiplyScalar(v > mid ? -1 : 1); }
-  return (cam.intro = { city, J: new THREE.Vector3(jx, city.base(jx, jz) + 1.5, jz), u, w });
+  return (cam.intro = { city, J: new THREE.Vector3(jx, city.groundHeight(jx, jz) + 1.5, jz), u, w });
 }
 
 // ---------- The tour of the wreckage ----------
@@ -1135,7 +1138,7 @@ function heaps() {
     }
     g.c.divideScalar(items.length);
     for (const i of items) { g.r = Math.max(g.r, Math.hypot(i.pos.x - g.c.x, i.pos.z - g.c.z)); g.top = Math.max(g.top, i.pos.y); }
-    g.c.y = city.groundHeight(g.c.x, g.c.z) + 1;
+    g.c.y = city.groundHeight(g.c.x, g.c.z, g.top + 1) + 1;
     g.D = clamp(11 + g.r * 1.4, 14, 42);
     g.wrecked = g.cars.filter(i => i.v.wrecked).length;
     return g;
@@ -1236,6 +1239,7 @@ function tourCamera(rawDt) {
   for (const b of city.near(camera.position.x, camera.position.z)) {
     if (camera.position.y < b.top + 1 && city.blockDist(b, camera.position.x, camera.position.z, _w) < 1) camera.position.y = b.top + 1;
   }
+  offDeck(T.look, camera.position);
   outside(camera.position);
   camera.lookAt(T.look);
 }
@@ -1269,7 +1273,8 @@ function unblock(look, p, skip) {
   for (const b of bodies()) {
     if (b === skip) continue;
     const q = b.car.pos;
-    if (Math.hypot(q.x - p.x, q.z - p.z) < (b.len || 2) / 2 + 3) p.y = Math.max(p.y, q.y + 3.5);
+    // (not over one on the bridge from under it, or the other way round)
+    if (Math.abs(q.y - p.y) < 5 && Math.hypot(q.x - p.x, q.z - p.z) < (b.len || 2) / 2 + 3) p.y = Math.max(p.y, q.y + 3.5);
   }
   // Up over any tree or post right beside the camera, and anything tall on the line of sight
   for (const q of props.near(p.x, p.z)) {
@@ -1279,8 +1284,11 @@ function unblock(look, p, skip) {
 }
 const _s = new THREE.Vector3();
 function blocked(from, to) {
+  // (a bridge's deck is in the way of anything on it seen from under it, or the other way round)
+  const D = city.deck, deck = D && to.y > D.y - 1.6;
   for (let i = 1; i < 10; i++) {
     _s.lerpVectors(from, to, i / 10);
+    if (deck && city.inDeck(_s.x, _s.z) && _s.y < D.y + 0.2 && _s.y > D.y - 1.6) return true;
     for (const b of city.near(_s.x, _s.z)) if (_s.y < b.top && city.blockDist(b, _s.x, _s.z, _w) < 0) return true;
     for (const q of props.near(_s.x, _s.z)) {
       if (q.alive && q.h >= 3 && _s.y < q.y + q.h + 0.4 && Math.hypot(q.x - _s.x, q.z - _s.z) < (q.kind === 'tree' ? 2.4 : 0.6)) return true;
@@ -1299,7 +1307,21 @@ function clear(from, p) {
     if (!inside) break;
     p.lerp(from, 0.2);
   }
-  p.y = Math.max(p.y, city.groundHeight(p.x, p.z) + 0.6);
+  offDeck(from, p);
+  p.y = Math.max(p.y, city.groundHeight(p.x, p.z, p.y) + 0.6);
+}
+// Keep the camera out of a bridge's deck, and from level with it close beside it (where its edge fills the
+// view): over it to see what's on it, under it to see what's under it
+function offDeck(look, p) {
+  const D = city.deck;
+  if (!D) return;
+  const [a, b, c, d] = D.rect;
+  if (p.x > a - 8 && p.x < b + 8 && p.z > c - 1 && p.z < d + 1 && p.y < D.y + 0.6 && p.y > D.y - 2.8) p.y = look.y > D.y - 1 ? D.y + 0.6 : D.y - 2.8;
+  // (and not in the dark under it, looking out at something that's come out the other side)
+  if (look.y < D.y - 1 && p.y < D.y && p.z > c && p.z < d) {
+    if (p.x > a - 1 && p.x < b + 1 && look.x > b + 2) p.x = b + 1.5;
+    else if (p.x > a - 1 && p.x < b + 1 && look.x < a - 2) p.x = a - 1.5;
+  }
 }
 // Keep the camera out of vehicles, wherever they lie and however they're turned: from inside one, up over it
 const _q = new THREE.Quaternion(), _m = new THREE.Matrix4();
@@ -1374,13 +1396,15 @@ function updateCamera(dt, rawDt) {
       C.restT = cur.k < 3 ? (C.restT || 0) + rawDt : 0;
       let best = null, bk = 0;
       for (const v of all) { const n = interest(v, all); if (n.k > bk) { bk = n.k; best = v; } }
-      const tired = C.restT > 0.8 || C.cutT > 6;
-      if (best && best !== C.subject && C.cutT > SHOT && (tired || bk > cur.k * 1.8)) {
+      // (one that was coming for the pile and got away with it, or still hasn't got there: off it at once)
+      const missed = C.subject && C.subject !== player && !(C.subject.gen > 0) && (C.restT > 0.4 || C.cutT > 1.5);
+      const tired = C.restT > 0.8 || C.cutT > 6 || missed;
+      if (best && best !== C.subject && (C.cutT > SHOT || missed) && (tired || bk > cur.k * 1.8)) {
         C.subject = best;
         C.side = -C.side || 1;
         C.cutT = 0;
         C.cutNow = true;
-      } else if (!best && tired && C.subject) { C.subject = null; C.cutT = 0; }
+      } else if ((!best || missed) && tired && C.subject) { C.subject = null; C.cutT = 0; }
     }
     const S = C.subject;
     let look;
@@ -1741,9 +1765,9 @@ function tick(raw, draw = true) {
       for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) contact(B[i], B[j]);
     }
     for (const v of traffic.list) v.pose();
-    camera.position.set(jx + Math.sin(cam.menuA) * 46, city.base(jx, jz) + 24, jz + Math.cos(cam.menuA) * 46);
+    camera.position.set(jx + Math.sin(cam.menuA) * 46, city.groundHeight(jx, jz) + 24, jz + Math.cos(cam.menuA) * 46);
     camera.up.set(0, 1, 0);
-    camera.lookAt(jx, city.base(jx, jz), jz);
+    camera.lookAt(jx, city.groundHeight(jx, jz), jz);
     camera.fov = stage.fitFov(55);
     camera.updateProjectionMatrix();
     stage.focusSun(new THREE.Vector3(jx, 0, jz), 60);

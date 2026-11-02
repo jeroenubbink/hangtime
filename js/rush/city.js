@@ -86,6 +86,7 @@ export class City {
     this.base = level.height || (() => 0);
     this.ramps = level.ramps || [];
     this.water = level.water || null;
+    this.deck = level.deck || null;
     this.blocks = [];
     this.grid = new Map();
     this.rand = rng(level.seed || 7);
@@ -95,6 +96,7 @@ export class City {
     this.buildGround();
     if (this.water) this.buildWater();
     for (const r of this.ramps) this.group.add(rampMesh(r, this.base(r.x, r.z)));
+    if (this.deck) this.buildDeck();
     scene.add(this.group);
   }
 
@@ -107,8 +109,10 @@ export class City {
   }
 
   // ---------- Shape ----------
-  isRoad(x, z) {
+  // On a road (`under`: true, only the roads that run under a bridge; false, only the ones that don't)
+  isRoad(x, z, under) {
     for (const r of this.roads) {
+      if (under != null && !!r.under !== under) continue;
       const [a, b, c, d] = r.rect;
       if (x < a || x > b || z < c || z > d) continue;
       const px = x - r.x0, pz = z - r.z0, u = px * r.dir[0] + pz * r.dir[1], v = px * r.rv[0] + pz * r.rv[1];
@@ -132,8 +136,23 @@ export class City {
     return false;
   }
 
-  groundHeight(x, z) {
+  // On the bridge deck (a level road over a road that runs under it: { rect, y })
+  inDeck(x, z, m = 0) {
+    if (!this.deck) return false;
+    const [a, b, c, d] = this.deck.rect;
+    return x > a - m && x < b + m && z > c - m && z < d + m;
+  }
+  // The height a road's surface follows: the deck's over the bridge (unless it's the road under it), right to
+  // its edges
+  roadBase(r, x, z) { return !r.under && this.inDeck(x, z, 0.05) ? this.deck.y : this.base(x, z); }
+  // The ground under (x, z), from height y: on a bridge, the deck from anywhere near or above it, and the road
+  // under it from below
+  groundHeight(x, z, y = Infinity) {
     if (this.water && this.water.below(x, z)) return this.water.floor;
+    if (this.inDeck(x, z)) {
+      if (y > this.deck.y - 1.6) return this.deck.y + (this.isRoad(x, z, false) ? 0 : CURB);
+      return this.base(x, z) + (this.isRoad(x, z, true) ? 0 : CURB);
+    }
     let h = this.base(x, z) + (this.isRoad(x, z) ? 0 : CURB);
     for (const r of this.ramps) {
       if (Math.abs(x - r.x) > r.w / 2) continue;
@@ -142,9 +161,9 @@ export class City {
     }
     return h;
   }
-  groundNormal(x, z, out = new THREE.Vector3()) {
+  groundNormal(x, z, out = new THREE.Vector3(), y = Infinity) {
     const e = 0.35;
-    const dx = this.groundHeight(x + e, z) - this.groundHeight(x - e, z), dz = this.groundHeight(x, z + e) - this.groundHeight(x, z - e);
+    const dx = this.groundHeight(x + e, z, y) - this.groundHeight(x - e, z, y), dz = this.groundHeight(x, z + e, y) - this.groundHeight(x, z - e, y);
     return out.set(-dx, 2 * e, -dz).normalize();
   }
   surfaceGrip() { return 1; }
@@ -152,14 +171,14 @@ export class City {
 
   raycast(origin, dir, far, withGround = true) {
     if (!withGround || dir.y > -1e-6) return null;
-    let t = (this.groundHeight(origin.x, origin.z) - origin.y) / dir.y;
+    let t = (this.groundHeight(origin.x, origin.z, origin.y) - origin.y) / dir.y;
     for (let i = 0; i < 2; i++) {
       const px = origin.x + dir.x * Math.max(0, t), pz = origin.z + dir.z * Math.max(0, t);
-      t = (this.groundHeight(px, pz) - origin.y) / dir.y;
+      t = (this.groundHeight(px, pz, origin.y) - origin.y) / dir.y;
     }
     if (t < -0.3 || t > far) return null;
     const point = new THREE.Vector3().copy(origin).addScaledVector(dir, t);
-    return { dist: Math.max(0, t), point, normal: this.groundNormal(point.x, point.z) };
+    return { dist: Math.max(0, t), point, normal: this.groundNormal(point.x, point.z, undefined, origin.y) };
   }
 
   // Buildings near (x, z)
@@ -172,9 +191,19 @@ export class City {
     return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0);
   }
 
-  // Buildings are solid: push the car's corners out, bouncing it off with some spin and scrape
+  // Buildings are solid: push the car's corners out, bouncing it off with some spin and scrape. And a bridge's
+  // deck is a ceiling for anything under it.
   contain(car) {
     let worst = 0;
+    if (this.inDeck(car.pos.x, car.pos.z) && car.pos.y < this.deck.y - 1.6) {
+      const under = this.deck.y - 1.35;
+      let top = -Infinity;
+      for (const h of car.hull) top = Math.max(top, _p.copy(h.p).applyQuaternion(car.q).add(car.pos).y);
+      if (top > under) {
+        car.pos.y -= top - under;
+        if (car.vel.y > 0) { worst = car.vel.y; car.vel.y *= -0.3; car.w.multiplyScalar(0.8); }
+      }
+    }
     const s = car.spec.size || [1.9, 4.4];
     const hw = s[0] / 2, hl = s[1] / 2;
     const list = this.near(car.pos.x, car.pos.z);
@@ -226,6 +255,7 @@ export class City {
     this.junctions = [];
     for (let i = 0; i < this.roads.length; i++) for (let j = i + 1; j < this.roads.length; j++) {
       const A = this.roads[i], B = this.roads[j];
+      if (!!A.under !== !!B.under) continue;
       const poly = clip(A.poly, B.poly);
       if (poly.length < 3 || area(poly) < 1) continue;
       const xs = poly.map(p => p[0]), zs = poly.map(p => p[1]);
@@ -266,7 +296,7 @@ export class City {
       const u = u0 + (u1 - u0) * i / n;
       for (let k = 0; k <= 1; k++) {
         const [x, z] = r.at(u, k ? v1 : v0);
-        P.push(x, this.base(x, z) + lift, z);
+        P.push(x, this.roadBase(r, x, z) + lift, z);
         U.push(...uv(k, u - u0));
       }
       if (i) { const a = (i - 1) * 2; I.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
@@ -290,7 +320,7 @@ export class City {
       for (const side of [-1, 1]) {
         const e = side > 0 ? r.vHi : r.vLo;
         // Stretches along this side where the pavement isn't on another road (found to a few centimetres)
-        const clearAt = u => [0.3, WALK / 2, WALK - 0.3].every(d => !this.isRoad(...r.at(u, e + side * d)));
+        const clearAt = u => [0.3, WALK / 2, WALK - 0.3].every(d => !this.isRoad(...r.at(u, e + side * d), !!r.under));
         const edgeBetween = (a, b) => { for (let k = 0; k < 7; k++) { const m = (a + b) / 2; if (clearAt(m) === clearAt(a)) a = m; else b = m; } return (a + b) / 2; };
         const free = [];
         let open = clearAt(0) ? 0 : null;
@@ -326,7 +356,9 @@ export class City {
         const lx = i * b.w / 2, lz = k * b.d / 2;
         return [b.x + lx * b.ca - lz * b.sa, b.z + lx * b.sa + lz * b.ca];
       });
-      if (!b.fixed && (pts.some(([x, z]) => this.roadDist(x, z) < WALK - 0.6 || this.inLot(x, z, 1)) || fixed.some(o => overlaps(o, b)))) continue;
+      // (nor down a bank, nor in the level's open ground)
+      const open = ([x, z]) => this.base(x, z) < -0.3 || L.park && x > L.park[0] && x < L.park[1] && z > L.park[2] && z < L.park[3];
+      if (!b.fixed && (pts.some(([x, z]) => this.roadDist(x, z) < WALK - 0.6 || this.inLot(x, z, 1)) || pts.some(open) || fixed.some(o => overlaps(o, b)))) continue;
       if (this.blocks.some(o => overlaps(o, b))) continue;
       b.y = Math.min(...pts.slice(0, 4).map(([x, z]) => this.base(x, z))) - 1;
       b.top = b.y + b.h + 1;
@@ -358,7 +390,7 @@ export class City {
       const P = [];
       const n = Math.max(1, Math.ceil((q - p) / 4));
       for (let i = 0; i < n; i++) {
-        const pt = (u, y) => { const [x, z] = r.at(u, e); return [x, this.base(x, z) + y, z]; };
+        const pt = (u, y) => { const [x, z] = r.at(u, e); return [x, this.roadBase(r, x, z) + y, z]; };
         const a = p + (q - p) * i / n, b = p + (q - p) * (i + 1) / n;
         const A = pt(a, 0), B = pt(b, 0), C = pt(b, CURB), D = pt(a, CURB);
         P.push(...A, ...B, ...C, ...A, ...C, ...D);
@@ -388,13 +420,33 @@ export class City {
       const under = this.roadDist(x, z) < 2.8;
       const wet = this.water && this.water.below(x, z);
       pos.setY(i, wet ? this.water.floor : this.base(x, z) + (under ? -0.4 : CURB - 0.03));
-      c.set(wet ? '#3a5a5a' : this.level.groundColour || '#b9b2a2');
+      // (grass in the open ground and down the banks)
+      const P = this.level.park, park = P && x > P[0] && x < P[1] && z > P[2] && z < P[3] || this.base(x, z) < -0.2;
+      c.set(wet ? '#3a5a5a' : park ? '#86ad5c' : this.level.groundColour || '#b9b2a2');
       col.push(c.r, c.g, c.b);
     }
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     g.computeVertexNormals();
     const m = new THREE.Mesh(g, addDetail(new THREE.MeshLambertMaterial({ vertexColors: true }), { fine: 0.7, strength: 0.15 }));
     m.receiveShadow = true;
+    this.group.add(m);
+  }
+
+  // The bridge: a concrete deck under the road over it, with its piers down the banks either side of the road
+  // under it
+  buildDeck() {
+    const { rect: [a, b, c, d], y, piers = [] } = this.deck, T = 1.3;
+    const parts = [[new THREE.BoxGeometry(b - a + 0.4, T, d - c).translate((a + b) / 2, y - 0.03 - T / 2, (c + d) / 2), '#c9c3b6'],
+      // (a darker band along each edge, and a lip the railings stand on)
+      ...[a - 0.1, b + 0.1].map(x => [new THREE.BoxGeometry(0.5, 0.5, d - c).translate(x, y - 0.03 - T - 0.2, (c + d) / 2), '#a9a296'])];
+    for (const [x, z] of piers) {
+      const lo = this.base(x, z) - 0.5, hi = y - T;
+      parts.push([new THREE.BoxGeometry(1.6, hi - lo, 1.6).translate(x, (lo + hi) / 2, z), '#bdb6a8']);
+      parts.push([new THREE.BoxGeometry(2.4, 0.5, 2.4).translate(x, hi - 0.25, z), '#a9a296']);
+    }
+    // (lit a little from below, by the road under it: in its own shadow it would be near black)
+    const m = new THREE.Mesh(merge(parts.map(([g, col]) => [g.toNonIndexed(), col])), new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#6e6a60' }));
+    m.castShadow = m.receiveShadow = true;
     this.group.add(m);
   }
 

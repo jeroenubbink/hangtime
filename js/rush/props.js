@@ -44,6 +44,12 @@ const MODELS = {
   cone: () => sceneryGeo('cone') || new THREE.ConeGeometry(0.3, 0.8, 10).translate(0, 0.4, 0),
   // Fuel's Paradise: its pumps, canopy pillars and price sign (the sign's face is the station's)
   pump: PUMP, pillar: PILLAR, sign: SIGN,
+  // A length of crash barrier along the edge of a bridge: it stops nothing
+  rail: () => merge([
+    [new THREE.BoxGeometry(3, 0.32, 0.1).translate(0, 0.62, 0), '#c3c8cf'],
+    [new THREE.BoxGeometry(3, 0.06, 0.12).translate(0, 0.62, 0.02), '#9aa0a8'],
+    ...[-1.2, 0, 1.2].map(x => [new THREE.BoxGeometry(0.1, 0.8, 0.1).translate(x, 0.4, -0.1), '#7d838c']),
+  ]),
   barrier: () => merge([
     [new THREE.BoxGeometry(2.2, 0.32, 0.12).translate(0, 0.85, 0), (y, f) => (f % 4 < 2 ? '#e8352b' : '#f4f4f0')],
     [new THREE.BoxGeometry(0.08, 0.9, 0.08).translate(-0.9, 0.45, 0), '#3a3a40'],
@@ -54,7 +60,7 @@ const MODELS = {
 const KINDS = {
   lamp: { r: 0.3, slow: 0.1, h: 6 }, light: { r: 0.3, slow: 0.1, h: 4.6 }, tree: { r: 0.45, slow: 0.22, h: 4 },
   bin: { r: 0.35, slow: 0.02, h: 1 }, hydrant: { r: 0.25, slow: 0.05, h: 0.8 }, bollard: { r: 0.25, slow: 0.08, h: 0.9 },
-  cone: { r: 0.35, slow: 0, h: 0.8 }, barrier: { r: 1.1, slow: 0.03, h: 1 },
+  cone: { r: 0.35, slow: 0, h: 0.8 }, barrier: { r: 1.1, slow: 0.03, h: 1 }, rail: { r: 1.5, slow: 0.04, h: 0.8 },
   pump: { r: 0.5, slow: 0.12, h: 2.1 }, sign: { r: 0.3, slow: 0.15, h: 11.5 }, pillar: { r: 0.45, slow: 0.25, h: 5.4 },
 };
 
@@ -87,7 +93,7 @@ export class Props {
         for (let s = 10, k = 0; s < r.len - 10; s += 15, k++) {
           const at = (d, ds = 0) => r.at(s + ds, e + side * d);
           const [x, z] = at(k % 2 ? 2.4 : 0.7);
-          if (city.isRoad(x, z) || city.roadDist(x, z) > 3 || city.inLot(x, z, 1)) continue;
+          if (city.isRoad(x, z) || city.roadDist(x, z) > 3 || city.inLot(x, z, 1) || city.inDeck(x, z)) continue;
           if (city.junctions.some(({ box: [a, b, c, d] }) => x > a - 6 && x < b + 6 && z > c - 6 && z < d + 6)) continue;
           if (k % 2) this.add('tree', x, z, s * 0.7);
           else this.add('lamp', x, z, arm);
@@ -152,7 +158,7 @@ export class Props {
       for (const L of near) {
         if (!L) continue;
         for (const p of L) {
-          if (!p.alive || c.pos.y - p.y > p.h + 1) continue;
+          if (!p.alive || c.pos.y - p.y > p.h + 1 || p.y - c.pos.y > 3) continue;
           // Closest point along the car's length
           const fx = -2 * (c.q.x * c.q.z + c.q.w * c.q.y), fz = -(1 - 2 * (c.q.x * c.q.x + c.q.y * c.q.y));
           const t = Math.max(-v.len / 2 + 0.6, Math.min(v.len / 2 - 0.6, (p.x - c.pos.x) * fx + (p.z - c.pos.z) * fz));

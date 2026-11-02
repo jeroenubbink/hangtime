@@ -11,6 +11,8 @@
 //   metres before the junction.
 // Specials: { lane, kind, eta } — a vehicle placed so it reaches the junction `eta` seconds after the start.
 // Parked: { kind, x, z, yaw } — vehicles standing still off the road (yaw 0 faces -z).
+// Bridges: `under` on a road runs it under the others, `deck` ({ rect, y, piers }) carries them over it, and
+//   `park` is open ground (no buildings) round about.
 // Station: a petrol station's canopy { x, z, w, d, h }; hit it hard enough and it goes up. Its pumps and price
 //   sign are props, and the block marked `shop` gets its shopfront.
 
@@ -122,6 +124,56 @@ export const LEVELS = {
       { lane: 5, kind: 'bus', eta: 8.5 },
     ],
     medals: [50000, 150000, 350000],
+  },
+  bridge: {
+    name: 'Over the Edge', blurb: 'Two lanes each way over the bridge, a jam backed up across it, and a busy road down below. Send it over.',
+    seed: 59,
+    bounds: [-440, 440, -210, 470],
+    start: { x: 5.4, z: 380, speed: 28 },
+    junction: [0, 0],
+    // The road under the bridge: down from street level into a wide grassy dip, with a slight slope west to east
+    // through it and banked toward the north; grass banks up to the street either side
+    height: (x, z) => {
+      const t = Math.min(1, Math.max(0, (Math.abs(x) - 50) / 170)), d = 7 * (1 - t * t * (3 - 2 * t));
+      if (d < 0.001) return 0;
+      const floor = v => -d * (1 + 0.0015 * x - 0.006 * v);
+      const a = Math.abs(z);
+      if (a <= 8.6) return floor(z);
+      const k = (a - 8.6) / (3 * d);
+      return k >= 1 ? 0 : floor(Math.sign(z) * 8.6) * (1 - k * k * (3 - 2 * k));
+    },
+    roads: [
+      { name: 'main', x0: 0, z0: 420, x1: 0, z1: -175, right: 2, left: 2 },
+      { name: 'under', x0: -430, z0: 0, x1: 430, z1: 0, right: 1, left: 1, under: true },
+      { name: 'cross', x0: -430, z0: -75, x1: 430, z1: -75, right: 2, left: 2 },
+    ],
+    // The bridge: the main road and its pavements, from bank top to bank top
+    deck: { rect: [-12.2, 12.2, -29.6, 29.6], y: 0, piers: [-8, 0, 8].flatMap(x => [[x, -14], [x, 14]]) },
+    // and open ground all round it
+    park: [-130, 130, -62, 55],
+    blocks: [{ x: 0, z: -192, w: 40, d: 30, h: 26, fixed: true }],
+    props: [-1, 1].flatMap(side => Array.from({ length: 19 }, (_, i) => ['rail', side * 12.05, -27 + i * 3, Math.PI / 2])),
+    lanes: [
+      // Your way: a long jam back from the lights across the bridge, with a bus and a lorry in it
+      { road: 'main', side: 1, i: 0, speed: [19, 23], gap: [50, 100], stop: 485.3, queue: [null, null, 'van', null, null, 'bus', null, null, null, null, 'suv', null, null] },
+      { road: 'main', side: 1, i: 1, speed: [21, 25], gap: [60, 120], stop: 485.3, queue: [null, 'lorry', null, null, null, 'pickup', null, null, null, 'van', null, null] },
+      // Oncoming over the bridge toward you
+      { road: 'main', side: -1, i: 0, speed: [18, 22], fill: [12, 590], gap: [45, 90] },
+      { road: 'main', side: -1, i: 1, speed: [17, 21], fill: [12, 590], gap: [55, 110] },
+      // Down below: one lane each way, nose to tail
+      { road: 'under', side: 1, i: 0, speed: [15, 19], gap: [1.5, 2.8], spawn: true },
+      { road: 'under', side: -1, i: 0, speed: [15, 19], gap: [1.5, 2.8], spawn: true },
+      // and across at the lights past the bridge
+      { road: 'cross', side: 1, i: 0, speed: [15, 18], gap: [2.0, 3.6], spawn: true },
+      { road: 'cross', side: 1, i: 1, speed: [16, 20], gap: [2.2, 4.0], spawn: true },
+      { road: 'cross', side: -1, i: 0, speed: [15, 18], gap: [2.0, 3.6], spawn: true },
+      { road: 'cross', side: -1, i: 1, speed: [16, 20], gap: [2.2, 4.0], spawn: true },
+    ],
+    specials: [
+      { lane: 4, kind: 'tanker', eta: 6.9 },
+      { lane: 5, kind: 'bus', eta: 7.6 },
+    ],
+    medals: [40000, 120000, 300000],
   },
   gas: {
     name: 'Last Chance Gas', blurb: 'A T-junction, and Fuel\'s Paradise straight across it. Thread the gap and light it up.',
