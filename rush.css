@@ -121,6 +121,19 @@ kbd { display: inline-block; min-width: 20px; text-align: center; font: 600 12px
   -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.75); paint-order: stroke fill;
   text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.6), 0 0 14px rgba(0, 0, 0, 0.4); will-change: transform; }
 .pop small { display: block; font: 900 0.42em 'Titillium Web', sans-serif; letter-spacing: 1.5px; text-transform: uppercase; -webkit-text-stroke: 0.6px rgba(0, 0, 0, 0.7); }
+/* The tour of the wreckage: a name and a score over each heap */
+.heap { position: absolute; left: 0; top: 0; white-space: nowrap; text-align: center; pointer-events: none; will-change: transform; }
+.heap .in { display: flex; flex-direction: column; align-items: center; animation: heap .45s cubic-bezier(.2, 1.6, .4, 1) both; transform-origin: 50% 100%;
+  -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.75); paint-order: stroke fill; text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.6), 0 0 14px rgba(0, 0, 0, 0.4); }
+.heap b { font: 900 20px 'Titillium Web', sans-serif; letter-spacing: 2px; text-transform: uppercase; color: #fff; }
+.heap span { font: 900 44px 'Titillium Web', 'Russo One', sans-serif; line-height: 0.9; }
+.heap small { font: 600 13px Rubik, sans-serif; -webkit-text-stroke: 0; opacity: 0.9; margin-top: 2px; }
+@keyframes heap { from { transform: scale(0.2); opacity: 0; } }
+.heap { transition: opacity .4s; }
+.heap.old { opacity: 0.45; }
+.heap.gone { opacity: 0; }
+/* (on the tour the heaps' own scores say it all: the rest of the HUD steps aside) */
+#hud.touring #crashbox, #hud.touring #heatbox, #hud.touring #rush, #hud.touring #speedo { display: none; }
 #callouts { position: absolute; left: 50%; top: 30%; transition: top .3s; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .call { font: italic 26px 'Russo One', sans-serif; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5); animation: pop 1.5s ease-out forwards; white-space: nowrap; }
 .call small { display: block; font: 600 14px Rubik, sans-serif; text-align: center; opacity: 0.9; font-style: normal; }

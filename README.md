@@ -111,8 +111,12 @@ through them. Things to know:
   the **chain** and scores more. The crash runs while it keeps scoring: after 25 seconds the drivers start stopping
   in time, and at 30 it's over. When things go quiet (or near the limit) a countdown shows, swelling as it runs out.
 - **Scores pop up** over every incident: everything scored within a few metres in half a second, added up, small
-  and yellow for a dent, big and red for well above the crash's average. The results show a **wreck report**: the
+  and yellow for a dent, big and red for well above the crash's average.
+- **The tour of the wreckage:** when it's over everything stops dead on the 0 for two seconds, then the camera
+  sweeps over what's left, gathered into up to six heaps, a second and a half each (a second if there's only one),
+  each with its score and a name (The Pile, Stragglers, Just a Dent, Ground Zero…), the biggest last. Enter skips it. Then the results, circling over the lot, with a **wreck report**: the
   damage by type, and the vehicles that took the most, with what happened to each.
+- **The crash camera** keeps out of buildings and vehicles, rising over anything it would end up inside.
 - **The town:** brick walk-ups over shop fronts mixed with stone-based towers, the tallest stepping back in tiers to
   a crown, water tanks on the roofs. Tankers explode, other wrecks
   sometimes catch fire and go up, cars split in half, lamp posts and trees go flying, hydrants gush, and on the
