@@ -32,6 +32,7 @@ const NONE = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false }
 const KMH = 3.6;
 const PRE_INTRO = 2.6, PRE_COUNT = 2.4, PRE_RETRY = 1.2;
 const FRAGILE = 2.4;
+const CRASH_MAX = 20, CRASH_QUIET = 5, FOLLOW_YOU = 6;   // seconds
 
 // ---------- Stage ----------
 const stage = createStage($('view'));
@@ -372,7 +373,7 @@ function blowUp(X) {
       hurt(B, X, 40 * k * big, B.car.pos.clone().addScaledVector(dir, -1), dir);
     }
   }
-  if (G.crash) { crashFocus(p, 30); G.crash.cut = true; spike(0.2, 1.1); }
+  if (G.crash) { crashFocus(p, 30); spike(0.2, 1.1); }
   G.shake = Math.max(G.shake, player && player.car.pos.distanceTo(p) < 40 ? 1 : 0.4);
 }
 
@@ -435,7 +436,7 @@ function startCrash(h, other) {
   const bonus = clamp((kmh - 110) / 110, 0, 1.5);
   G.impact = { kmh, bonus };
   G.heat = Math.round((G.heat + bonus) * 10) / 10;
-  G.crash = { t: 0, rt: 0, quiet: 0, heat: 10, target: h.point.clone(), focus: h.point.clone(), ang: 0, dist: 13, cut: false, cutT: 0, lastSpike: G.t };
+  G.crash = { t: 0, rt: 0, quiet: 0, heat: 10, target: h.point.clone(), focus: h.point.clone(), ang: 0, dist: 13, cutT: 0, lastSpike: G.t };
   // Start the camera low beside the impact, looking across the way you came in
   const f = player.forward.clone().setY(0).normalize();
   G.crash.ang = Math.atan2(-f.x, -f.z) + (Math.random() < 0.5 ? 1 : -1) * (0.9 + Math.random() * 0.5);
@@ -664,9 +665,9 @@ function step() {
     const C = G.crash;
     C.t += DT;
     C.quiet += DT;
-    C.focus.lerp(C.target, Math.min(1, DT * 1.5));
     C.heat *= Math.exp(-DT * 0.7);
-    if ((C.t > 6 && C.quiet > 3) || C.t > 22) endCrash();
+    // Traffic keeps piling in for up to 20 seconds; five quiet ones and it's over
+    if (C.quiet > CRASH_QUIET || C.t > CRASH_MAX) endCrash();
   }
 }
 
@@ -748,30 +749,59 @@ function updateCamera(dt, rawDt) {
     camera.lookAt(jx, city.base(jx, jz) + 1.5, jz);
     fov = 58;
   } else if (G.crash && G.state !== 'run') {
-    // Crash cam: circling the thick of it, cutting to a fresh angle when something big goes off
+    // Crash cam. First your own wreck, close behind it as it ploughs in; then whatever's about to hit the
+    // pile, framed going in with the pile beyond it; with nothing coming, a slow circle round the pile.
     const C = G.crash;
     C.cutT += rawDt;
-    if (C.cut && C.cutT > 1.2) {
-      C.cut = false;
-      C.cutT = 0;
-      C.ang += 1.6 + Math.random() * 2.2;
-      C.dist = 11 + Math.random() * 7;
-      C.focus.copy(C.target);
+    const k = 1 - Math.exp(-rawDt * 4);
+    let look;
+    if (C.rt < FOLLOW_YOU) {
+      const p = c.pos;
+      C.focus.lerp(p, 1 - Math.exp(-rawDt * 10));
+      C.ang += rawDt * 0.25;
+      _c.set(p.x + Math.sin(C.ang) * 10, p.y + 3.2, p.z + Math.cos(C.ang) * 10);
+      look = C.focus;
+    } else {
+      C.focus.lerp(C.target, 1 - Math.exp(-rawDt * 2));
+      // Pick the next one coming in: awake, still driving, heading for the pile, soonest to arrive
+      if (!C.incoming || C.cutT > 2.5 || C.incoming.driver?.out || C.incoming.car.pos.distanceTo(C.target) < 4) {
+        let best = null, soonest = 3;
+        for (const v of traffic.list) {
+          if (v.asleep || v.driver?.out || !v.alive || v === C.incoming) continue;
+          const dx = C.target.x - v.car.pos.x, dz = C.target.z - v.car.pos.z, d = Math.hypot(dx, dz);
+          const sp = (v.car.vel.x * dx + v.car.vel.z * dz) / (d || 1);
+          if (d < 6 || d > 60 || sp < 6) continue;
+          const eta = d / sp;
+          if (eta < soonest) { soonest = eta; best = v; }
+        }
+        if (best !== C.incoming && (best || C.cutT > 2.5)) { C.incoming = best; C.cutT = 0; C.cutNow = true; }
+      }
+      if (C.incoming) {
+        // Behind it and to one side, looking past it into the pile
+        const v = C.incoming.car.pos, t = C.target;
+        _v.set(t.x - v.x, 0, t.z - v.z).normalize();
+        _c.set(v.x - _v.x * 9 + _v.z * 5, Math.max(v.y, t.y) + 3.4, v.z - _v.z * 9 - _v.x * 5);
+        _l.copy(v).lerp(t, 0.55);
+        look = _l;
+      } else {
+        C.ang += rawDt * 0.22;
+        C.dist += (Math.min(20, 14 + C.t * 0.3) - C.dist) * Math.min(1, rawDt * 0.3);
+        _c.set(C.focus.x + Math.sin(C.ang) * C.dist, C.focus.y + 5, C.focus.z + Math.cos(C.ang) * C.dist);
+        look = C.focus;
+      }
     }
-    C.ang += rawDt * 0.22;
-    C.dist += (Math.min(20, 13 + C.t * 0.4) - C.dist) * Math.min(1, rawDt * 0.3);
-    const h = 3 + Math.min(4, C.t * 0.5);
-    _c.set(C.focus.x + Math.sin(C.ang) * C.dist, C.focus.y + h, C.focus.z + Math.cos(C.ang) * C.dist);
-    clear(C.focus, _c);
+    clear(look, _c);
     // Never down among the cars, where the nearest one fills the screen
     for (const b of bodies()) {
+      if (b === C.incoming || (C.rt < FOLLOW_YOU && b === player)) continue;
       const p = b.car.pos;
       if (Math.hypot(p.x - _c.x, p.z - _c.z) < (b.len || 2) / 2 + 3) _c.y = Math.max(_c.y, p.y + 3.5);
     }
-    camera.position.lerp(_c, C.cutT < 0.05 ? 1 : Math.min(1, rawDt * 3));
-    if (C.t < 0.02) camera.position.copy(_c);
-    camera.lookAt(C.focus.x, C.focus.y + 0.8, C.focus.z);
-    fov = 52;
+    if (C.cutNow || C.rt < 0.02) { camera.position.copy(_c); C.look = look.clone(); C.cutNow = false; }
+    else camera.position.lerp(_c, k);
+    C.look = (C.look || look.clone()).lerp(look, 1 - Math.exp(-rawDt * 6));
+    camera.lookAt(C.look.x, C.look.y + 0.8, C.look.z);
+    fov = 54;
   } else {
     // Chase: low and close; it pulls in and widens as you go faster, and more when you burn rush
     const speed = c.vel.length();
@@ -1090,9 +1120,9 @@ function frame(now) {
   let scale = 1;
   if (G.crash) {
     const t = G.crash.rt += raw;
-    scale = t < 1.4 ? 0.14 : Math.min(0.65, 0.14 + (t - 1.4) * 0.3);
+    scale = t < 1.4 ? 0.14 : Math.min(0.85, 0.14 + (t - 1.4) * 0.35);
     if (G.spike > 0) { G.spike -= raw; scale = Math.min(scale, G.spikeK); }
-    if (G.state === 'results') scale = 0.65;
+    if (G.state === 'results') scale = 0.85;
   }
   if (G.state === 'intro' || G.state === 'count') {
     const before = Math.ceil(G.pre);
