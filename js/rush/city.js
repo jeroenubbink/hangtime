@@ -120,10 +120,11 @@ export class City {
     }
     return false;
   }
-  // How far (x, z) is from the nearest road edge (negative on a road)
-  roadDist(x, z) {
+  // How far (x, z) is from the nearest road edge (negative on a road; `under` as for isRoad)
+  roadDist(x, z, under) {
     let best = Infinity;
     for (const r of this.roads) {
+      if (under != null && !!r.under !== under) continue;
       const px = x - r.x0, pz = z - r.z0, u = px * r.dir[0] + pz * r.dir[1], v = px * r.rv[0] + pz * r.rv[1];
       const du = Math.max(-u, u - r.len), dv = Math.max(r.vLo - v, v - r.vHi);
       best = Math.min(best, Math.hypot(Math.max(du, 0), Math.max(dv, 0)) + Math.min(Math.max(du, dv), 0));
@@ -134,6 +135,11 @@ export class City {
   inLot(x, z, m = 0) {
     for (const { rect: [a, b, c, d] } of this.level.lots || []) if (x > a - m && x < b + m && z > c - m && z < d + m) return true;
     return false;
+  }
+  // In the level's open ground (grass, and no buildings)
+  inPark(x, z) {
+    const P = this.level.park;
+    return !!P && x > P[0] && x < P[1] && z > P[2] && z < P[3];
   }
 
   // On the bridge deck (a level road over a road that runs under it: { rect, y })
@@ -207,7 +213,8 @@ export class City {
     const s = car.spec.size || [1.9, 4.4];
     const hw = s[0] / 2, hl = s[1] / 2;
     const list = this.near(car.pos.x, car.pos.z);
-    if (!list.length) return 0;
+    // (still the deck's bump, if it gave one: a bridge in the open has no buildings near it)
+    if (!list.length) return worst;
     for (const [x, z] of CORNERS) {
       _p.set(x * hw, 0, z * hl).applyQuaternion(car.q).add(car.pos);
       for (const b of list) {
@@ -357,7 +364,7 @@ export class City {
         return [b.x + lx * b.ca - lz * b.sa, b.z + lx * b.sa + lz * b.ca];
       });
       // (nor down a bank, nor in the level's open ground)
-      const open = ([x, z]) => this.base(x, z) < -0.3 || L.park && x > L.park[0] && x < L.park[1] && z > L.park[2] && z < L.park[3];
+      const open = ([x, z]) => this.base(x, z) < -0.3 || this.inPark(x, z);
       if (!b.fixed && (pts.some(([x, z]) => this.roadDist(x, z) < WALK - 0.6 || this.inLot(x, z, 1)) || pts.some(open) || fixed.some(o => overlaps(o, b)))) continue;
       if (this.blocks.some(o => overlaps(o, b))) continue;
       b.y = Math.min(...pts.slice(0, 4).map(([x, z]) => this.base(x, z))) - 1;
@@ -417,11 +424,12 @@ export class City {
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
-      const under = this.roadDist(x, z) < 2.8;
+      // (under a bridge, only the road down there: the one over it is up on the deck)
+      const under = this.roadDist(x, z, this.inDeck(x, z) || undefined) < 2.8;
       const wet = this.water && this.water.below(x, z);
       pos.setY(i, wet ? this.water.floor : this.base(x, z) + (under ? -0.4 : CURB - 0.03));
       // (grass in the open ground and down the banks)
-      const P = this.level.park, park = P && x > P[0] && x < P[1] && z > P[2] && z < P[3] || this.base(x, z) < -0.2;
+      const park = this.inPark(x, z) || this.base(x, z) < -0.2;
       c.set(wet ? '#3a5a5a' : park ? '#86ad5c' : this.level.groundColour || '#b9b2a2');
       col.push(c.r, c.g, c.b);
     }

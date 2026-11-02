@@ -35,7 +35,8 @@ export class Lane {
     this.index = index;
     this.city = city;
     // (a lane on the road under a bridge stays under it)
-    this.under = !!city.roads.find(o => o.name === def.road)?.under;
+    // (a lane with a path of its own isn't on a road: not one with no name either)
+    this.under = !!(def.road && city.roads.find(o => o.name === def.road)?.under);
     let pts;
     if (def.path) pts = def.path;
     else {

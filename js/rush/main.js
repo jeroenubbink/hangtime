@@ -16,6 +16,7 @@ import { Traffic } from './traffic.js';
 import { Props } from './props.js';
 import { buildStation as stationModel, DEBRIS_COLOURS } from './station.js';
 import { RIDES, TRAFFIC, TRAFFIC_PAINTS } from './roster.js';
+import { Recorder, FLAGS, canSend, send } from './replay.js';
 
 const $ = id => document.getElementById(id);
 const DEBRIS = { door: 'debris-door', doorWin: 'debris-door-window', bumper: 'debris-bumper', plate: 'debris-plate-a', plateB: 'debris-plate-b',
@@ -35,6 +36,7 @@ const PRE_INTRO = 4.2, PRE_COUNT = 2.4, PRE_RETRY = 1.2, PRE_ALL = PRE_INTRO + P
 const FRAGILE = 2.4;
 const ZONE = 45;   // metres around where you crashed (and round the junction): whatever crashes in there is part of your crash
 const CRASH_MAX = 30, CRASH_QUIET = 5, FOLLOW_YOU = 5, SHOT = 2.5, HOLD = 2, HEAP = 1.5;   // seconds
+const INCOMING = 1.8;   // seconds of the (slowed) simulation: something this close to hitting the pile is worth watching
 
 // ---------- Stage ----------
 const stage = createStage($('view'));
@@ -168,7 +170,7 @@ function startRun(pre) {
   player.respawn({ x: L.start.x, z: L.start.z, yaw: L.start.yaw || 0 });
   for (let i = 0; i < 60; i++) player.car.step(DT, { ...NONE, brake: 1, stop: true });
   Object.assign(G, { t: 0, pre, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0,
-    boosting: false, drifting: false, steer: 0, yaw: 0, drift: 0, geysers: [], air: 0, nearT: 0, oncoming: 0, best: 0, ended: false, slow: 1, spike: 0, tour: null });
+    boosting: false, drifting: false, steer: 0, yaw: 0, drift: 0, geysers: [], air: 0, nearT: 0, oncoming: 0, best: 0, ended: false, slow: 1, spike: 0, tour: null, rec: null });
   G.state = pre > PRE_COUNT ? 'intro' : 'count';
   G.preSteps = Math.round(PRE_ALL * 120);
   skipTo(pre);
@@ -318,6 +320,7 @@ function tally(v, type, p, pos) {
   if (!e) C.ledger.set(key, e = v ? { name: NAMES[v.kind] || v.kind, colour: v.colour, gen: v.gen, by: {}, total: 0 } : { name: 'Street furniture', colour: '#9be36b', gen: 0, by: {}, total: 0 });
   e.by[type] = (e.by[type] || 0) + p;
   e.total += p;
+  G.rec?.event(G.t, 'score', { id: v ? v.id : 'props', what: type, pts: p, at: [pos.x, pos.y, pos.z].map(n => Math.round(n * 10) / 10) });
   if (!v) C.spots.push({ pos: pos.clone(), p });
   let inc = C.incidents.find(i => !i.el && i.pos.distanceTo(pos) < 9);
   if (!inc) C.incidents.push(inc = { pos: pos.clone(), at: C.rt, total: 0, by: {}, n: 0 });
@@ -443,7 +446,7 @@ function wreck(X, split) {
   // (only a car tears in half: a bus or a lorry just wrecks)
   split = split && X.def.size[1] < 6;
   if (split) {
-    halves.push(...X.split().map(h => Object.assign(h, { gen: X.gen })));
+    halves.push(...X.split().map((h, i) => Object.assign(h, { gen: X.gen, id: X.id + (i ? 'b' : 'a') })));
     X.halved = true;
     while (halves.length > 10) dropHalf(halves.shift());
   } else X.wreck();
@@ -461,6 +464,7 @@ function wreck(X, split) {
 function blowUp(X) {
   X.boomT = null;
   X.blown = true;
+  G.rec?.event(G.t, 'boom', { id: X.id, kind: X.kind });
   // (a forecourt car: thrown up and out, and wrecked by it)
   if (X.launch) { launch(X); X.launchT = G.t; if (!X.wrecked && !X.halved) wreck(X, false); }
   const p = X.car.pos.clone(), big = X.def.explosive ? 2 : 1, R = 8 * big;
@@ -630,6 +634,7 @@ function ignite(p, by) {
   const T = G.station, S = T.S;
   p = p.clone();
   T.lit = true;
+  G.rec?.event(G.t, 'station', { by: by?.id });
   if (by === player && G.state === 'run') startCrash({ point: p.clone(), speed: player.car.vel.length() }, null);
   callout('FILL \'ER UP', 'big');
   const y = city.base(S.x, S.z);
@@ -699,6 +704,7 @@ function launch(X) {
 // A prop thrown by a blast, into the debris
 function scatter(k) {
   const pc = props.piece(k.prop), T = G.station;
+  G.rec?.event(G.t, 'prop', { kind: k.prop.kind, at: [k.prop.x, k.prop.z].map(n => Math.round(n * 10) / 10) });
   // (the price sign's face is the station's: it goes with it)
   if (k.prop.kind === 'sign' && T?.face) {
     scene.remove(T.face);
@@ -762,7 +768,22 @@ function endCrash() {
   $('res-note').textContent = total > before && before ? `New best (was ${before.toLocaleString()})!` : next ? `${next.toLocaleString()} for ${['bronze', 'silver', 'gold'][L.medals.indexOf(next)]}.` : 'Gold. Nothing left but a higher score.';
   const keys = Object.keys(LEVELS), i = keys.indexOf(key);
   $('btn-next').classList.toggle('hidden', i === keys.length - 1);
+  G.rec?.event(G.t, 'end', { score: G.score, heat: G.heat, total, medal, wrecked: G.wrecked, chain: G.chain });
+  if (G.rec) { G.rec.next = 0; record(); }
+  $('btn-send').classList.add('hidden');
+  if (G.rec) canSend().then(ok => { $('btn-send').classList.toggle('hidden', !ok); $('btn-send').disabled = false; $('btn-send').textContent = 'Send replay'; });
   startTour();
+}
+// This step for the replay: every vehicle, your inputs, and where the camera is looking
+const _rl = new THREE.Vector3();
+function record() {
+  const list = [];
+  const flags = v => (v.wrecked ? FLAGS.wrecked : 0) | (v.alive === false ? FLAGS.dead : 0) | (v.blown ? FLAGS.blown : 0) | (v.halved ? FLAGS.halved : 0) | (v.asleep ? FLAGS.asleep : 0);
+  list.push({ id: 'you', kind: settings.car, paint: player.paint, len: player.len, car: player.car, flags: flags(player) });
+  for (const v of traffic.list) list.push({ id: v.id, kind: v.kind, paint: v.paint, len: v.len, car: v.car, flags: flags(v) });
+  for (const h of halves) list.push({ id: h.id, kind: 'half', paint: h.owner.paint, len: 2.3, car: h.car, flags: 0 });
+  camera.getWorldDirection(_rl).multiplyScalar(10).add(camera.position);
+  G.rec.frame(G.t, G.state, playerInput, list, camera.position, _rl, G.crash?.on);
 }
 
 // ---------- Fixed step ----------
@@ -908,6 +929,9 @@ function skipTo(secs) {
 }
 function go() {
   G.state = 'run';
+  // Record the run, for sending from the results (see replay.js)
+  G.rec = new Recorder({ level: city.key, car: settings.car, time: settings.time, date: new Date().toISOString(),
+    screen: [innerWidth, innerHeight], agent: navigator.userAgent });
   player.car.vel.copy(player.forward).multiplyScalar(city.level.start.speed);
   showMsg('GO!', '', 0.8);
   sound.beep(true);
@@ -916,7 +940,7 @@ function go() {
 function step() {
   G.t += DT;
   if ((G.state === 'intro' || G.state === 'count') && --G.preSteps <= 0) go();
-  const running = G.state === 'run' || G.state === 'crash' || G.state === 'results';
+  const running = G.state === 'run' || G.state === 'crash' || G.state === 'tour' || G.state === 'results';
   const c = player.car;
   const fwd = player.forward;
   const focus = G.crash ? { x: G.crash.origin.x, z: G.crash.origin.z, dx: 0, dz: 0 } : { x: c.pos.x, z: c.pos.z, dx: fwd.x, dz: fwd.z };
@@ -968,6 +992,7 @@ function step() {
       if (new THREE.Vector3(0, 1, 0).applyQuaternion(c.q).y < 0.2) startCrash({ point: c.pos.clone(), speed: c.vel.length() }, null);
     }
   }
+  if (G.rec && !G.ended) record();
   if (G.crash && !G.ended) {
     const C = G.crash;
     C.t += DT;
@@ -990,7 +1015,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyM') sound.setMuted(!sound.muted);
   if (G.state === 'intro' && ['Space', 'Enter', 'ArrowUp', 'KeyW'].includes(e.code)) { skipTo(PRE_COUNT); G.state = 'count'; }
   if (G.state === 'results' && e.code === 'Enter') startRun(PRE_RETRY);
-  if (G.state === 'tour' && e.code === 'Enter') G.tour.t = Math.max(G.tour.t, G.tour.end);
+  if (G.state === 'tour' && e.code === 'Enter') skipTour();
   if (G.state === 'crash' && e.code === 'Enter' && G.crash.t > 2) endCrash();
 });
 window.addEventListener('keyup', e => keys.delete(e.code));
@@ -1010,7 +1035,7 @@ function readInput() {
     brake = Math.max(brake, pad.buttons[6]?.value || 0);
     handbrake = handbrake || !!pad.buttons[2]?.pressed;
     boost = boost || !!pad.buttons[1]?.pressed || !!pad.buttons[5]?.pressed;
-    if (pad.buttons[9]?.pressed && !G.padStart) { if (G.state === 'results') startRun(PRE_RETRY); else if (G.state === 'tour') G.tour.t = Math.max(G.tour.t, G.tour.end); }
+    if (pad.buttons[9]?.pressed && !G.padStart) { if (G.state === 'results') startRun(PRE_RETRY); else if (G.state === 'tour') skipTour(); }
     G.padStart = !!pad.buttons[9]?.pressed;
     if (pad.buttons[3]?.pressed && !G.padY && G.state !== 'menu') startRun(PRE_RETRY);
     G.padY = !!pad.buttons[3]?.pressed;
@@ -1032,19 +1057,34 @@ for (const b of document.querySelectorAll('#touch button')) {
 if (matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window) document.body.classList.add('touch');
 
 // ---------- Camera ----------
-// The pile: what the crash has hit, gathered round where you crashed (recent hits count most)
+// The pile: what the crash has hit, round where you crashed (or anywhere, if it's all been thrown further), recent
+// hits counting most, and of that the thickest part: the middle of everything within 10 m of the hit with the
+// most round it. (The middle of all of it can be bare road between two heaps; where you crashed can be bare road
+// once it's all been thrown off it.)
+const _pk = [];
 function pileCentre(C) {
   const out = new THREE.Vector3();
-  let w = 0;
-  for (const v of traffic.list) {
-    if (!(v.gen > 0) || v.touchT == null || v.asleep) continue;
-    const p = v.car.pos;
-    if (Math.hypot(p.x - C.origin.x, p.z - C.origin.z) > 28) continue;
-    const k = 1 / (1 + Math.max(0, G.t - v.touchT));
-    out.addScaledVector(p, k);
-    w += k;
+  _pk.length = 0;
+  for (const R of [28, Infinity]) {
+    for (const v of traffic.list) {
+      if (!(v.gen > 0) || v.touchT == null || v.asleep) continue;
+      const p = v.car.pos;
+      if (Math.hypot(p.x - C.origin.x, p.z - C.origin.z) > R) continue;
+      _pk.push([p, 1 / (1 + Math.max(0, G.t - v.touchT))]);
+    }
+    if (_pk.length) break;
   }
-  return w > 0.05 ? out.divideScalar(w) : out.copy(C.origin);
+  const near = (a, b) => Math.hypot(a.x - b.x, a.z - b.z) < 10 && Math.abs(a.y - b.y) < 4;
+  let best = null, bw = 0;
+  for (const [p] of _pk) {
+    let w = 0;
+    for (const [q, k] of _pk) if (near(p, q)) w += k;
+    if (w > bw) { bw = w; best = p; }
+  }
+  if (!best) return out.copy(C.origin);
+  let w = 0;
+  for (const [q, k] of _pk) if (near(best, q)) { out.addScaledVector(q, k); w += k; }
+  return out.divideScalar(w);
 }
 // How worth watching a vehicle is right now. Most of all: one still driving that's about to run into
 // something (sooner is better). Then: a wreck that's still flying, tumbling or sliding. At rest: nothing.
@@ -1073,7 +1113,7 @@ function interest(v, all) {
       const t = along / (sp - bv);
       if (t < eta) { eta = t; at = b; }
     }
-    if (eta < 1.8) return { k: (30 + sp * 0.5 - eta * 6) * (d < 45 ? 1 : 0.5), at };
+    if (eta < INCOMING) return { k: (30 + sp * 0.5 - eta * 6) * (d < 45 ? 1 : 0.5), at };
     return { k: 0, at: null };
   }
   // A wreck on the move: worth watching near the pile, hardly at all once it's rolled off down the street
@@ -1101,21 +1141,27 @@ function heaps() {
   for (const [v, e] of C.ledger) {
     if (v === 'props') continue;
     const hs = halves.filter(h => h.owner === v);
+    // (not one that's driven on out of it and gone: there's nothing left there to see)
+    if (!hs.length && !traffic.list.includes(v)) continue;
     const pos = hs.length ? hs.reduce((a, h) => a.add(h.car.pos), new THREE.Vector3()).divideScalar(hs.length) : v.car.pos.clone();
     items.push({ pos, v, pts: e.total, by: e.by });
   }
   for (const s of C.spots) items.push({ pos: s.pos, pts: s.p, by: { prop: s.p } });
   // The nearest two heaps (middle to middle) become one, until there are six at most and none closer than 18 m
-  let gs = items.map(i => ({ items: [i], x: i.pos.x, z: i.pos.z }));
+  // (one on a bridge and one under it are as good as far apart)
+  const D = city.deck, over = y => !D || y > D.y - 1.6;
+  const apart = (a, b) => Math.hypot(a.x - b.x, a.z - b.z) + (over(a.y) !== over(b.y) ? 1000 : 0);
+  let gs = items.map(i => ({ items: [i], x: i.pos.x, y: i.pos.y, z: i.pos.z }));
   for (;;) {
     let bi = -1, bj = -1, bd = Infinity;
     for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++) {
-      const d = Math.hypot(gs[i].x - gs[j].x, gs[i].z - gs[j].z);
+      const d = apart(gs[i], gs[j]);
       if (d < bd) { bd = d; bi = i; bj = j; }
     }
     if (bi < 0 || (bd > 18 && gs.length <= 6)) break;
     const a = gs[bi], b = gs[bj], na = a.items.length, nb = b.items.length;
     a.x = (a.x * na + b.x * nb) / (na + nb);
+    a.y = (a.y * na + b.y * nb) / (na + nb);
     a.z = (a.z * na + b.z * nb) / (na + nb);
     a.items.push(...b.items);
     gs.splice(bj, 1);
@@ -1124,13 +1170,14 @@ function heaps() {
   const cars = gs.filter(g => g.items.some(i => i.v)), loose = [];
   for (const g of gs) {
     if (cars.includes(g)) continue;
-    const to = cars.reduce((a, o) => { const d = Math.hypot(o.x - g.x, o.z - g.z); return d < 30 && d < a.d ? { o, d } : a; }, { o: null, d: Infinity }).o;
+    const to = cars.reduce((a, o) => { const d = apart(o, g); return d < 30 && d < a.d ? { o, d } : a; }, { o: null, d: Infinity }).o;
     if (to) to.items.push(...g.items); else loose.push(...g.items);
   }
   gs = cars;
   if (loose.length) gs.push({ items: loose });
   gs = gs.map(({ items }) => {
-    const g = { items, pts: 0, by: {}, c: new THREE.Vector3(), r: 0, top: 0, cars: items.filter(i => i.v) };
+    // (`top` from below anything: a heap can lie below 0, down a bank or under a bridge)
+    const g = { items, pts: 0, by: {}, c: new THREE.Vector3(), r: 0, top: -Infinity, cars: items.filter(i => i.v) };
     for (const i of items) {
       g.pts += i.pts;
       for (const [t, p] of Object.entries(i.by)) g.by[t] = (g.by[t] || 0) + p;
@@ -1202,15 +1249,17 @@ function startTour() {
     fromD: Math.hypot(p.x - first.x, p.z - first.z), az0: Math.atan2(p.x - first.x, p.z - first.z), look: centre.clone(), max: Math.max(1, ...gs.map(g => g.pts)) };
   $('callouts').innerHTML = '';
 }
+// Enter (or Start) skips the rest of it, to the results
+function skipTour() { G.tour.t = Math.max(G.tour.t, G.tour.end); }
 // Where the camera looks at a heap from: `a` round it, `D` out and up
 const tourSpot = (c, a, D, out) => out.set(c.x + Math.sin(a) * D, c.y + 3 + D * 0.5, c.z + Math.cos(a) * D);
 // Where the tour's camera is: HEAP seconds a heap (one on its own, a second), getting there in the first half, then the results
 // circle out over the lot
 function tourCamera(rawDt) {
   const T = G.tour, n = T.gs.length, END = T.end, each = END / Math.max(1, n), ease = t => t * t * (3 - 2 * t);
-  const was = T.t < END;
   T.t += rawDt;
-  if (was && T.t >= END) { G.state = 'results'; showScreen('results'); for (const g of T.gs) g.el?.classList.add('gone'); }
+  // (by the state, not the clock: a skip puts the clock at the end already)
+  if (G.state === 'tour' && T.t >= END) { G.state = 'results'; showScreen('results'); for (const g of T.gs) g.el?.classList.add('gone'); }
   // (first a moment on the 0, everything frozen where it was)
   if (T.t < 0) return;
   $('hud').classList.add('touring');
@@ -1239,7 +1288,8 @@ function tourCamera(rawDt) {
   for (const b of city.near(camera.position.x, camera.position.z)) {
     if (camera.position.y < b.top + 1 && city.blockDist(b, camera.position.x, camera.position.z, _w) < 1) camera.position.y = b.top + 1;
   }
-  offDeck(T.look, camera.position);
+  // (out of the deck, and back above the ground if that put it down in a bank)
+  clear(T.look, camera.position);
   outside(camera.position);
   camera.lookAt(T.look);
 }
@@ -1316,7 +1366,9 @@ function offDeck(look, p) {
   const D = city.deck;
   if (!D) return;
   const [a, b, c, d] = D.rect;
-  if (p.x > a - 8 && p.x < b + 8 && p.z > c - 1 && p.z < d + 1 && p.y < D.y + 0.6 && p.y > D.y - 2.8) p.y = look.y > D.y - 1 ? D.y + 0.6 : D.y - 2.8;
+  // (looking at something under it, from anywhere above it too: the deck would be all it saw)
+  const under = look.y < D.y - 1;
+  if (p.x > a - 8 && p.x < b + 8 && p.z > c - 1 && p.z < d + 1 && p.y > D.y - 2.8 && (p.y < D.y + 0.6 || under)) p.y = under ? D.y - 2.8 : D.y + 0.6;
   // (and not in the dark under it, looking out at something that's come out the other side)
   if (look.y < D.y - 1 && p.y < D.y && p.z > c && p.z < d) {
     if (p.x > a - 1 && p.x < b + 1 && look.x > b + 2) p.x = b + 1.5;
@@ -1326,24 +1378,34 @@ function offDeck(look, p) {
 // Keep the camera out of vehicles, wherever they lie and however they're turned: from inside one, up over it
 const _q = new THREE.Quaternion(), _m = new THREE.Matrix4();
 function outside(p) {
-  // (again after a lift, which can put it in one stacked on top)
-  for (let pass = 0; pass < 4 && liftOut(p); pass++);
+  // (again after a lift, which can put it in one stacked on top; under a bridge, never up into its deck: out to
+  // the side instead)
+  const D = city.deck, cap = D && city.inDeck(p.x, p.z, 8) && p.y < D.y - 1.6 ? D.y - 2.2 : Infinity;
+  for (let pass = 0; pass < 4 && liftOut(p, cap); pass++);
 }
-function liftOut(p) {
-  let moved = false;
-  for (const b of [player, ...traffic.list, ...halves]) {
-    if (!b || b.halved) continue;
-    const c = b.car, big = b.len > 6;
-    const w = (b.def ? b.def.size[0] / 2 : 1) + 0.5, l = (b.len || 2.2) / 2 + 0.5, lo = -1.2, hi = big ? 3.6 : 1.9;
-    if (Math.abs(p.x - c.pos.x) > l + w || Math.abs(p.z - c.pos.z) > l + w) continue;
-    _s.copy(p).sub(c.pos).applyQuaternion(_q.copy(c.q).invert());
-    if (Math.abs(_s.x) > w || Math.abs(_s.z) > l || _s.y < lo || _s.y > hi) continue;
-    // (the top of its box, turned the way it is)
-    const e = _m.makeRotationFromQuaternion(c.q).elements, hy = (hi - lo) / 2;
-    p.y = c.pos.y + e[5] * (hi + lo) / 2 + Math.abs(e[1]) * w + Math.abs(e[5]) * hy + Math.abs(e[9]) * l + 0.3;
-    moved = true;
-  }
+function liftOut(p, cap) {
+  let moved = liftOver(p, player, cap);
+  for (const b of traffic.list) moved = liftOver(p, b, cap) || moved;
+  for (const b of halves) moved = liftOver(p, b, cap) || moved;
   return moved;
+}
+// From inside `b`, up over it (true if it moved)
+function liftOver(p, b, cap = Infinity) {
+  if (!b || b.halved) return false;
+  const c = b.car, big = b.len > 6;
+  const w = (b.def ? b.def.size[0] / 2 : 1) + 0.5, l = (b.len || 2.2) / 2 + 0.5, lo = -1.2, hi = big ? 3.6 : 1.9;
+  if (Math.abs(p.x - c.pos.x) > l + w || Math.abs(p.z - c.pos.z) > l + w) return false;
+  _s.copy(p).sub(c.pos).applyQuaternion(_q.copy(c.q).invert());
+  if (Math.abs(_s.x) > w || Math.abs(_s.z) > l || _s.y < lo || _s.y > hi) return false;
+  // (the top of its box, turned the way it is)
+  const e = _m.makeRotationFromQuaternion(c.q).elements, hy = (hi - lo) / 2;
+  const top = c.pos.y + e[5] * (hi + lo) / 2 + Math.abs(e[1]) * w + Math.abs(e[5]) * hy + Math.abs(e[9]) * l + 0.3;
+  if (top <= cap) { p.y = top; return true; }
+  // (no room over it: out the nearer side)
+  if (w - Math.abs(_s.x) < l - Math.abs(_s.z)) _s.x = Math.sign(_s.x || 1) * (w + 0.05);
+  else _s.z = Math.sign(_s.z || 1) * (l + 0.05);
+  p.copy(_s.applyQuaternion(c.q).add(c.pos));
+  return true;
 }
 function updateCamera(dt, rawDt) {
   const c = player.car;
@@ -1386,6 +1448,8 @@ function updateCamera(dt, rawDt) {
     // to rest. It looks a little ahead of its subject, toward what it's going to hit, and leans to the pile.
     const C = G.crash;
     C.cutT += rawDt;
+    // (and on the simulation's own clock, slowed in the crash: the one what's coming gets there on)
+    C.cutS = (C.cutS || 0) + dt;
     const all = bodies().filter(b => !b.half);
     const pile = pileCentre(C);
     C.focus.lerp(pile, 1 - Math.exp(-rawDt * 2));
@@ -1397,14 +1461,15 @@ function updateCamera(dt, rawDt) {
       let best = null, bk = 0;
       for (const v of all) { const n = interest(v, all); if (n.k > bk) { bk = n.k; best = v; } }
       // (one that was coming for the pile and got away with it, or still hasn't got there: off it at once)
-      const missed = C.subject && C.subject !== player && !(C.subject.gen > 0) && (C.restT > 0.4 || C.cutT > 1.5);
+      const missed = C.subject && C.subject !== player && !(C.subject.gen > 0) && (C.restT > 0.4 || C.cutS > INCOMING);
       const tired = C.restT > 0.8 || C.cutT > 6 || missed;
       if (best && best !== C.subject && (C.cutT > SHOT || missed) && (tired || bk > cur.k * 1.8)) {
         C.subject = best;
         C.side = -C.side || 1;
-        C.cutT = 0;
+        // (the new one's rest starts now: the last one's would have it "missed" at once, and cut again)
+        C.cutT = C.cutS = C.restT = 0;
         C.cutNow = true;
-      } else if ((!best || missed) && tired && C.subject) { C.subject = null; C.cutT = 0; }
+      } else if ((!best || missed) && tired && C.subject) { C.subject = null; C.cutT = C.cutS = 0; }
     }
     const S = C.subject;
     let look;
@@ -1731,6 +1796,14 @@ $('btn-next').onclick = () => {
   startRun(PRE_INTRO + PRE_COUNT);
 };
 $('btn-menu').onclick = toMenu;
+// Send this run's replay to the server it came from (when that's serve.py)
+$('btn-send').onclick = async () => {
+  const b = $('btn-send'), rec = G.rec;
+  if (!rec) return;
+  b.disabled = true;
+  b.textContent = 'Sending…';
+  try { b.textContent = `Sent ✓ ${await send(rec)}`; } catch (e) { b.textContent = 'Not sent: ' + e.message; b.disabled = false; }
+};
 $('btn-resume').onclick = resume;
 $('btn-quit').onclick = toMenu;
 $('btn-help').onclick = () => showScreen('help');
@@ -1838,7 +1911,55 @@ Object.assign(flashEl.style, { position: 'fixed', inset: 0, pointerEvents: 'none
   background: 'radial-gradient(ellipse at center, transparent 45%, rgba(220,30,20,0.55) 100%)' });
 document.body.appendChild(flashEl);
 
-G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render() };
+// ---------- Looking into a replay ----------
+// (for debugging: rush.debug.replay(json) loads its level and its vehicles; then .seek(t) shows them at game
+// time t, from the camera that was used or from `view`: [x, y, z, lookX, lookY, lookZ])
+function replay(R) {
+  Object.assign(settings, { level: R.level, car: R.car, time: R.time });
+  loadLevel(R.level);
+  startRun(0);
+  for (const v of traffic.list.slice()) traffic.remove(v);
+  G.state = 'paused';
+  showScreen(null);
+  $('hud').classList.add('hidden');
+  const cars = {};
+  for (const [id, b] of Object.entries(R.bodies)) {
+    if (id === 'you') cars[id] = player;
+    else if (b.kind === 'half') {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.3, 2.3), new THREE.MeshLambertMaterial({ color: paintOf(b.paint) }));
+      scene.add(m);
+      cars[id] = { model: m, car: { pos: m.position, q: m.quaternion }, pose() {} };
+    } else cars[id] = new Car(city, scene, 0, trafficDef(b.kind), b.paint);
+  }
+  const F = R.frames, _q = new THREE.Quaternion(), _p = new THREE.Vector3(), look = new THREE.Vector3();
+  return {
+    frames: F.length, start: F[0].t, end: F[F.length - 1].t,
+    seek(t, view) {
+      let lo = 0, hi = F.length - 1;
+      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (F[m].t <= t) lo = m; else hi = m - 1; }
+      const a = F[lo], b = F[Math.min(lo + 1, F.length - 1)], k = b.t > a.t ? clamp((t - a.t) / (b.t - a.t), 0, 1) : 0;
+      const next = new Map(b.b.map(e => [e[0], e]));
+      for (const v of Object.values(cars)) v.model.visible = false;
+      for (const e of a.b) {
+        const v = cars[e[0]], f = next.get(e[0]) || e;
+        v.car.pos.set(e[1], e[2], e[3]).lerp(_p.set(f[1], f[2], f[3]), k);
+        v.car.q.set(e[4], e[5], e[6], e[7]).normalize().slerp(_q.set(f[4], f[5], f[6], f[7]).normalize(), k);
+        v.pose();
+        v.model.visible = !(e[8] & 8);
+      }
+      const c = view || a.cam.map((n, i) => n + (b.cam[i] - n) * k);
+      camera.position.set(c[0], c[1], c[2]);
+      camera.up.set(0, 1, 0);
+      camera.lookAt(look.set(c[3], c[4], c[5]));
+      camera.fov = stage.fitFov(56);
+      camera.updateProjectionMatrix();
+      stage.focusSun(look, 45);
+      post.render();
+      return { t: a.t, state: a.s, input: a.in, cars: a.b.length };
+    },
+  };
+}
+G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay };
 toMenu();
 if (!store.load('rush.seenHelp', false)) showScreen('help');
 requestAnimationFrame(frame);

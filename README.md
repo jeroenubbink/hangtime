@@ -152,8 +152,20 @@ average finishing place lands near the middle.
 ES modules need to be served over HTTP (three.js loads from a CDN):
 
 ```sh
-python3 -m http.server 8000
-# then open http://localhost:8000
+python3 serve.py          # port 8765; or python3 serve.py 8000
+# then open http://localhost:8765 (or, from a phone on the same network, http://<this machine's IP>:8765)
+```
+
+Any static server works (`python3 -m http.server`), but `serve.py` also takes in Rushtime **replays**: the
+results screen then has a **Send replay** button, and the run lands in `replays/` as JSON (not committed):
+every vehicle's position and turn 20 times a second of game time, your inputs, the camera and what it was
+following, and what scored where. To look into one, open the game and in the console:
+
+```js
+rush.manual = true;   // stop the game's own clock
+const R = rush.debug.replay(await (await fetch('replays/<name>.json')).json());
+R.seek(14.2);                          // the vehicles at game time 14.2 s, seen from the camera you had
+R.seek(14.2, [0, 30, 40, 0, 0, 0]);    // or from anywhere: [x, y, z, look x, y, z]
 ```
 
 ## Hangtime controls
@@ -261,6 +273,7 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
   - `traffic.js`: lanes and drivers (following, stopping at red, reacting late, swerving); far traffic glides along
     its lane without physics
   - `props.js`: lamp posts, trees, traffic lights, bins, hydrants, bollards and crash barriers that get knocked flying
+  - `replay.js`: records each run for the Send replay button (see Run)
   - `roster.js`: your cars and the traffic
 - `assets/cars/toy-bus.glb`, `toy-tanker.glb`, `toy-lorry.glb`, `toy-flatbed.glb`: Rushtime's big vehicles, made in
   Blender (source: `assets/src/rush-vehicles.blend`)
