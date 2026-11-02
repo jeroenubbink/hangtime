@@ -89,15 +89,21 @@ through them. Things to know:
 
 ## Rushtime
 
-- **Two junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path,
-  and **Dockside Drop**, a downhill run with a crest that throws you, ending at a six-lane harbour road with the
-  water behind it.
-- **The run-up:** about ten seconds through traffic. Near misses (closer counts more, oncoming more still), the
+- **Three junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
+  **Dockside Drop**, a downhill run with a crest that throws you, ending at a six-lane harbour road with the
+  water behind it; and **Gridlock Leap**, where your way is jammed solid back from the lights and the roadworks left
+  a ramp: fly onto the jam and shove it into the busy junction.
+- **The traffic is scripted:** the same every time, so a junction can be learned. Until you crash its drivers are
+  model drivers (queues wait, nobody crashes without you); once you've crashed they're slow to see trouble and
+  slower to stop, so mostly they drive straight into it.
+- **The run-up:** about six seconds through traffic. Near misses (closer counts more, oncoming more still), the
   oncoming lane, drifts and air build **heat**, the multiplier on your final score, and fill **rush**, the boost.
   Burning rush widens the view, blurs the edges and pulls the camera in.
 - **The crash:** the moment you hit something solid, time slows right down and the camera circles the pile-up.
-  Traffic keeps coming and its drivers react a moment too late, so one hit becomes many. Each vehicle hit by
-  something your crash already reached is a link in the **chain** and scores more. Tankers explode, other wrecks
+  Traffic keeps coming and its drivers react a moment too late, so one hit becomes many. Everything that crashes
+  around your crash or in the junction scores; each vehicle hit by something your crash already reached is a link in
+  the **chain** and scores more. The crash runs while it keeps scoring: after 25 seconds the drivers start stopping
+  in time, and at 30 it's over. Tankers explode, other wrecks
   sometimes catch fire and go up, cars split in half, lamp posts and trees go flying, hydrants gush, and on the
   docks cars go over the quay into the water. Steer for a few seconds after impact to push your wreck further.
 - **Traffic:** six kinds of car, vans, pickups, police cars, garbage trucks, city buses, fuel tankers, box lorries
@@ -232,7 +238,7 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
   - `main.js`: your car's handling, the run-up (heat, rush, near misses), the crash (chains, explosions, slow motion,
     crash camera), speed effects (radial blur, streaks), HUD and menus
   - `city.js`: streets as axis-aligned roads with lane markings, kerbs and pavements, buildings, the quay
-  - `levels.js`: the junctions: roads, traffic lanes, red lights and the timed tanker and bus
+  - `levels.js`: the junctions: roads, traffic lanes, red lights and queues, ramps, and the timed tanker and bus
   - `traffic.js`: lanes and drivers (following, stopping at red, reacting late, swerving); far traffic glides along
     its lane without physics
   - `props.js`: lamp posts, trees, traffic lights, bins, hydrants and bollards that get knocked flying

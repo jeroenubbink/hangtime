@@ -7,6 +7,7 @@ import { TRAFFIC } from './roster.js';
 
 const RIDE = 0.88;              // a resting car's height above the road
 const WAKE = 95;                // physics within this distance of the camera's subject
+const CALM = 25;                // seconds into a crash when drivers start to see trouble coming (all of them by CALM + 4)
 const _l = new THREE.Vector3(), _f = new THREE.Vector3(), _r = new THREE.Vector3(), _q = new THREE.Quaternion();
 const _m = new THREE.Matrix4(), _up = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
@@ -44,9 +45,11 @@ export class Lane {
   lateral(p) { return (p.x - this.ax) * this.rx + (p.z - this.az) * this.rz; }
 }
 
-// A traffic driver. `react`: seconds before they act on trouble ahead; `brakeMax`: how hard they brake (0..1),
-// never hard enough; `swerveK`: how likely they are to yank the wheel instead. They're slow to see trouble and
-// slower to stop, so mostly they drive into it.
+// A traffic driver. Until you crash they're model drivers, so the junction is the same every time you
+// arrive. Once you've crashed they're the other kind: `react`: seconds before they act on trouble ahead;
+// `brakeMax`: how hard they brake (0..1), never hard enough; `swerveK`: how likely they are to yank the
+// wheel instead. Slow to see trouble and slower to stop, mostly they drive into it, until a crash has gone on
+// long enough (CALM) and, one by one, they start stopping in time.
 export class TrafficDriver {
   constructor(lane, cruise, rand) {
     this.lane = lane;
@@ -55,6 +58,7 @@ export class TrafficDriver {
     this.react = 0.9 + rand() * 0.7;
     this.brakeMax = 0.16 + rand() * 0.2;
     this.swerveK = rand();
+    this.wakesAt = CALM + rand() * 4;
     this.alert = 0;
     this.swerve = 0;
     this.swerveT = 0;
@@ -69,8 +73,8 @@ export class TrafficDriver {
     this.startled = { t: delay, k };
   }
 
-  // Controls for one step. `bodies` is everything solid nearby.
-  drive(v, bodies, dt, input) {
+  // Controls for one step. `bodies` is everything solid nearby; `careful`: a model driver.
+  drive(v, bodies, dt, input, careful) {
     const c = v.car, L = this.lane;
     input.handbrake = false; input.boost = false; input.stop = true;   // traffic never reverses
     // Knocked out: foot off, rolling on into whatever's next
@@ -111,6 +115,15 @@ export class TrafficDriver {
     const noticed = this.alert > this.react;
     let throttle = 0, brake = 0;
     const err = want - sp;
+    if (careful) {
+      // Sees it all, brakes in time, never flinches
+      this.alert = 0; this.startled = null; this.swerveT = 0;
+      if (err > 0.3) throttle = clamp(err * 0.35, 0, 0.85);
+      else if (err < -0.3) brake = clamp(-err * 0.3, 0, 1);
+      if (closing > 0.5 && gap < closing * closing / 14 + 3) { brake = 1; throttle = 0; }
+      input.throttle = throttle; input.brake = brake; input.steer = steer;
+      return;
+    }
     if (err > 0.3) throttle = clamp(err * 0.35, 0, 0.85);
     else if (err < -0.5) brake = clamp(-err * 0.08, 0, 0.2);
     if (danger && !noticed) { brake = 0; throttle = Math.min(throttle, 0.3); }     // hasn't seen it yet
@@ -161,7 +174,9 @@ export class Traffic {
       const pick = () => L.speed[0] + R() * (L.speed[1] - L.speed[0]);
       // Bumper to bumper, back from the stop line
       let at = L.stop - 1;
-      if (L.queue) for (let k = 0; k < L.queue; k++) { const kind = this.kind(L), len = TRAFFIC[kind].size[1]; this.add(kind, L, at - len / 2, 0, true); at -= len + 2; }
+      const queue = Array.isArray(L.queue) ? L.queue : Array(L.queue || 0).fill(null);
+      for (const k of queue) { const kind = k || this.kind(L), len = TRAFFIC[kind].size[1]; const v = this.add(kind, L, at - len / 2, 0, true); if (k) v.special = k; at -= len + 2; }
+      const back = at;
       if (L.fill) {
         for (let s = L.fill[0]; s < L.fill[1]; s += L.gap[0] + R() * (L.gap[1] - L.gap[0])) {
           if (L.stop != null && s > L.stop - 40 && s < L.stop) continue;
@@ -169,7 +184,12 @@ export class Traffic {
         }
       }
       if (L.spawn) {
-        for (let s = L.from + 5; s < L.to - 5;) { const sp = pick(); this.add(this.kind(L), L, s, sp); s += sp * (L.gap[0] + R() * (L.gap[1] - L.gap[0])); }
+        for (let s = L.from + 5; s < L.to - 5;) {
+          const sp = pick();
+          // (not on top of a queue: they'll join the back of it)
+          if (!queue.length || s < back - 25 || s > L.stop + 5) this.add(this.kind(L), L, s, sp);
+          s += sp * (L.gap[0] + R() * (L.gap[1] - L.gap[0]));
+        }
         L.next = L.gap[0] + R() * (L.gap[1] - L.gap[0]);
       }
     }
@@ -239,8 +259,9 @@ export class Traffic {
   }
 
   // Before the physics step: spawn, glide the sleepers, wake the ones near `focus` ({ x, z, dx, dz }: where the
-  // player is and which way they're going), drive the awake ones
-  update(dt, focus, bodies, spawning) {
+  // player is and which way they're going), drive the awake ones. `crashT`: how long you've been crashing (null
+  // before you crash).
+  update(dt, focus, bodies, spawning, crashT = null) {
     for (const L of this.lanes) {
       if (spawning && L.spawn && (L.next -= dt) <= 0) {
         L.next = L.gap[0] + this.rand() * (L.gap[1] - L.gap[0]);
@@ -252,9 +273,11 @@ export class Traffic {
         const v = L.cars[k];
         if (!v.asleep) continue;
         const ahead = L.cars[k + 1];
+        // (in a crash they don't see what's waiting for them: they'll be awake, and too late, by the time they get there)
+        const wild = crashT != null && crashT < v.driver.wakesAt;
         let want = v.driver.cruise;
-        if (ahead) want = Math.min(want, Math.max(0, (ahead.asleep ? ahead.glide : Math.max(0, ahead.car.speed)) + (ahead.s - v.s - (ahead.len + v.len) / 2 - 6) * 0.5));
-        if (L.stop != null && v.s < L.stop) want = Math.min(want, Math.max(0, (L.stop - v.s - v.len / 2 - 1) * 0.5));
+        if (ahead && !(wild && !ahead.asleep)) want = Math.min(want, Math.max(0, (ahead.asleep ? ahead.glide : Math.max(0, ahead.car.speed)) + (ahead.s - v.s - (ahead.len + v.len) / 2 - 6) * 0.5));
+        if (!wild && L.stop != null && v.s < L.stop) want = Math.min(want, Math.max(0, (L.stop - v.s - v.len / 2 - 1) * 0.5));
         v.glide += clamp(want - v.glide, -6 * dt, 3 * dt);
         v.s += v.glide * dt;
         this.place(v);
@@ -268,7 +291,7 @@ export class Traffic {
       if (!v.asleep) {
         v.s = v.lane.progress(p);
         this.input.throttle = 0;
-        v.driver.drive(v, bodies, dt, this.input);
+        v.driver.drive(v, bodies, dt, this.input, crashT == null || crashT > v.driver.wakesAt);
         v.input = { ...this.input };
       }
       const behind = (p.x - focus.x) * focus.dx + (p.z - focus.z) * focus.dz < -150;

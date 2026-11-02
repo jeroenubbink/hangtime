@@ -32,7 +32,8 @@ const NONE = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false }
 const KMH = 3.6;
 const PRE_INTRO = 2.6, PRE_COUNT = 2.4, PRE_RETRY = 1.2, PRE_ALL = PRE_INTRO + PRE_COUNT;
 const FRAGILE = 2.4;
-const CRASH_MAX = 20, CRASH_QUIET = 5, FOLLOW_YOU = 5, SHOT = 2.5;   // seconds
+const ZONE = 45;   // metres around where you crashed (and round the junction): whatever crashes in there is part of your crash
+const CRASH_MAX = 30, CRASH_QUIET = 5, FOLLOW_YOU = 5, SHOT = 2.5;   // seconds
 
 // ---------- Stage ----------
 const stage = createStage($('view'));
@@ -393,6 +394,12 @@ function blowUp(X) {
   G.shake = Math.max(G.shake, player && player.car.pos.distanceTo(p) < 40 ? 1 : 0.4);
 }
 
+// The crash zone: around where you crashed, and the junction
+function inZone(p) {
+  const O = G.crash.origin, [jx, jz] = city.level.junction;
+  return Math.hypot(p.x - O.x, p.z - O.z) < ZONE || Math.hypot(p.x - jx, p.z - jz) < ZONE;
+}
+
 // Two bodies met (normal from B to A)
 function collided(A, B, h) {
   const base = damageFrom(h.j);
@@ -423,6 +430,10 @@ function collided(A, B, h) {
   if (vb && vb !== player && !vb.gen && sa != null) vb.gen = sa + 1;
   if (va && va !== player && !va.gen && sb != null) va.gen = sb + 1;
   G.chain = Math.max(G.chain, va?.gen || 0, vb?.gen || 0);
+  // ...and anything that crashes in the crash zone around where you hit is part of it too
+  if (G.crash && base > 2 && va !== player && vb !== player && inZone(h.point)) {
+    for (const v of [va, vb]) if (v && !v.gen) v.gen = 1;
+  }
   if (base > 6) startle(h.point, base);
   if (G.crash && base > 35 && G.t - (G.crash.lastSpike || 0) > 1.2) { G.crash.lastSpike = G.t; spike(0.3, 0.6); }
   if (base <= 0) return;
@@ -645,9 +656,9 @@ function step() {
   const running = G.state === 'run' || G.state === 'crash' || G.state === 'results';
   const c = player.car;
   const fwd = player.forward;
-  const focus = G.crash ? { x: G.crash.focus.x, z: G.crash.focus.z, dx: 0, dz: 0 } : { x: c.pos.x, z: c.pos.z, dx: fwd.x, dz: fwd.z };
+  const focus = G.crash ? { x: G.crash.origin.x, z: G.crash.origin.z, dx: 0, dz: 0 } : { x: c.pos.x, z: c.pos.z, dx: fwd.x, dz: fwd.z };
   const B = bodies();
-  traffic.update(DT, focus, [...B, ...traffic.list.filter(v => v.asleep)], true);
+  traffic.update(DT, focus, [...B, ...traffic.list.filter(v => v.asleep)], true, G.crash ? G.crash.t : null);
   if (G.state === 'run') drive(DT);
   else if (running) {
     // Aftertouch: a few seconds to steer your wreck into more trouble
@@ -671,6 +682,8 @@ function step() {
     for (const h of halves) { h.car.step(DT, NONE); water(h); }
     const all = bodies();
     for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+      // Until you crash the traffic is scripted: it doesn't crash into itself (unless you've had a go at it)
+      if (!G.crash && !all[i].player && !all[j].player && !all[i].gen && !all[j].gen) continue;
       const h = contact(all[i], all[j]);
       if (h) collided(all[i], all[j], h);
     }
@@ -681,7 +694,7 @@ function step() {
       sparks(pc.pos, 8);
       if (k.prop.kind === 'hydrant') G.geysers.push({ p: new THREE.Vector3(k.prop.x, k.prop.y, k.prop.z), t: 7 });
       if (k.vehicle === player && G.state === 'run') G.shake = Math.max(G.shake, 0.35);
-      if (G.state === 'crash') { G.score += 30; G.crash.quiet = 0; }
+      if (G.state === 'crash' && (k.vehicle.gen > 0 || k.vehicle === player)) { G.score += 30; G.crash.quiet = 0; }
     }
     if (G.state === 'run') {
       G.oncoming = oncoming();
@@ -693,7 +706,8 @@ function step() {
     const C = G.crash;
     C.t += DT;
     C.quiet += DT;
-    // Traffic keeps piling in for up to 20 seconds; five quiet ones and it's over
+    // Traffic keeps piling in while there's anything to hit it; after CALM (25 s) the drivers start stopping in
+    // time, and at 30 it's over whatever's still flying. Five quiet seconds end it sooner.
     if (C.quiet > CRASH_QUIET || C.t > CRASH_MAX) endCrash();
   }
 }
@@ -772,6 +786,7 @@ function interest(v, all) {
   if (!v || v.asleep) return { k: 0, at: null };
   const c = v.car, sp = c.vel.length();
   if (sp < 2.5) return { k: 0, at: null };
+  const C = G.crash, d = C ? Math.hypot(c.pos.x - C.focus.x, c.pos.z - C.focus.z) : 0;
   if (v !== player && v.driver && !v.driver.out && v.alive) {
     // Still driving: what's in its path?
     const hx = c.vel.x / sp, hz = c.vel.z / sp;
@@ -788,12 +803,11 @@ function interest(v, all) {
       const t = along / (sp - bv);
       if (t < eta) { eta = t; at = b; }
     }
-    if (eta < 2.5) return { k: 30 + sp * 0.5 - eta * 6, at };
+    if (eta < 2.5) return { k: (30 + sp * 0.5 - eta * 6) * (d < 45 ? 1 : 0.5), at };
     return { k: 0, at: null };
   }
-  // A wreck on the move: worth more the nearer the pile it is
-  const C = G.crash, d = C ? Math.hypot(c.pos.x - C.focus.x, c.pos.z - C.focus.z) : 0;
-  return { k: (sp + c.w.length() * 2) * (d < 30 ? 1 : 0.3), at: null };
+  // A wreck on the move: worth watching near the pile, hardly at all once it's rolled off down the street
+  return { k: (sp + c.w.length() * 2) * (d < 30 ? 1 : 0.15), at: null };
 }
 // Keep the camera clear of what stands between it and the action: buildings (pull in), cars, trees, lamp
 // posts and traffic lights (rise over them)
@@ -882,7 +896,8 @@ function updateCamera(dt, rawDt) {
       // Toward where it's headed (what it's about to hit, if anything), with a pull toward the pile
       _l.copy(p).addScaledVector(v, 0.35);
       if (n.at) _l.lerp(n.at.car.pos, 0.4);
-      _l.lerp(C.focus, 0.2);
+      // (only when it's near: lean to a pile far behind and the camera ends up staring at a wall)
+      _l.lerp(C.focus, 0.2 * clamp(1 - _l.distanceTo(C.focus) / 40, 0, 1));
       look = _l;
       C.on = S === player ? 'you' : (n.at ? 'incoming ' : 'wreck ') + S.kind;
     } else {
