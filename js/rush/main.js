@@ -32,7 +32,7 @@ const NONE = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false }
 const KMH = 3.6;
 const PRE_INTRO = 2.6, PRE_COUNT = 2.4, PRE_RETRY = 1.2, PRE_ALL = PRE_INTRO + PRE_COUNT;
 const FRAGILE = 2.4;
-const CRASH_MAX = 20, CRASH_QUIET = 5, FOLLOW_YOU = 6;   // seconds
+const CRASH_MAX = 20, CRASH_QUIET = 5, FOLLOW_YOU = 5, SHOT = 2.5;   // seconds
 
 // ---------- Stage ----------
 const stage = createStage($('view'));
@@ -282,15 +282,10 @@ const chainK = gen => Math.min(3, 1 + 0.15 * (gen - 1));
 function scoreEvent(v, pts, label, big = false) {
   if (G.state !== 'crash' || G.ended || !v || v.player || !(v.gen > 0)) return;
   const p = Math.round(pts * chainK(v.gen));
+  if (p <= 0) return;
   G.score += p;
   G.crash.quiet = 0;
   if (label) callout(`${label}<small>+${p.toLocaleString()}</small>`, big ? 'big' : '');
-}
-function crashFocus(p, w) {
-  const C = G.crash;
-  if (!C) return;
-  C.heat = Math.min(C.heat + w, 60);
-  C.target.lerp(p, Math.min(1, w / (C.heat + 1) * 2.5));
 }
 function spike(k = 0.25, secs = 0.7) { G.spike = Math.max(G.spike, secs); G.spikeK = k; }
 
@@ -349,7 +344,7 @@ function hurt(X, by, dmg, point, n) {
     return;
   }
   if (X.driver && dmg > 4) X.driver.out = true;
-  scoreEvent(X, Math.min(dmg, Math.max(0, was)) * 10 * X.value, dmg > 50 ? 'SMASH' : null);
+  scoreEvent(X, Math.min(dmg, Math.max(0, was)) * 10 * X.value, null);
   if (X.hp <= 0 && X.alive) wreck(X, side && dmg >= 30);
 }
 
@@ -394,7 +389,7 @@ function blowUp(X) {
     }
   }
   startle(p, 70);
-  if (G.crash) { crashFocus(p, 30); spike(0.2, 1.1); }
+  if (G.crash) spike(0.2, 1.1);
   G.shake = Math.max(G.shake, player && player.car.pos.distanceTo(p) < 40 ? 1 : 0.4);
 }
 
@@ -428,7 +423,6 @@ function collided(A, B, h) {
   if (vb && vb !== player && !vb.gen && sa != null) vb.gen = sa + 1;
   if (va && va !== player && !va.gen && sb != null) va.gen = sb + 1;
   G.chain = Math.max(G.chain, va?.gen || 0, vb?.gen || 0);
-  if (G.crash && base > 4) crashFocus(h.point, base);
   if (base > 6) startle(h.point, base);
   if (G.crash && base > 35 && G.t - (G.crash.lastSpike || 0) > 1.2) { G.crash.lastSpike = G.t; spike(0.3, 0.6); }
   if (base <= 0) return;
@@ -458,7 +452,7 @@ function startCrash(h, other) {
   const bonus = clamp((kmh - 110) / 110, 0, 1.5);
   G.impact = { kmh, bonus };
   G.heat = Math.round((G.heat + bonus) * 10) / 10;
-  G.crash = { t: 0, rt: 0, quiet: 0, heat: 10, target: h.point.clone(), focus: h.point.clone(), ang: 0, dist: 13, cutT: 0, lastSpike: G.t };
+  G.crash = { t: 0, rt: 0, quiet: 0, focus: h.point.clone(), origin: h.point.clone(), ang: 0, dist: 13, cutT: 0, lastSpike: G.t };
   // Start the camera low beside the impact, looking across the way you came in
   const f = player.forward.clone().setY(0).normalize();
   G.crash.ang = Math.atan2(-f.x, -f.z) + (Math.random() < 0.5 ? 1 : -1) * (0.9 + Math.random() * 0.5);
@@ -627,7 +621,6 @@ function water(v) {
     sound.splash();
     if (v === player && G.state === 'run') startCrash({ point: c.pos.clone(), speed: c.vel.length() }, null);
     else if (!v.half) { scoreEvent(v, 900 * v.value, 'SPLASHDOWN', true); if (v.driver) v.driver.out = true; }
-    if (G.crash) crashFocus(c.pos, 8);
   }
   c.vel.multiplyScalar(Math.exp(-2.2 * DT));
   c.vel.y += 7 * DT;
@@ -700,7 +693,6 @@ function step() {
     const C = G.crash;
     C.t += DT;
     C.quiet += DT;
-    C.heat *= Math.exp(-DT * 0.7);
     // Traffic keeps piling in for up to 20 seconds; five quiet ones and it's over
     if (C.quiet > CRASH_QUIET || C.t > CRASH_MAX) endCrash();
   }
@@ -759,6 +751,68 @@ for (const b of document.querySelectorAll('#touch button')) {
 if (matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window) document.body.classList.add('touch');
 
 // ---------- Camera ----------
+// The pile: what the crash has hit, gathered round where you crashed (recent hits count most)
+function pileCentre(C) {
+  const out = new THREE.Vector3();
+  let w = 0;
+  for (const v of traffic.list) {
+    if (!(v.gen > 0) || v.touchT == null || v.asleep) continue;
+    const p = v.car.pos;
+    if (Math.hypot(p.x - C.origin.x, p.z - C.origin.z) > 28) continue;
+    const k = 1 / (1 + Math.max(0, G.t - v.touchT));
+    out.addScaledVector(p, k);
+    w += k;
+  }
+  return w > 0.05 ? out.divideScalar(w) : out.copy(C.origin);
+}
+// Who's about to hit the pile: still driving, its path running into one of the wrecks (or you), arriving
+// in 1 to 3 s. Returns { v, at }: the vehicle and the wreck it's heading for.
+function nextIncoming(C) {
+  const wrecks = [player, ...traffic.list].filter(w => (w === player || (w.gen > 0 && w.touchT != null && !w.asleep)) &&
+    w.car.vel.length() < 6 && Math.hypot(w.car.pos.x - C.origin.x, w.car.pos.z - C.origin.z) < 32);
+  let best = null, soonest = 3;
+  for (const v of traffic.list) {
+    if (v.asleep || v.driver?.out || !v.alive || v.gen > 0) continue;
+    const p = v.car.pos, vx = v.car.vel.x, vz = v.car.vel.z, sp = Math.hypot(vx, vz);
+    if (sp < 6) continue;
+    for (const w of wrecks) {
+      const dx = w.car.pos.x - p.x, dz = w.car.pos.z - p.z;
+      const along = (dx * vx + dz * vz) / sp, miss = Math.abs(dx * vz - dz * vx) / sp;
+      if (along < 8 || along > 45 || miss > (w.len || 4) / 2 + 1.5) continue;
+      const eta = along / sp;
+      if (eta > 1 && eta < soonest) { soonest = eta; best = { v, at: w }; }
+    }
+  }
+  return best;
+}
+// Keep the camera clear of what stands between it and the action: buildings (pull in), cars, trees, lamp
+// posts and traffic lights (rise over them)
+function unblock(look, p, skip) {
+  clear(look, p);
+  for (const b of bodies()) {
+    if (b === skip || b === player && C_YOU()) continue;
+    const q = b.car.pos;
+    if (Math.hypot(q.x - p.x, q.z - p.z) < (b.len || 2) / 2 + 3) p.y = Math.max(p.y, q.y + 3.5);
+  }
+  // Up over any tree or post right beside the camera, and anything tall on the line of sight
+  for (const q of props.near(p.x, p.z)) {
+    if (q.alive && q.h >= 3 && Math.hypot(q.x - p.x, q.z - p.z) < 5) p.y = Math.max(p.y, q.y + q.h + 2);
+  }
+  for (let tries = 0; tries < 8 && blocked(p, look); tries++) p.y += 1.5;
+}
+const _s = new THREE.Vector3();
+function blocked(from, to) {
+  for (let i = 1; i < 10; i++) {
+    _s.lerpVectors(from, to, i / 10);
+    for (const b of city.near(_s.x, _s.z)) if (_s.y < b.top && city.blockDist(b, _s.x, _s.z, _w) < 0) return true;
+    for (const q of props.near(_s.x, _s.z)) {
+      if (q.alive && q.h >= 3 && _s.y < q.y + q.h + 0.4 && Math.hypot(q.x - _s.x, q.z - _s.z) < (q.kind === 'tree' ? 2.4 : 0.6)) return true;
+    }
+  }
+  return false;
+}
+const C_YOU = () => G.crash && G.crash.rt < FOLLOW_YOU;
+
 const cam = { dir: new THREE.Vector3(0, 0, -1), mode: 'menu', t: 0, roll: 0, look: new THREE.Vector3(), menuA: 0 };
 const _c = new THREE.Vector3(), _l = new THREE.Vector3();
 // Keep the camera out of buildings: pull it toward the subject until it's clear
@@ -784,56 +838,63 @@ function updateCamera(dt, rawDt) {
     camera.lookAt(jx, city.base(jx, jz) + 1.5, jz);
     fov = 58;
   } else if (G.crash && G.state !== 'run') {
-    // Crash cam. First your own wreck, close behind it as it ploughs in; then whatever's about to hit the
-    // pile, framed going in with the pile beyond it; with nothing coming, a slow circle round the pile.
+    // Crash cam, a director with three kinds of shot, each held at least SHOT seconds:
+    //  - first, your wreck (with the pile in frame if you've been thrown clear of it);
+    //  - something about to hit the pile: from beside the pile, side-on to its path, so you see it come in;
+    //  - nothing coming: a slow, wide circle over the pile.
     const C = G.crash;
     C.cutT += rawDt;
-    const k = 1 - Math.exp(-rawDt * 4);
+    const pile = pileCentre(C);
+    C.focus.lerp(pile, 1 - Math.exp(-rawDt * 2));
     let look;
     if (C.rt < FOLLOW_YOU) {
-      const p = c.pos;
-      C.focus.lerp(p, 1 - Math.exp(-rawDt * 10));
+      const p = c.pos, sep = Math.hypot(p.x - C.focus.x, p.z - C.focus.z);
+      // Thrown clear: frame you and the pile together
+      _l.copy(p);
+      if (sep > 12) _l.lerp(C.focus, 0.5);
       C.ang += rawDt * 0.25;
-      _c.set(p.x + Math.sin(C.ang) * 10, p.y + 3.2, p.z + Math.cos(C.ang) * 10);
-      look = C.focus;
+      const d = 10 + Math.max(0, sep - 12) * 0.6;
+      _c.set(_l.x + Math.sin(C.ang) * d, _l.y + 3.2 + Math.max(0, sep - 12) * 0.15, _l.z + Math.cos(C.ang) * d);
+      look = _l;
+      C.on = 'you';
     } else {
-      C.focus.lerp(C.target, 1 - Math.exp(-rawDt * 2));
-      // Pick the next one coming in: awake, still driving, heading for the pile, soonest to arrive
-      if (!C.incoming || C.cutT > 2.5 || C.incoming.driver?.out || C.incoming.car.pos.distanceTo(C.target) < 4) {
-        let best = null, soonest = 3;
-        for (const v of traffic.list) {
-          if (v.asleep || v.driver?.out || !v.alive || v === C.incoming) continue;
-          const dx = C.target.x - v.car.pos.x, dz = C.target.z - v.car.pos.z, d = Math.hypot(dx, dz);
-          const sp = (v.car.vel.x * dx + v.car.vel.z * dz) / (d || 1);
-          if (d < 6 || d > 60 || sp < 6) continue;
-          const eta = d / sp;
-          if (eta < soonest) { soonest = eta; best = v; }
-        }
-        if (best !== C.incoming && (best || C.cutT > 2.5)) { C.incoming = best; C.cutT = 0; C.cutNow = true; }
+      const S = C.shot;
+      const over = !S || (C.cutT > SHOT && (S.kind === 'pile' || (S.hitAt != null && G.t - S.hitAt > 0.5) || S.v.driver?.out || C.cutT > 4.5));
+      if (S?.kind === 'incoming' && S.hitAt == null && S.v.touchT > S.from) S.hitAt = G.t;
+      if (over) {
+        const n = nextIncoming(C);
+        if (n) {
+          // Beside the wreck it's heading for, square to its path, on whichever side has more room
+          const v = n.v, at = n.at.car.pos;
+          const u = _v.set(at.x - v.car.pos.x, 0, at.z - v.car.pos.z).normalize();
+          const mid = v.car.pos.clone().lerp(at, 0.6);
+          // Far enough off to the side to have both in frame
+          const off = Math.max(12, 0.8 * v.car.pos.distanceTo(at));
+          let pos = null;
+          for (const side of [1, -1]) {
+            const p = new THREE.Vector3(mid.x - u.z * side * off - u.x * 3, at.y + 4.5, mid.z + u.x * side * off - u.z * 3);
+            unblock(mid, p, v);
+            if (!pos || p.distanceTo(mid) - p.y * 0.3 > pos.distanceTo(mid) - pos.y * 0.3 + 1) pos = p;
+          }
+          C.shot = { kind: 'incoming', v, at: n.at, pos, from: G.t, hitAt: null };
+        } else if (!S || S.kind !== 'pile') C.shot = { kind: 'pile' };
+        if (C.shot !== S) { C.cutT = 0; C.cutNow = true; }
       }
-      if (C.incoming) {
-        // Behind it and to one side, looking past it into the pile
-        const v = C.incoming.car.pos, t = C.target;
-        _v.set(t.x - v.x, 0, t.z - v.z).normalize();
-        _c.set(v.x - _v.x * 9 + _v.z * 5, Math.max(v.y, t.y) + 3.4, v.z - _v.z * 9 - _v.x * 5);
-        _l.copy(v).lerp(t, 0.55);
+      if (C.shot.kind === 'incoming') {
+        _c.copy(C.shot.pos);
+        _l.copy(C.shot.v.car.pos).lerp(C.shot.at.car.pos, 0.5);
         look = _l;
+        C.on = 'incoming ' + C.shot.v.kind;
       } else {
-        C.ang += rawDt * 0.22;
-        C.dist += (Math.min(20, 14 + C.t * 0.3) - C.dist) * Math.min(1, rawDt * 0.3);
-        _c.set(C.focus.x + Math.sin(C.ang) * C.dist, C.focus.y + 5, C.focus.z + Math.cos(C.ang) * C.dist);
+        C.ang += rawDt * 0.15;
+        _c.set(C.focus.x + Math.sin(C.ang) * 17, C.focus.y + 8, C.focus.z + Math.cos(C.ang) * 17);
         look = C.focus;
+        C.on = 'pile';
       }
     }
-    clear(look, _c);
-    // Never down among the cars, where the nearest one fills the screen
-    for (const b of bodies()) {
-      if (b === C.incoming || (C.rt < FOLLOW_YOU && b === player)) continue;
-      const p = b.car.pos;
-      if (Math.hypot(p.x - _c.x, p.z - _c.z) < (b.len || 2) / 2 + 3) _c.y = Math.max(_c.y, p.y + 3.5);
-    }
+    if (C.shot?.kind !== 'incoming') unblock(look, _c, null);
     if (C.cutNow || C.rt < 0.02) { camera.position.copy(_c); C.look = look.clone(); C.cutNow = false; }
-    else camera.position.lerp(_c, k);
+    else camera.position.lerp(_c, 1 - Math.exp(-rawDt * 4));
     C.look = (C.look || look.clone()).lerp(look, 1 - Math.exp(-rawDt * 6));
     camera.lookAt(C.look.x, C.look.y + 0.8, C.look.z);
     fov = 54;
@@ -964,7 +1025,7 @@ function effects(dt, rawDt) {
     const engine = _pv.set(0, 0.5, -v.len / 2 + 0.7).applyQuaternion(c.q).add(c.pos);
     if (!v.alive) {
       const age = G.t - v.diedAt;
-      if (Math.random() < dt * (age < 10 ? 24 : 8)) puff(engine, age < 10 ? '#26221f' : '#55504a', 1.4, 2.8, 2.6, 0.6);
+      if (Math.random() < dt * (age < 10 ? 11 : 5)) puff(engine, age < 10 ? '#3a3632' : '#6a655e', 1.2, 2.6, 3, 0.42);
       if ((age < 10 || v.blown) && Math.random() < dt * (v.blown ? 60 : 30)) flame(engine, v.blown ? 1.5 : 1);
       continue;
     }
@@ -1023,7 +1084,7 @@ function callout(html, cls = '') {
   el.innerHTML = html;
   const box = $('callouts');
   box.appendChild(el);
-  while (box.children.length > 4) box.firstChild.remove();
+  while (box.children.length > (G.crash ? 2 : 4)) box.firstChild.remove();
   el.addEventListener('animationend', () => el.remove());
 }
 const setText = (() => { const last = {}; return (id, t) => { if (last[id] !== t) { last[id] = t; $(id).textContent = t; } }; })();
@@ -1032,6 +1093,7 @@ function updateHud(dt) {
   const kmh = Math.round(c.vel.length() * KMH);
   setText('speed', G.state === 'crash' || G.state === 'results' ? '' : String(kmh));
   $('speedo').classList.toggle('hidden', !!G.crash);
+  $('hud').classList.toggle('crashing', !!G.crash);
   $('rush-fill').style.width = (G.rush * 100).toFixed(1) + '%';
   $('rush').classList.toggle('on', !!G.boosting);
   $('rush').classList.toggle('full', G.rush > 0.98);
@@ -1120,10 +1182,15 @@ let last = performance.now(), acc = 0;
 G.geysers = [];
 function frame(now) {
   requestAnimationFrame(frame);
+  if (G.manual) return;                 // a test is driving the clock (see tick)
   stage.watchFrameRate((now - last) / 1000);
   const raw = Math.min(0.05, (now - last) / 1000);
   last = now;
   readInput();
+  tick(raw);
+}
+// One frame `raw` seconds long; `draw: false` skips the rendering
+function tick(raw, draw = true) {
   if (G.state === 'menu') {
     // The junction, from above, with its traffic going about its business
     cam.menuA += raw * 0.05;
@@ -1147,10 +1214,10 @@ function frame(now) {
     post.mat.uniforms.amount.value = 0;
     smoke.update(raw, camera, renderer.domElement.height);
     glow.update(raw, camera, renderer.domElement.height);
-    post.render();
+    if (draw) post.render();
     return;
   }
-  if (G.state === 'paused' || !player) { post.render(); return; }
+  if (G.state === 'paused' || !player) { if (draw) post.render(); return; }
   // Time: slow motion through the crash, briefly slower still for the big moments
   let scale = 1;
   if (G.crash) {
@@ -1200,14 +1267,14 @@ function frame(now) {
   if (G.flash > 0) { flashEl.style.opacity = G.flash; G.flash = Math.max(0, G.flash - raw * 2.5); }
   else if (flashEl.style.opacity !== '0') flashEl.style.opacity = 0;
   updateHud(raw);
-  post.render();
+  if (draw) post.render();
 }
 const flashEl = document.createElement('div');
 Object.assign(flashEl.style, { position: 'fixed', inset: 0, pointerEvents: 'none', opacity: 0,
   background: 'radial-gradient(ellipse at center, transparent 45%, rgba(220,30,20,0.55) 100%)' });
 document.body.appendChild(flashEl);
 
-G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, playerInput, step, startRun, skipTo, keys, camera };
+G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, playerInput, step, startRun, skipTo, keys, camera, tick };
 toMenu();
 if (!store.load('rush.seenHelp', false)) showScreen('help');
 requestAnimationFrame(frame);

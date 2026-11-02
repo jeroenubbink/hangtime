@@ -129,6 +129,9 @@ export class Props {
     this.mat.dispose();
   }
 
+  // Props in the grid cell around (x, z)
+  near(x, z) { return this.grid.get(Math.floor(x / CELL) + ',' + Math.floor(z / CELL)) || []; }
+
   // Cars knock props over. Returns [{ prop, vehicle, vel }], and takes the prop out of the street.
   update(vehicles) {
     const out = [];

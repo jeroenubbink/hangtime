@@ -84,11 +84,16 @@ kbd { display: inline-block; min-width: 20px; text-align: center; font: 600 12px
 #crashbox { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); text-align: center; }
 #carnage { font: italic 58px 'Russo One', sans-serif; text-shadow: 3px 3px 0 var(--accent2); font-variant-numeric: tabular-nums; }
 #crash-sub { font-size: 15px; opacity: 0.85; letter-spacing: 1px; }
-#callouts { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
+#callouts { position: absolute; left: 50%; top: 30%; transition: top .3s; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .call { font: italic 26px 'Russo One', sans-serif; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5); animation: pop 1.5s ease-out forwards; white-space: nowrap; }
 .call small { display: block; font: 600 14px Rubik, sans-serif; text-align: center; opacity: 0.9; font-style: normal; }
 .call.hot { color: var(--accent2); }
 .call.big { font-size: 40px; color: #ffd23a; }
+/* In a crash: smaller, up under the carnage counter, out of the way of the action */
+#hud.crashing #callouts { top: 150px; }
+#hud.crashing .call { font-size: 20px; }
+#hud.crashing .call.big { font-size: 26px; }
+#hud.crashing .call small { font-size: 12px; }
 @keyframes pop { 0% { transform: scale(1.6); opacity: 0; } 12% { transform: scale(1); opacity: 1; } 75% { opacity: 1; } 100% { transform: translateY(-30px); opacity: 0; } }
 #msg { position: absolute; left: 0; right: 0; top: 38%; text-align: center; transition: opacity .3s; }
 #msg-main { font: italic 64px 'Russo One', sans-serif; text-shadow: 3px 3px 0 var(--accent2); }
