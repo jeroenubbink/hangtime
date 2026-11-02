@@ -541,7 +541,7 @@ function respawnRival() {
   rv.events.push({ f: race.frames.length / 16, type: 'reset' });
 }
 
-const BRAKE = { throttle: 0, brake: 0.3, steer: 0, handbrake: false };
+const BRAKE = { throttle: 0, brake: 0.3, steer: 0, handbrake: false, stop: true };
 const SLOWMO = 0.6;           // time scale in the air
 const ATTACK_SECONDS = 90, ATTACK_LAP_BONUS = 500;
 const ATTACK_MEDALS = [10000, 6000, 3000];   // gold, silver, bronze stunt scores

@@ -8,9 +8,10 @@ const VERT = `
   varying vec4 vC;
   uniform float scale;
   void main() {
-    vC = rgba;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = size * scale / max(0.5, -mv.z);
+    // Fade out what's right at the lens, so a puff or a fireball next to the camera doesn't fill the screen
+    vC = vec4(rgba.rgb, rgba.a * smoothstep(1.0, 5.0, -mv.z));
+    gl_PointSize = min(size * scale / max(0.5, -mv.z), 600.0);
     gl_Position = projectionMatrix * mv;
   }`;
 const FRAG = `

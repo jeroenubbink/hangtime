@@ -44,26 +44,38 @@ export class Lane {
   lateral(p) { return (p.x - this.ax) * this.rx + (p.z - this.az) * this.rz; }
 }
 
-// A traffic driver. `react`: seconds before they act on trouble ahead; `brake`: how hard they can stop (0..1);
-// `swerve`: how likely they are to yank the wheel instead
+// A traffic driver. `react`: seconds before they act on trouble ahead; `brakeMax`: how hard they brake (0..1),
+// never hard enough; `swerveK`: how likely they are to yank the wheel instead. They're slow to see trouble and
+// slower to stop, so mostly they drive into it.
 export class TrafficDriver {
   constructor(lane, cruise, rand) {
     this.lane = lane;
     this.cruise = cruise;
-    this.react = 0.55 + rand() * 0.6;
-    this.brakeMax = 0.32 + rand() * 0.25;
+    this.rand = rand;
+    this.react = 0.9 + rand() * 0.7;
+    this.brakeMax = 0.16 + rand() * 0.2;
     this.swerveK = rand();
     this.alert = 0;
     this.swerve = 0;
     this.swerveT = 0;
+    this.startled = null;      // a crash nearby: { t: until the shock reaches us, k: how hard }
+    this.calm = 0;
     this.out = false;          // knocked out of it by a hit: no more driving
+  }
+
+  // Something crashed nearby: in `delay` seconds (when the shock reaches them) they flinch, `k` 0..1
+  startle(delay, k) {
+    if (this.out || this.calm > 0 || (this.startled && this.startled.k >= k)) return;
+    this.startled = { t: delay, k };
   }
 
   // Controls for one step. `bodies` is everything solid nearby.
   drive(v, bodies, dt, input) {
     const c = v.car, L = this.lane;
-    input.handbrake = false; input.boost = false;
-    if (this.out) { input.throttle = 0; input.brake = 0.25; input.steer = 0; return; }
+    input.handbrake = false; input.boost = false; input.stop = true;   // traffic never reverses
+    // Knocked out: foot off, rolling on into whatever's next
+    if (this.out) { input.throttle = 0; input.brake = 0.04; input.steer = 0; return; }
+    this.calm -= dt;
     const s = L.progress(c.pos);
     _f.set(0, 0, -1).applyQuaternion(c.q);
     const sp = c.speed;
@@ -94,24 +106,39 @@ export class TrafficDriver {
     // Keep a safe distance from a moving car ahead; brake for a hazard once we've noticed it
     let want = this.cruise;
     if (gap < Infinity) want = Math.min(want, Math.max(0, lead + (gap - 6) * 0.45));
-    const danger = closing > 1 && gap < closing * 2.4 + 5;
+    const danger = closing > 1 && gap < closing * 1.6 + 3;
     this.alert = danger ? this.alert + dt : Math.max(0, this.alert - dt * 2);
     const noticed = this.alert > this.react;
     let throttle = 0, brake = 0;
     const err = want - sp;
     if (err > 0.3) throttle = clamp(err * 0.35, 0, 0.85);
-    else if (err < -0.5) brake = clamp(-err * 0.12, 0, 0.3);
+    else if (err < -0.5) brake = clamp(-err * 0.08, 0, 0.2);
     if (danger && !noticed) { brake = 0; throttle = Math.min(throttle, 0.3); }     // hasn't seen it yet
     if (noticed) {
       brake = this.brakeMax;
       throttle = 0;
       // Too late to stop: some swerve
-      if (!this.swerveT && closing > 6 && gap / closing < 1.1 && this.swerveK > 0.55) {
+      if (!this.swerveT && closing > 6 && gap / closing < 1.1 && this.swerveK > 0.6) {
         this.swerveT = 0.7;
-        this.swerve = Math.random() < 0.5 ? -1 : 1;
+        this.swerve = (this.rand() < 0.5 ? -1 : 1) * 0.7;
       }
     }
-    if (this.swerveT > 0) { this.swerveT = Math.max(0, this.swerveT - dt); steer = clamp(steer + this.swerve * 0.7, -1, 1); if (!this.swerveT) this.swerveT = -1; }
+    // The shock of a crash nearby reaches them: a jerk of the wheel (and sometimes a stab at the pedals),
+    // harder the closer it was
+    const S = this.startled;
+    if (S && (S.t -= dt) <= 0) {
+      this.startled = null;
+      this.calm = 0.8;
+      this.swerveT = 0.25 + 0.45 * S.k;
+      this.swerve = (this.rand() < 0.5 ? -1 : 1) * (0.25 + 0.75 * S.k);
+      this.jab = this.rand() < 0.5 ? 'brake' : 'gas';
+    }
+    if (this.swerveT > 0) {
+      this.swerveT = Math.max(0, this.swerveT - dt);
+      steer = clamp(steer + this.swerve, -1, 1);
+      if (this.jab === 'brake') { brake = Math.max(brake, this.brakeMax); throttle = 0; } else if (this.jab === 'gas') throttle = 1;
+      if (!this.swerveT) { this.swerveT = -1; this.jab = null; }
+    }
     input.throttle = throttle; input.brake = brake; input.steer = steer;
   }
 }

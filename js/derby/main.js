@@ -26,7 +26,7 @@ const DT = 1 / 120;
 const clamp = THREE.MathUtils.clamp;
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const NONE = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false };
-const HOLD = { throttle: 0, brake: 1, steer: 0, handbrake: true, boost: false };
+const HOLD = { throttle: 0, brake: 1, steer: 0, handbrake: true, boost: false, stop: true };
 
 export const EVENTS = {
   elim: { name: 'Last Car Standing', short: 'Wreck them all. Last car running wins.' },

@@ -110,10 +110,11 @@ export class CarPhysics {
     const maxSteer = 0.55 - 0.4 * Math.min(1, sp / 55);
     this.steer += clamp(clamp(input.steer + this.steerPull, -1, 1) * maxSteer - this.steer, -5 * dt, 5 * dt);
 
-    // Pedals: the same key brakes or reverses depending on direction of travel
+    // Pedals: the same key brakes or reverses depending on direction of travel; `stop` holds the brake
+    // without ever reversing (a car coming to rest, or one nobody's driving)
     let drive = 0, brake = 0;
     if (input.throttle > 0) { if (vF < -0.5) brake = input.throttle; else drive = input.throttle; }
-    if (input.brake > 0) { if (vF > 0.5) brake = Math.max(brake, input.brake); else drive = -input.brake; }
+    if (input.brake > 0) { if (vF > 0.5 || input.stop) brake = Math.max(brake, input.brake); else drive = -input.brake; }
 
     let g = 1;
     while (g < GEARS.length - 1 && sp >= GEARS[g]) g++;
@@ -183,8 +184,10 @@ export class CarPhysics {
       ws.slip = maxF > 0 ? mag / maxF : 0;
       if (mag > maxF && mag > 0) { lat *= maxF / mag; lon *= maxF / mag; }
 
-      // Spring acts at the mount, tyre forces at a point raised toward the centre of mass to limit body roll
-      _f.copy(_up).multiplyScalar(fs);
+      // Spring acts at the mount, tyre forces at a point raised toward the centre of mass to limit body roll.
+      // The tyre carries the spring's load to the road along the road's normal: pushing along the body's own
+      // up instead would shove a tilted car (nose up, a wheel missing) along the ground by itself.
+      _f.copy(N).multiplyScalar(fs);
       _F.add(_f);
       _t1.subVectors(_mount, this.pos);
       _T.add(_t2.crossVectors(_t1, _f));

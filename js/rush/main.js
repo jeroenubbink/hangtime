@@ -30,7 +30,7 @@ const DT = 1 / 120;
 const clamp = THREE.MathUtils.clamp;
 const NONE = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false };
 const KMH = 3.6;
-const PRE_INTRO = 2.6, PRE_COUNT = 2.4, PRE_RETRY = 1.2;
+const PRE_INTRO = 2.6, PRE_COUNT = 2.4, PRE_RETRY = 1.2, PRE_ALL = PRE_INTRO + PRE_COUNT;
 const FRAGILE = 2.4;
 const CRASH_MAX = 20, CRASH_QUIET = 5, FOLLOW_YOU = 6;   // seconds
 
@@ -145,20 +145,23 @@ function startRun(pre) {
   clearRun();
   props?.dispose();
   props = new Props(scene, city, L.props || []);
-  G.rand = rng(Math.floor(Math.random() * 1e9));
+  // Scripted: the same traffic every time, so a junction can be learned. The traffic always gets exactly
+  // PRE_ALL seconds of driving before GO, however much of the intro you watch.
+  G.rand = rng(L.seed * 7919 + 17);
   traffic = new Traffic(city, L, kind => makeTraffic(kind), G.rand);
-  // Specials are timed from GO, so they start further back by the time before it
-  traffic.populate({ ...L, specials: (L.specials || []).map(s => ({ ...s, eta: s.eta + pre })) });
+  traffic.populate({ ...L, specials: (L.specials || []).map(s => ({ ...s, eta: s.eta + PRE_ALL })) });
   const def = RIDES[settings.car];
   player = new Car(city, scene, 0, def, def.livery, { player: true, name: 'You' });
   player.gen = 0;
   player.kind = 'you';
   player.setLights(TIMES[settings.time].lamps);
   player.respawn({ x: L.start.x, z: L.start.z, yaw: 0 });
-  for (let i = 0; i < 60; i++) player.car.step(DT, { ...NONE, brake: 1 });
+  for (let i = 0; i < 60; i++) player.car.step(DT, { ...NONE, brake: 1, stop: true });
   Object.assign(G, { t: 0, pre, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0,
     boosting: false, steer: 0, yaw: 0, drift: 0, geysers: [], air: 0, nearT: 0, oncoming: 0, best: 0, ended: false, slow: 1, spike: 0 });
   G.state = pre > PRE_COUNT ? 'intro' : 'count';
+  G.preSteps = Math.round(PRE_ALL * 120);
+  skipTo(pre);
   cam.mode = G.state;
   cam.t = 0;
   cam.dir.set(0, 0, -1);
@@ -238,11 +241,15 @@ function scorch(p, size) {
   if (scorches.length > 20) scene.remove(scorches.shift());
 }
 const rings = [];
-function ring(p, colour) {
-  const m = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: colour, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+function ring(p, colour, opts = {}) {
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 48).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: colour, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
   m.position.copy(p);
   scene.add(m);
-  rings.push({ m, t: 0 });
+  rings.push({ m, t: 0, grow: opts.grow || 26, life: opts.life || 0.5, alpha: opts.alpha || 0.8 });
+}
+// The shock wave on the road: a pale ring spreading at 35 m/s out to its reach
+function wave(p, R) {
+  ring(new THREE.Vector3(p.x, city.groundHeight(p.x, p.z) + 0.08, p.z), '#fff6dc', { grow: 35, life: R / 35, alpha: 0.35 });
 }
 function explosion(p, big = 1) {
   for (let i = 0; i < 50 * big; i++) {
@@ -256,7 +263,7 @@ function explosion(p, big = 1) {
     glow.emit(p.x + (Math.random() - 0.5), p.y + 0.5, p.z + (Math.random() - 0.5), (Math.random() - 0.5) * 2, 7 + Math.random() * 8, (Math.random() - 0.5) * 2,
       { life: 0.7 + Math.random() * 0.6, size: 2 + Math.random() * 2 * big, grow: -0.6, drag: 2.5, colour: i % 2 ? '#ff7a1a' : '#ffd27a', alpha: 0.9 });
   }
-  glow.emit(p.x, p.y + 1.5, p.z, 0, 0, 0, { life: 0.22, size: 18 * big, grow: 2, colour: '#ffe0a0', alpha: 0.95 });
+  glow.emit(p.x, p.y + 1.5, p.z, 0, 0, 0, { life: 0.2, size: 11 * big, grow: 1.5, colour: '#ffe0a0', alpha: 0.85 });
   ring(p.clone().setY(p.y + 0.3), '#ffb02e');
   scorch(p, 5 + 3 * big);
 }
@@ -286,6 +293,19 @@ function crashFocus(p, w) {
   C.target.lerp(p, Math.min(1, w / (C.heat + 1) * 2.5));
 }
 function spike(k = 0.25, secs = 0.7) { G.spike = Math.max(G.spike, secs); G.spikeK = k; }
+
+// A crash sends a shock through the traffic around it: it travels out at 35 m/s, fading with distance, and
+// whoever it reaches flinches, harder the closer they were
+function startle(p, power) {
+  const R = Math.min(45, 12 + power * 0.5);
+  for (const v of traffic.list) {
+    if (!v.driver || v.driver.out) continue;
+    const d = Math.hypot(v.car.pos.x - p.x, v.car.pos.z - p.z);
+    if (d > R || d < 1.5) continue;
+    v.driver.startle(d / 35, (1 - d / R) ** 2 * Math.min(1, power / 30));
+  }
+  if (power > 15) wave(p, R);
+}
 
 // ---------- Damage ----------
 const _kick = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _w = new THREE.Vector3(), _pv = new THREE.Vector3();
@@ -356,7 +376,7 @@ function blowUp(X) {
   explosion(p, big);
   sound.boom(Math.min(1, 0.6 * big));
   X.car.vel.y += 7;
-  X.car.w.add(_kick.set(Math.random() - 0.5, 0, Math.random() - 0.5).multiplyScalar(4));
+  X.car.w.add(_kick.set(G.rand() - 0.5, 0, G.rand() - 0.5).multiplyScalar(4));
   scoreEvent(X, 1500 * X.value, X.def.explosive ? 'TANKER BLAST' : 'BLAST', true);
   for (const B of bodies()) {
     if (B === X) continue;
@@ -365,7 +385,7 @@ function blowUp(X) {
     const k = 1 - d / R;
     const dir = B.car.pos.clone().sub(p).setY(0).normalize();
     B.car.vel.addScaledVector(dir, 14 * k * big).add(_kick.set(0, 5 + 6 * k * big, 0));
-    B.car.w.add(_kick.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(5 * k));
+    B.car.w.add(_kick.set(G.rand() - 0.5, G.rand() - 0.5, G.rand() - 0.5).multiplyScalar(5 * k));
     if (!B.half) {
       if (!B.gen && X.gen) B.gen = X.gen + 1;
       G.chain = Math.max(G.chain, B.gen || 0);
@@ -373,6 +393,7 @@ function blowUp(X) {
       hurt(B, X, 40 * k * big, B.car.pos.clone().addScaledVector(dir, -1), dir);
     }
   }
+  startle(p, 70);
   if (G.crash) { crashFocus(p, 30); spike(0.2, 1.1); }
   G.shake = Math.max(G.shake, player && player.car.pos.distanceTo(p) < 40 ? 1 : 0.4);
 }
@@ -408,6 +429,7 @@ function collided(A, B, h) {
   if (va && va !== player && !va.gen && sb != null) va.gen = sb + 1;
   G.chain = Math.max(G.chain, va?.gen || 0, vb?.gen || 0);
   if (G.crash && base > 4) crashFocus(h.point, base);
+  if (base > 6) startle(h.point, base);
   if (G.crash && base > 35 && G.t - (G.crash.lastSpike || 0) > 1.2) { G.crash.lastSpike = G.t; spike(0.3, 0.6); }
   if (base <= 0) return;
   if (va && vb) {
@@ -612,8 +634,21 @@ function water(v) {
   c.w.multiplyScalar(Math.exp(-2 * DT));
 }
 
+// Run the traffic ahead (no drawing) until GO is `secs` away
+function skipTo(secs) {
+  while (G.preSteps > Math.round(secs * 120)) step();
+  G.pre = G.preSteps / 120;
+}
+function go() {
+  G.state = 'run';
+  player.car.vel.copy(player.forward).multiplyScalar(city.level.start.speed);
+  showMsg('GO!', '', 0.8);
+  sound.beep(true);
+}
+
 function step() {
   G.t += DT;
+  if ((G.state === 'intro' || G.state === 'count') && --G.preSteps <= 0) go();
   const running = G.state === 'run' || G.state === 'crash' || G.state === 'results';
   const c = player.car;
   const fwd = player.forward;
@@ -681,7 +716,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyR' && city && G.state !== 'menu') startRun(PRE_RETRY);
   if (e.code === 'Escape') { if (G.state === 'paused') resume(); else if (['run', 'crash', 'count', 'intro'].includes(G.state)) pause(); }
   if (e.code === 'KeyM') sound.setMuted(!sound.muted);
-  if (G.state === 'intro' && ['Space', 'Enter', 'ArrowUp', 'KeyW'].includes(e.code)) { G.pre = Math.min(G.pre, PRE_COUNT); G.state = 'count'; }
+  if (G.state === 'intro' && ['Space', 'Enter', 'ArrowUp', 'KeyW'].includes(e.code)) { skipTo(PRE_COUNT); G.state = 'count'; }
   if (G.state === 'results' && e.code === 'Enter') startRun(PRE_RETRY);
   if (G.state === 'crash' && e.code === 'Enter' && G.crash.t > 2) endCrash();
 });
@@ -968,9 +1003,9 @@ function effects(dt, rawDt) {
   for (let i = rings.length - 1; i >= 0; i--) {
     const r = rings[i];
     r.t += dt;
-    r.m.scale.setScalar(1 + r.t * 26);
-    r.m.material.opacity = Math.max(0, 0.8 - r.t * 1.6);
-    if (r.t > 0.5) { scene.remove(r.m); r.m.geometry.dispose(); rings.splice(i, 1); }
+    r.m.scale.setScalar(1 + r.t * r.grow);
+    r.m.material.opacity = Math.max(0, r.alpha * (1 - r.t / r.life));
+    if (r.t > r.life) { scene.remove(r.m); r.m.geometry.dispose(); rings.splice(i, 1); }
   }
 }
 
@@ -1124,18 +1159,13 @@ function frame(now) {
     if (G.spike > 0) { G.spike -= raw; scale = Math.min(scale, G.spikeK); }
     if (G.state === 'results') scale = 0.85;
   }
+  // The countdown runs on the simulation's own clock (see go())
   if (G.state === 'intro' || G.state === 'count') {
     const before = Math.ceil(G.pre);
-    G.pre -= raw;
+    G.pre = G.preSteps / 120;
     if (G.pre <= PRE_COUNT && G.state === 'intro') G.state = 'count';
     const after = Math.ceil(G.pre);
     if (G.state === 'count' && after !== before && after > 0 && after <= 3) { showMsg(String(after), '', 0.8); sound.beep(false); }
-    if (G.pre <= 0) {
-      G.state = 'run';
-      player.car.vel.copy(player.forward).multiplyScalar(city.level.start.speed);
-      showMsg('GO!', '', 0.8);
-      sound.beep(true);
-    }
   }
   acc += raw * scale;
   let n = 0;
@@ -1177,7 +1207,7 @@ Object.assign(flashEl.style, { position: 'fixed', inset: 0, pointerEvents: 'none
   background: 'radial-gradient(ellipse at center, transparent 45%, rgba(220,30,20,0.55) 100%)' });
 document.body.appendChild(flashEl);
 
-G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, playerInput, step, startRun, keys, camera };
+G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, playerInput, step, startRun, skipTo, keys, camera };
 toMenu();
 if (!store.load('rush.seenHelp', false)) showScreen('help');
 requestAnimationFrame(frame);

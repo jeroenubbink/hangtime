@@ -38,7 +38,7 @@ export const LEVELS = {
       { lane: 6, kind: 'tanker', eta: 11.5 },
       { lane: 5, kind: 'bus', eta: 13 },
     ],
-    medals: [12000, 35000, 75000],
+    medals: [25000, 80000, 180000],
   },
 
   docks: {
@@ -79,6 +79,6 @@ export const LEVELS = {
       { lane: 6, kind: 'tanker', eta: 12.5 },
       { lane: 4, kind: 'bus', eta: 14 },
     ],
-    medals: [14000, 40000, 85000],
+    medals: [25000, 80000, 180000],
   },
 };
