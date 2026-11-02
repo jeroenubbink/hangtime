@@ -89,12 +89,15 @@ through them. Things to know:
 
 ## Rushtime
 
-- **Five junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
+- **Six junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
   **Dockside Drop**, a downhill run with a crest that throws you, ending at a six-lane harbour road with the
   water behind it; **Gridlock Leap**, where your way is jammed solid back from the lights and the roadworks left
   a ramp: fly onto the jam and shove it into the busy junction; **Over the Edge**, a jam backed up across a bridge,
   two lanes each way, over a busy road (one lane each way) that dips under it through wide open grass: hit the jam
-  at an angle and the wrecks go through the crash barrier and down the banks into the traffic below; and
+  at an angle and the wrecks go through the crash barrier and down the banks into the traffic below; **Short Cut**,
+  where your road bends right and you don't: across the corner's traffic, off a kicker on a building site and
+  120-220 m through the air, down on the queue at the first of two busy crossings (or, with full rush, on the
+  queue at the second), to shove it through both; and
   **Last Chance Gas**, a T-junction with Fuel's Paradise straight across it, a petrol station with a
   sunset-and-flaming-palm logo on its roof. Anything that hits it hard enough sets it off: your car under the canopy at speed or through a pump or pillar, or, once
   you've crashed, the traffic you've thrown at it, or a blast beside it. Then the pumps go, the canopy and its logo

@@ -175,6 +175,60 @@ export const LEVELS = {
     ],
     medals: [40000, 120000, 300000],
   },
+  cut: {
+    name: 'Short Cut', blurb: 'The road bends right. You don\'t have to: flat out, off the building site\'s ramp, down on the queue, and on through two junctions.',
+    seed: 71,
+    bounds: [-440, 440, -330, 470],
+    start: { x: 5.4, z: 380, speed: 28 },
+    junction: [0, -140],
+    roads: [
+      // Your way, round the corner to the right
+      { name: 'main', x0: 0, z0: 420, x1: 0, z1: 52.8, right: 2, left: 2 },
+      { name: 'bend', x0: -7.2, z0: 60, x1: 430, z1: 60, right: 2, left: 2 },
+      // Straight on, past the building site: one way, down to two busy crossings. (At the speed you'll be doing,
+      // the ramp throws you 120-220 m: down on the queue at the first, or with full rush on the one at the second.)
+      { name: 'down', x0: 0, z0: 28, x1: 0, z1: -295, right: 2, left: 0 },
+      { name: 'first', x0: -430, z0: -140, x1: 430, z1: -140, right: 2, left: 2 },
+      { name: 'second', x0: -430, z0: -200, x1: 430, z1: -200, right: 2, left: 2 },
+    ],
+    // The building site, with its kicker, and the backs of the buildings either side of it
+    lots: [{ rect: [-12, 12, 28, 47.8], colour: '#b19c7c' }],
+    ramps: [{ x: 3.6, z: 46, len: 9, h: 1.35, w: 7.2 }],
+    blocks: [{ x: 0, z: -312, w: 40, d: 30, h: 26, fixed: true },
+      { x: -38, z: 36, w: 46, d: 20, h: 17, type: 'walkup', brick: 1, fixed: true }],
+    props: [
+      ...[-5.4, -2.7, 0, 2.7, 5.4].map(x => ['barrier', x, 30, 0]),
+      ...[[-9, 44], [-9, 38], [-9, 32], [9.5, 42], [9.5, 34], [-4, 40], [-6, 35]].map(([x, z]) => ['cone', x, z, 0]),
+    ],
+    lanes: [
+      // Your way is clear all the way to the corner; only oncoming traffic, and (below) a few coming round the
+      // corner across your way, to time
+      { road: 'main', side: -1, i: 0, speed: [18, 22], fill: [20, 360], gap: [50, 100] },
+      // The queue at the first lights, where you come down
+      { road: 'down', side: 1, i: 0, speed: [16, 20], stop: 158.3, queue: [null, null, 'van', null, null, 'bus', null, null, null, 'pickup', null, null] },
+      { road: 'down', side: 1, i: 1, speed: [16, 20], stop: 158.3, queue: [null, 'tanker', null, null, null, 'lorry', null, null, null, null, null] },
+      // and both crossings: green for them, and busy
+      { road: 'first', side: 1, i: 0, speed: [15, 18], gap: [1.6, 3.0], spawn: true },
+      { road: 'first', side: 1, i: 1, speed: [16, 20], gap: [1.8, 3.4], spawn: true },
+      { road: 'first', side: -1, i: 0, speed: [15, 18], gap: [1.6, 3.0], spawn: true },
+      { road: 'first', side: -1, i: 1, speed: [16, 20], gap: [1.8, 3.4], spawn: true },
+      { road: 'second', side: 1, i: 0, speed: [15, 18], gap: [1.7, 3.2], spawn: true },
+      { road: 'second', side: 1, i: 1, speed: [16, 20], gap: [1.9, 3.6], spawn: true },
+      { road: 'second', side: -1, i: 0, speed: [15, 18], gap: [1.7, 3.2], spawn: true },
+      { road: 'second', side: -1, i: 1, speed: [16, 20], gap: [1.9, 3.6], spawn: true },
+      // and a queue at the second lights too, for the long jump (full rush lands you here)
+      { road: 'down', side: 1, i: 0, speed: [16, 20], stop: 218.3, queue: [null, 'bus', null, null, null, null] },
+      { road: 'down', side: 1, i: 1, speed: [16, 20], stop: 218.3, queue: [null, null, 'van', null, 'lorry'] },
+      // Round the corner, across your way straight on: now and then, for a close call
+      { road: 'bend', side: -1, i: 0, speed: [14, 17], gap: [5, 9], spawn: true, then: { road: 'main', side: -1, i: 0 } },
+      { road: 'bend', side: -1, i: 1, speed: [15, 18], gap: [6, 11], spawn: true, then: { road: 'main', side: -1, i: 1 } },
+    ],
+    specials: [
+      { lane: 5, kind: 'tanker', eta: 7.4 },
+      { lane: 8, kind: 'bus', eta: 8.8 },
+    ],
+    medals: [50000, 150000, 350000],
+  },
   gas: {
     name: 'Last Chance Gas', blurb: 'A T-junction, and Fuel\'s Paradise straight across it. Thread the gap and light it up.',
     seed: 47,
