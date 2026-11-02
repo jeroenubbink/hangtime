@@ -138,7 +138,7 @@ export const LEVELS = {
     station: { x: 0, z: -30, w: 30, d: 24, h: 5.4 },
     blocks: [{ x: 0, z: -59, w: 30, d: 13, h: 6, fixed: true, shop: true },
       // and the backs of the next street
-      ...[-66, -38, 38, 66].map((x, i) => ({ x, z: -40, w: 26, d: 40, h: 11 + (i % 2) * 3.3, type: 'walkup', brick: i % 2, tank: i < 2, fixed: true })),
+      ...[-66, -38, 38, 66].map((x, i) => ({ x, z: -32.6, w: 26, d: 40, h: 11 + (i % 2) * 3.3, type: 'walkup', brick: i % 2, tank: i < 2, fixed: true })),
       ...[-75, -45, -15, 15, 45, 75].map((x, i) => ({ x, z: -92, w: 28, d: 26, h: [18, 26, 14.5, 22, 30, 16][i], type: i % 3 === 2 ? 'walkup' : 'tower', brick: i % 2, fixed: true }))],
     props: [
       ...[-6, 6].flatMap(x => [-24, -34].map(z => ['pump', x, z, 0])),

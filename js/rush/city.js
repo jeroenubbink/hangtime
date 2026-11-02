@@ -317,15 +317,16 @@ export class City {
       }
     }
     for (const b of L.blocks || []) blocks.push({ type: 'hall', ...b });
+    for (const b of blocks) { b.ca = Math.cos(b.ang || 0); b.sa = Math.sin(b.ang || 0); }
+    const fixed = blocks.filter(b => b.fixed);
     // Buildings never stand on a road, a pavement or a lot, nor in each other (where two rows meet at a corner,
-    // the later one is left out)
+    // the later one is left out; the level's own always stand, and the street's make way for them)
     for (const b of blocks) {
-      b.ca = Math.cos(b.ang || 0); b.sa = Math.sin(b.ang || 0);
       const pts = [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0], [0, 0]].map(([i, k]) => {
         const lx = i * b.w / 2, lz = k * b.d / 2;
         return [b.x + lx * b.ca - lz * b.sa, b.z + lx * b.sa + lz * b.ca];
       });
-      if (!b.fixed && pts.some(([x, z]) => this.roadDist(x, z) < WALK - 0.6 || this.inLot(x, z, 1))) continue;
+      if (!b.fixed && (pts.some(([x, z]) => this.roadDist(x, z) < WALK - 0.6 || this.inLot(x, z, 1)) || fixed.some(o => overlaps(o, b)))) continue;
       if (this.blocks.some(o => overlaps(o, b))) continue;
       b.y = Math.min(...pts.slice(0, 4).map(([x, z]) => this.base(x, z))) - 1;
       b.top = b.y + b.h + 1;

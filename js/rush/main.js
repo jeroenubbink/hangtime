@@ -9,7 +9,7 @@ import * as store from '../store.js';
 import { createStage, TIMES } from '../derby/stage.js';
 import { Puffs, Debris } from '../derby/fx.js';
 import { Vehicle, contact, damageFrom, subdivide } from '../derby/vehicle.js';
-import { loadSceneryKit, merge } from '../scenery.js';
+import { loadSceneryKit } from '../scenery.js';
 import { City, rng } from './city.js';
 import { LEVELS } from './levels.js';
 import { Traffic } from './traffic.js';
@@ -153,9 +153,7 @@ function dropHalf(h) { scene.remove(h.model); h.model.traverse(o => o.geometry?.
 function startRun(pre) {
   const L = city.level;
   clearRun();
-  props?.dispose();
-  props = new Props(scene, city, [...(L.props || []), ...pillars(L.station)]);
-  buildStation(L.station);
+  dress(L);
   // Scripted: the same traffic every time, so a junction can be learned. The traffic always gets exactly
   // PRE_ALL seconds of driving before GO, however much of the intro you watch.
   G.rand = rng(L.seed * 7919 + 17);
@@ -175,7 +173,6 @@ function startRun(pre) {
   G.preSteps = Math.round(PRE_ALL * 120);
   skipTo(pre);
   cam.mode = G.state;
-  cam.t = 0;
   cam.dir.set(0, 0, -1);
   $('hud').classList.remove('hidden');
   $('crashbox').classList.add('hidden');
@@ -442,7 +439,9 @@ function hurt(X, by, dmg, point, n) {
 
 function wreck(X, split) {
   X.diedAt = G.t;
-  if (split && X.def.size[1] < 6) {
+  // (only a car tears in half: a bus or a lorry just wrecks)
+  split = split && X.def.size[1] < 6;
+  if (split) {
     halves.push(...X.split().map(h => Object.assign(h, { gen: X.gen })));
     X.halved = true;
     while (halves.length > 10) dropHalf(halves.shift());
@@ -450,7 +449,9 @@ function wreck(X, split) {
   if (X.gen > 0 && G.state === 'crash') G.wrecked++;
   scoreEvent(X, 500 * X.value, split ? 'TORN IN HALF' : X.special ? X.kind.toUpperCase() + ' DOWN' : 'WRECKED', !!X.special, split ? 'split' : 'wreck');
   sound.crunch(1);
-  // Some go up in flames a moment later; a tanker always does
+  // Some go up in flames a moment later; a tanker always does (not one that's gone up already, like the
+  // forecourt's cars, which blow before they're wrecked: it would go up, and be thrown, twice)
+  if (X.blown) return;
   if (X.def.explosive) X.boomT = 0.25;
   else if (G.rand() < 0.3) X.boomT = 1.5 + G.rand() * 3;
 }
@@ -459,7 +460,8 @@ function wreck(X, split) {
 function blowUp(X) {
   X.boomT = null;
   X.blown = true;
-  if (X.launch) launch(X);
+  // (a forecourt car: thrown up and out, and wrecked by it)
+  if (X.launch) { launch(X); X.launchT = G.t; if (!X.wrecked && !X.halved) wreck(X, false); }
   const p = X.car.pos.clone(), big = X.def.explosive ? 2 : 1, R = 8 * big;
   explosion(p, big);
   sound.boom(Math.min(1, 0.6 * big));
@@ -474,8 +476,8 @@ function blowUp(X) {
     if (d > R) continue;
     const k = 1 - d / R;
     const dir = B.car.pos.clone().sub(p).setY(0).normalize();
-    // (the forecourt's cars make their own way up: see launch())
-    if (!B.launch) B.car.vel.addScaledVector(dir, 14 * k * big).add(_kick.set(0, 5 + 6 * k * big, 0));
+    // (the forecourt's cars make their own way up, see launch(): no kicks on top until they're back down)
+    if (!B.launch || (B.launchT != null && G.t - B.launchT > 3.5)) B.car.vel.addScaledVector(dir, 14 * k * big).add(_kick.set(0, 5 + 6 * k * big, 0));
     B.car.w.add(_kick.set(G.rand() - 0.5, G.rand() - 0.5, G.rand() - 0.5).multiplyScalar(5 * k));
     if (!B.half) {
       if (!B.gen && X.gen) B.gen = X.gen + 1;
@@ -486,7 +488,7 @@ function blowUp(X) {
   }
   startle(p, 70);
   // (a blast beside the petrol station sets it off)
-  if (G.station && !G.station.lit && G.crash && atStation(p, 4)) ignite(p, X);
+  if (canLight(X) && atStation(p, 4)) ignite(p, X);
   if (G.crash) spike(0.2, 1.1);
   G.shake = Math.max(G.shake, player && player.car.pos.distanceTo(p) < 40 ? 1 : 0.4);
 }
@@ -564,6 +566,12 @@ function pillars(S) {
   if (!S) return [];
   return [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([i, k]) => ['pillar', S.x + i * (S.w / 2 - 1.2), S.z + k * (S.d / 2 - 1.2), 0]);
 }
+// The level's street furniture (the station's pumps and pillars among it) and its petrol station, fresh
+function dress(L) {
+  props?.dispose();
+  props = new Props(scene, city, [...(L.props || []), ...pillars(L.station)]);
+  buildStation(L.station);
+}
 // (its materials and textures are made once and kept: see station.js)
 // (the canopy's faded copies of them are its own, and go with it)
 function dropStationPart(m) {
@@ -580,7 +588,7 @@ function buildStation(S) {
   const parts = stationModel({ ...S, pumps: P.filter(p => p[0] === 'pump').map(p => [p[1], p[2]]) }, city.base(S.x, S.z),
     sign && [sign[1], sign[2]], L.blocks?.find(b => b.shop));
   for (const m of Object.values(parts)) if (m) scene.add(m);
-  G.station = { S, ...parts, lit: false, fx: [], sign: props.list.find(p => p.kind === 'sign') };
+  G.station = { S, ...parts, lit: false, fx: [] };
 }
 // Is `p` in under the canopy (or within `m` of it)?
 function atStation(p, m = 0) {
@@ -589,10 +597,10 @@ function atStation(p, m = 0) {
 }
 // Until you've crashed only you can set it off
 const canLight = v => G.station && !G.station.lit && G.state !== 'results' && (v === player || !!G.crash);
-function station() {
+function station(all) {
   const T = G.station;
   if (!T) return;
-  if (!T.lit) for (const B of bodies()) {
+  if (!T.lit) for (const B of all) {
     if (canLight(B) && B.car.vel.length() > 14 && atStation(B.car.pos)) { ignite(B.car.pos, B); break; }
   }
   // The canopy, blown upward, tilting and fading out
@@ -657,8 +665,17 @@ function ignite(p, by) {
     debris.add(T.logo, T.logo.position.clone(), new THREE.Vector3((G.rand() - 0.5) * 4, 22, 7), { radius: 0.6, spin: 4, life: 20 });
     T.logo = null;
   }
-  for (const k of props.blast(S.x, S.z, Math.max(S.w, S.d) / 2 + 2, 8)) scatter(k);
-  // Every vehicle on the forecourt, nearest the blast first
+  // (out to the corner pillars and a little past)
+  for (const k of props.blast(S.x, S.z, Math.hypot(S.w, S.d) / 2 + 1, 8)) scatter(k);
+  // Anything else on the forecourt (what set it off, you, whoever was passing) is thrown clear and hurt
+  for (const B of bodies()) {
+    if (B.lane?.parked || !atStation(B.car.pos, 3)) continue;
+    const dir = _kick.set(B.car.pos.x - S.x, 0, B.car.pos.z - S.z).normalize();
+    B.car.vel.addScaledVector(dir, 10).y += 9;
+    B.car.w.add(_kick.set(G.rand() - 0.5, G.rand() - 0.5, G.rand() - 0.5).multiplyScalar(4));
+    if (!B.half) hurt(B, null, 30, B.car.pos.clone().addScaledVector(dir, -1), dir.clone());
+  }
+  // Every parked vehicle on the forecourt goes up, nearest the blast first
   const lot = traffic.list.filter(v => v.lane?.parked && !v.blown).sort((a, b) => far(a.car.pos) - far(b.car.pos));
   lot.forEach((v, i) => {
     v.asleep = false;
@@ -737,7 +754,10 @@ function endCrash() {
     ['Longest chain', G.chain],
     ['<b>Total</b>', `<b>${total.toLocaleString()}</b>`],
   ].map(([a, b]) => `<tr><td>${a}</td><td class="num">${b}</td></tr>`).join('');
-  $('res-report').innerHTML = report();
+  // (with nothing to report, the card stays narrow)
+  const rep = report();
+  $('res-report').innerHTML = rep;
+  $('res-report').parentElement.classList.toggle('wide', !!rep);
   const next = L.medals.find(t => t > total);
   $('res-note').textContent = total > before && before ? `New best (was ${before.toLocaleString()})!` : next ? `${next.toLocaleString()} for ${['bronze', 'silver', 'gold'][L.medals.indexOf(next)]}.` : 'Gold. Nothing left but a higher score.';
   const keys = Object.keys(LEVELS), i = keys.indexOf(key);
@@ -831,7 +851,7 @@ function oncoming() {
   const p = player.car.pos;
   _f.set(0, 0, -1).applyQuaternion(player.car.q);
   for (const L of traffic.lanes) {
-    if (L.spawn) continue;
+    if (L.spawn || L.parked) continue;
     if (Math.abs(L.lateral(p)) > 1.9) continue;
     const s = L.progress(p), [dx, dz] = L.dir(s);
     if (dx * _f.x + dz * _f.z < -0.6 && s > 0 && s < L.len) return true;
@@ -941,7 +961,7 @@ function step() {
       if (G.state === 'crash' && (k.vehicle.gen > 0 || k.vehicle === player)) { G.score += 30; G.crash.quiet = 0; tally(null, 'prop', 30, _pp.set(k.prop.x, k.prop.y, k.prop.z)); }
       if ((k.prop.kind === 'pump' || k.prop.kind === 'pillar') && canLight(k.vehicle) && k.vehicle.car.vel.length() > 8) ignite(k.vehicle.car.pos, k.vehicle);
     }
-    station();
+    station(all);
     if (G.state === 'run') {
       G.oncoming = oncoming();
       nearMisses();
@@ -1094,7 +1114,7 @@ function blocked(from, to) {
   return false;
 }
 
-const cam = { dir: new THREE.Vector3(0, 0, -1), mode: 'menu', t: 0, roll: 0, look: new THREE.Vector3(), menuA: 0 };
+const cam = { dir: new THREE.Vector3(0, 0, -1), mode: 'menu', roll: 0, look: new THREE.Vector3(), menuA: 0 };
 const _c = new THREE.Vector3(), _l = new THREE.Vector3();
 // Keep the camera out of buildings: pull it toward the subject until it's clear
 function clear(from, p) {
@@ -1437,9 +1457,7 @@ function toMenu() {
 // Traffic running behind the menu
 function startTraffic() {
   clearRun();
-  props?.dispose();
-  props = new Props(scene, city, [...(city.level.props || []), ...pillars(city.level.station)]);
-  buildStation(city.level.station);
+  dress(city.level);
   G.rand = rng(Math.floor(Math.random() * 1e9));
   traffic = new Traffic(city, city.level, kind => makeTraffic(kind), G.rand);
   traffic.populate({ ...city.level, specials: [] });

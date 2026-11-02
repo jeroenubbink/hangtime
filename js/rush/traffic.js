@@ -58,8 +58,6 @@ export class Lane {
       s0 += len;
     }
     this.len = s0;
-    const f = this.segs[0];
-    this.dx = f.dx; this.dz = f.dz;
     this.straight = this.segs.length === 1;
     // Where the junction is along this lane
     const [jx, jz] = city.level.junction;
@@ -358,8 +356,12 @@ export class Traffic {
         v.input = { ...this.input };
       }
       const behind = (p.x - focus.x) * focus.dx + (p.z - focus.z) * focus.dz < -150;
-      // (not one the crash has had: shoved past the end of its lane, it's still in play)
-      if (!v.touched && !v.gen && ((v.s > v.lane.to - 3 && (v.asleep || d > 60)) || behind)) this.remove(v);
+      const done = v.s > v.lane.to - 3 && (v.asleep || d > 60);
+      // (not one the crash has had while it's in play: shoved past the end of its lane, a wreck, or near
+      // something flying; once it's driven on, well out of it, it goes, rather than on off the end of the road
+      // for ever)
+      const inPlay = v.wrecked || d < WAKE || hot?.some(h => Math.abs(h.x - p.x) < 40 && Math.abs(h.z - p.z) < 40);
+      if (v.touched || v.gen ? done && !inPlay : done || behind) this.remove(v);
     }
     for (const L of this.lanes) L.cars.sort((a, b) => a.s - b.s);
   }

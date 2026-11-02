@@ -4,6 +4,7 @@
 // canvases once and kept; the pieces glow a little so the place pops out of the street even in shade.
 import * as THREE from 'three';
 import { merge } from '../scenery.js';
+import { CURB } from './city.js';
 
 export const BRAND = { teal: '#0fb5ae', deep: '#0b5e6b', orange: '#ff7a1a', pink: '#ff2e7e', yellow: '#ffd23a', cream: '#fff6e0' };
 const B = BRAND, TAU = Math.PI * 2;
@@ -261,7 +262,9 @@ export function buildStation(S, y, sign, shop) {
     for (const e of [-1, 1]) islands.push([new THREE.CylinderGeometry(0.12, 0.12, 0.9, 8).translate(px - S.x, 0.45, pz - S.z + e * 1.6), B.yellow]);
   }
   const kerbs = islands.length ? new THREE.Mesh(merge(islands), K.solid) : null;
-  if (kerbs) { kerbs.position.copy(group.position); kerbs.receiveShadow = true; }
+  // (on the forecourt, a curb up from the road, where the pumps stand: lower, they'd be under its surface)
+  const pad = CURB - 0.02;
+  if (kerbs) { kerbs.position.copy(group.position); kerbs.position.y += pad; kerbs.receiveShadow = true; }
   box.castShadow = box.receiveShadow = true;
   // The logo, up on the roof facing the junction, on a pair of struts
   const logo = new THREE.Group();
@@ -281,7 +284,8 @@ export function buildStation(S, y, sign, shop) {
       if (s < 0) m.rotation.y = Math.PI;
       face.add(m);
     }
-    face.position.set(sign[0], y + 9, sign[1]);
+    // (centred on the board of the sign's post, which stands on the pavement)
+    face.position.set(sign[0], y + pad + 9, sign[1]);
   }
   // The minimart's front
   let front = null;
