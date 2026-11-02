@@ -39,6 +39,10 @@ const CRASH_MAX = 30, CRASH_QUIET = 5, FOLLOW_YOU = 5, SHOT = 2.5;   // seconds
 // ---------- Stage ----------
 const stage = createStage($('view'));
 const { scene, camera, renderer } = stage;
+// (a near plane further out than the stage's default: the camera never gets that close, and it buys the depth
+// buffer the precision to keep far-off ledges and signs from flickering)
+camera.near = 0.5;
+camera.updateProjectionMatrix();
 const sound = new Sound();
 const smoke = new Puffs(scene, 1800, { soft: 0.15 });
 const glow = new Puffs(scene, 1400, { additive: true, soft: 0.35 });
@@ -561,7 +565,12 @@ function pillars(S) {
   return [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([i, k]) => ['pillar', S.x + i * (S.w / 2 - 1.2), S.z + k * (S.d / 2 - 1.2), 0]);
 }
 // (its materials and textures are made once and kept: see station.js)
-function dropStationPart(m) { if (!m) return; scene.remove(m); m.traverse(o => o.geometry?.dispose()); }
+// (the canopy's faded copies of them are its own, and go with it)
+function dropStationPart(m) {
+  if (!m) return;
+  scene.remove(m);
+  m.traverse(o => { o.geometry?.dispose(); for (const x of [o.material || []].flat()) if (x.userData.own) x.dispose(); });
+}
 function buildStation(S) {
   const T = G.station;
   if (T) for (const k of ['canopy', 'kerbs', 'logo', 'face', 'front']) dropStationPart(T[k]);
@@ -585,6 +594,16 @@ function station() {
   if (!T) return;
   if (!T.lit) for (const B of bodies()) {
     if (canLight(B) && B.car.vel.length() > 14 && atStation(B.car.pos)) { ignite(B.car.pos, B); break; }
+  }
+  // The canopy, blown upward, tilting and fading out
+  if (T.fly) {
+    const F = T.fly, k = (F.t += DT) / 2.5;
+    F.vy -= 4 * DT;
+    T.canopy.position.y += F.vy * DT;
+    T.canopy.rotation.x += F.wx * DT;
+    T.canopy.rotation.z += F.wz * DT;
+    for (const m of F.mats) m.opacity = Math.max(0, 1 - k * k);
+    if (k >= 1) { dropStationPart(T.canopy); T.canopy = null; T.fly = null; }
   }
   // The fireballs over the pumps, one after another
   for (let i = T.fx.length - 1; i >= 0; i--) {
@@ -614,14 +633,24 @@ function ignite(p, by) {
   const far = q => Math.hypot(q.x - p.x, q.z - p.z);
   props.list.filter(q => q.kind === 'pump' && q.alive).sort((a, b) => far(a) - far(b))
     .forEach((q, i) => T.fx.push({ t: 0.1 + i * 0.14, p: new THREE.Vector3(q.x, q.y + 1, q.z), big: 1.5 }));
-  // The canopy comes apart, and the logo goes up off the roof, spinning
-  dropStationPart(T.canopy);
-  T.canopy = null;
-  for (let i = 0; i < 6; i++) {
-    const w = S.w / 3, d = S.d / 2, m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.6, d), debrisMat(DEBRIS_COLOURS[i % DEBRIS_COLOURS.length]));
+  // The canopy's blown off upward, to fade away as it goes; the logo goes off the roof, spinning, and a few
+  // bits of the canopy come down
+  const mats = [], slab = T.canopy.children[0];
+  // (turning about its own middle)
+  T.canopy.position.y += slab.position.y;
+  slab.position.y = 0;
+  T.canopy.traverse(o => {
+    if (!o.isMesh) return;
+    const fade = m => { const c = m.clone(); c.transparent = true; c.userData.own = true; mats.push(c); return c; };
+    o.material = Array.isArray(o.material) ? o.material.map(fade) : fade(o.material);
+    o.castShadow = false;
+  });
+  T.fly = { t: 0, vy: 16, wx: (G.rand() - 0.5) * 0.5, wz: (G.rand() - 0.5) * 0.5, mats };
+  for (let i = 0; i < 4; i++) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(2 + G.rand() * 2, 0.4, 1.5 + G.rand() * 2), debrisMat(DEBRIS_COLOURS[i % DEBRIS_COLOURS.length]));
     m.castShadow = true;
-    const q = new THREE.Vector3(S.x + ((i % 3) - 1) * w, y + S.h, S.z + (i < 3 ? -d / 2 : d / 2));
-    debris.add(m, q, new THREE.Vector3((q.x - S.x) * 0.6, 14 + G.rand() * 8, (q.z - S.z) * 0.5), { radius: 1.2, spin: 3, life: 20 });
+    const q = new THREE.Vector3(S.x + (G.rand() - 0.5) * S.w, y + S.h, S.z + (G.rand() - 0.5) * S.d);
+    debris.add(m, q, new THREE.Vector3((q.x - S.x) * 0.6, 8 + G.rand() * 6, (q.z - S.z) * 0.5), { radius: 0.5, spin: 6, life: 20 });
   }
   if (T.logo) {
     scene.remove(T.logo);
@@ -1409,7 +1438,8 @@ function toMenu() {
 function startTraffic() {
   clearRun();
   props?.dispose();
-  props = new Props(scene, city, city.level.props || []);
+  props = new Props(scene, city, [...(city.level.props || []), ...pillars(city.level.station)]);
+  buildStation(city.level.station);
   G.rand = rng(Math.floor(Math.random() * 1e9));
   traffic = new Traffic(city, city.level, kind => makeTraffic(kind), G.rand);
   traffic.populate({ ...city.level, specials: [] });

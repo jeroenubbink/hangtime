@@ -339,11 +339,19 @@ export class City {
         this.grid.get(key).push(b);
       }
     }
+    // Neighbours whose cornices and ledges reach over each other stand a few centimetres apart in height, so
+    // their overhangs never share a plane (and flicker). (Buildings start a metre underground: it doesn't show.)
+    for (const b of this.blocks) {
+      const used = new Set(this.blocks.filter(o => o !== b && o.lift != null && overlaps(o, b, -1.5)).map(o => o.lift));
+      b.lift = [0, 1, 2, 3].find(k => !used.has(k)) ?? 0;
+      b.y += b.lift * 0.17;
+      b.top += b.lift * 0.17;
+    }
     // Meshes: pavements (with a curb face) and lots, then the buildings
     const paveParts = walk.map(g => [g, '#c9c2b4']);
     for (const lot of L.lots || []) {
       const [a, b, c, d] = lot.rect;
-      paveParts.push([this.patch([[a, c], [b, c], [b, d], [a, d]], CURB + 0.01), lot.colour || '#bdb8ae']);
+      paveParts.push([this.patch([[a, c], [b, c], [b, d], [a, d]], CURB + 0.04), lot.colour || '#bdb8ae']);
     }
     for (const [r, e, p, q] of curb) {
       const P = [];

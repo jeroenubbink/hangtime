@@ -228,9 +228,11 @@ function textures(S) {
   const t = Object.fromEntries(Object.entries(c).map(([k, v]) => [k, texture(v)]));
   // Redraw once the lettering's font is in
   document.fonts?.load(FONT(64)).then(() => { draw(); for (const x of Object.values(t)) x.needsUpdate = true; }).catch(() => {});
-  const lit = (map, k = 0.35) => new THREE.MeshLambertMaterial({ map, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: k });
+  // (the decals, the sign's face and the shopfront, are pulled toward the camera so they never flicker into what's behind them)
+  const lit = (map, k = 0.35, decal = false) => new THREE.MeshLambertMaterial({ map, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: k,
+    polygonOffset: decal, polygonOffsetFactor: decal ? -2 : 0, polygonOffsetUnits: decal ? -4 : 0 });
   kit = {
-    front: lit(t.front), side: lit(t.side), sign: lit(t.sign, 0.3), shop: lit(t.shop, 0.15),
+    front: lit(t.front), side: lit(t.side), sign: lit(t.sign, 0.3, true), shop: lit(t.shop, 0.15, true),
     ceil: new THREE.MeshLambertMaterial({ map: t.ceil, emissive: 0xffffff, emissiveMap: t.glow, emissiveIntensity: 1 }),
     logo: new THREE.MeshLambertMaterial({ map: t.logo, emissive: 0xffffff, emissiveMap: t.logo, emissiveIntensity: 0.4, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide }),
     roof: new THREE.MeshLambertMaterial({ color: '#d4ece9' }),
@@ -275,7 +277,7 @@ export function buildStation(S, y, sign, shop) {
     face = new THREE.Group();
     for (const s of [1, -1]) {
       const m = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 4.6), K.sign);
-      m.position.z = s * 0.26;
+      m.position.z = s * 0.3;
       if (s < 0) m.rotation.y = Math.PI;
       face.add(m);
     }
@@ -285,7 +287,7 @@ export function buildStation(S, y, sign, shop) {
   let front = null;
   if (shop) {
     front = new THREE.Mesh(new THREE.PlaneGeometry(shop.w - 0.4, shop.h - 0.2), K.shop);
-    front.position.set(shop.x, y + shop.h / 2, shop.z + shop.d / 2 + 0.06);
+    front.position.set(shop.x, y + shop.h / 2, shop.z + shop.d / 2 + 0.12);
   }
   return { canopy: group, kerbs, logo, face, front };
 }
@@ -295,20 +297,21 @@ export const DEBRIS_COLOURS = [B.teal, B.cream, B.orange, '#dfe3e6'];
 
 // For the pumps and pillars (instanced props, vertex coloured)
 export const PUMP = () => merge([
-  [new THREE.BoxGeometry(1.0, 0.25, 0.7).translate(0, 0.12, 0), '#9a9a9a'],
-  [new THREE.BoxGeometry(0.8, 1.5, 0.5).translate(0, 1.0, 0), B.teal],
-  [new THREE.BoxGeometry(0.82, 0.12, 0.52).translate(0, 1.55, 0), B.orange],
-  [new THREE.BoxGeometry(0.7, 0.4, 0.52).translate(0, 1.95, 0), B.cream],
-  [new THREE.BoxGeometry(0.5, 0.3, 0.54).translate(0, 1.2, 0), '#1d2a30'],
+  // (stacked, never overlapping: nothing shares a face to flicker)
+  [new THREE.BoxGeometry(1.0, 0.25, 0.7).translate(0, 0.125, 0), '#9a9a9a'],
+  [new THREE.BoxGeometry(0.8, 1.25, 0.5).translate(0, 0.875, 0), B.teal],
+  [new THREE.BoxGeometry(0.86, 0.12, 0.56).translate(0, 1.56, 0), B.orange],
+  [new THREE.BoxGeometry(0.72, 0.4, 0.5).translate(0, 1.82, 0), B.cream],
+  [new THREE.BoxGeometry(0.5, 0.3, 0.6).translate(0, 1.15, 0), '#1d2a30'],
   [new THREE.CylinderGeometry(0.05, 0.05, 0.8, 6).translate(0.45, 1.1, 0), '#222222'],
 ]);
 export const PILLAR = () => merge([
   [new THREE.BoxGeometry(0.7, 5.4, 0.7).translate(0, 2.7, 0), B.teal],
-  [new THREE.BoxGeometry(0.74, 0.3, 0.74).translate(0, 4.2, 0), B.orange],
+  [new THREE.BoxGeometry(0.8, 0.3, 0.8).translate(0, 4.2, 0), B.orange],
   [new THREE.BoxGeometry(1.0, 0.6, 1.0).translate(0, 0.3, 0), B.cream],
 ]);
 export const SIGN = () => merge([
   [new THREE.BoxGeometry(0.5, 7, 0.5).translate(0, 3.5, 0), B.deep],
   [new THREE.BoxGeometry(3.7, 4.9, 0.5).translate(0, 9, 0), B.deep],
-  [new THREE.BoxGeometry(3.7, 0.3, 0.52).translate(0, 11.35, 0), B.orange],
+  [new THREE.BoxGeometry(3.9, 0.3, 0.62).translate(0, 11.6, 0), B.orange],
 ]);
