@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rushtime</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rubik:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="rush.css">
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <div id="loading">Filling up…</div>
+
+  <div id="hud" class="hidden">
+    <div id="heatbox"><div id="heat">×1.0</div><div class="lbl">HEAT</div><div class="onc">ONCOMING</div></div>
+    <div id="crashbox" class="hidden"><div class="lbl">CARNAGE</div><div id="carnage">0</div><div id="crash-sub"></div></div>
+    <div id="callouts"></div>
+    <div id="msg"><div id="msg-main"></div><div id="msg-sub"></div></div>
+    <div id="speedo"><span id="speed">0</span><small>km/h</small></div>
+    <div id="rush"><span>RUSH <kbd>Shift</kbd></span><div id="rush-bar"><div id="rush-fill"></div></div></div>
+    <div id="touch">
+      <div class="pad left"><button data-key="ArrowLeft">◀</button><button data-key="ArrowRight">▶</button></div>
+      <div class="pad right">
+        <button data-key="Space" class="small">DRIFT</button><button data-key="ShiftLeft" class="small rushb">RUSH</button>
+        <button data-key="ArrowDown">▼</button><button data-key="ArrowUp" class="gas">▲</button>
+      </div>
+      <div class="pad top"><button data-tap="KeyR" class="small">RETRY</button><button data-tap="Escape" class="small">❚❚</button></div>
+    </div>
+    <div id="hint">↑↓←→ / WASD drive · Shift rush · Space drift · R retry · Esc pause</div>
+  </div>
+
+  <div id="menu" class="screen hidden">
+    <div class="panel">
+      <a href="index.html" class="back">‹ Games</a>
+      <h1>RUSH<span>TIME</span></h1>
+      <p class="tag">Thread the traffic. Pick your moment. Make it count.</p>
+      <h3>Junction</h3>
+      <div id="levels" class="list"></div>
+      <h3>Car</h3>
+      <div id="cars" class="list cars"></div>
+      <h3>Time</h3>
+      <div id="tod" class="seg"></div>
+      <div class="row"><button id="btn-go" class="primary">DRIVE ▸</button></div>
+      <button id="btn-help" class="link">How to play</button>
+    </div>
+  </div>
+
+  <div id="results" class="screen hidden">
+    <div class="card narrow">
+      <h2 id="res-title"></h2>
+      <table><tbody id="res-rows"></tbody></table>
+      <p id="res-note"></p>
+      <div class="row">
+        <button id="btn-retry" class="primary">Again <kbd>Enter</kbd></button>
+        <button id="btn-next">Next junction ▸</button>
+      </div>
+      <button id="btn-menu" class="link">Menu</button>
+    </div>
+  </div>
+
+  <div id="pause" class="screen hidden">
+    <div class="card narrow">
+      <h2>Paused</h2>
+      <button id="btn-resume" class="primary">Resume</button>
+      <button id="btn-quit">Quit to menu</button>
+    </div>
+  </div>
+
+  <div id="help" class="screen hidden">
+    <div class="card">
+      <h2>How to play</h2>
+      <p>Every junction starts with a long run-up through traffic. At the end, the junction is busy and the lights are red for you. Crash into it.</p>
+      <p><b>Heat</b> multiplies your final score. Build it on the way in: <b>near misses</b> (closer is better), the
+        <b>oncoming lane</b>, <b>drifts</b> and <b>air</b>. How fast you hit adds more.</p>
+      <p><b>Rush</b> (<kbd>Shift</kbd>) is your boost. It fills the same way heat does, so the more you risk, the faster you go.</p>
+      <p>Once you crash, everything the crash reaches counts: each car hit by something you hit scores more, down a
+        chain as long as the traffic keeps coming. Steer for a few seconds after impact to push your wreck into more trouble.
+        Tankers explode.</p>
+      <p class="keys"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive ·
+        <kbd>Shift</kbd> rush · <kbd>Space</kbd> drift · <kbd>R</kbd> retry at any time · <kbd>Esc</kbd> pause · <kbd>M</kbd> mute.
+        Gamepads: stick steers, triggers drive and brake, B or RB rush, X drift, Y retry.</p>
+      <div class="row"><button id="btn-help-close" class="primary">Got it</button></div>
+    </div>
+  </div>
+
+  <script type="module" src="js/rush/main.js"></script>
+</body>
+</html>

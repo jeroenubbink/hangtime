@@ -1,6 +1,6 @@
-# Hangtime & Crunchtime
+# Hangtime, Crunchtime & Rushtime
 
-Two low-poly driving games that run in the browser, sharing one car physics engine. There's no build step:
+Three low-poly driving games that run in the browser, sharing one car physics engine. There's no build step:
 three.js, WebAudio synthesis, plain JavaScript modules and a handful of small car models. All other scenery and
 textures are generated in code.
 
@@ -8,6 +8,7 @@ textures are generated in code.
 
 - **Hangtime** is stunt racing: loops, jumps and flips against the clock and a rival.
 - **Crunchtime** is a demolition derby: eight cars in an arena, last one running wins.
+- **Rushtime** is about traffic crashes: thread through traffic at speed, then plough into a busy junction.
 
 ## Hangtime
 
@@ -84,6 +85,36 @@ through them. Things to know:
 | R | Flip back over / get unstuck |
 | X | Wrecking Spree: buy a repair |
 | C | Camera (chase, far chase, hood, overhead) |
+| Esc | Pause |
+
+## Rushtime
+
+- **Two junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path,
+  and **Dockside Drop**, a downhill run with a crest that throws you, ending at a six-lane harbour road with the
+  water behind it.
+- **The run-up:** about ten seconds through traffic. Near misses (closer counts more, oncoming more still), the
+  oncoming lane, drifts and air build **heat**, the multiplier on your final score, and fill **rush**, the boost.
+  Burning rush widens the view, blurs the edges and pulls the camera in.
+- **The crash:** the moment you hit something solid, time slows right down and the camera circles the pile-up.
+  Traffic keeps coming and its drivers react a moment too late, so one hit becomes many. Each vehicle hit by
+  something your crash already reached is a link in the **chain** and scores more. Tankers explode, other wrecks
+  sometimes catch fire and go up, cars split in half, lamp posts and trees go flying, hydrants gush, and on the
+  docks cars go over the quay into the water. Steer for a few seconds after impact to push your wreck further.
+- **Traffic:** six kinds of car, vans, pickups, police cars, garbage trucks, city buses, fuel tankers, box lorries
+  and flatbeds with a load.
+- **Medals** per junction: bronze is a decent crash; gold needs heat and a well-timed hit.
+- **Your car:** an arcade model on top of the shared physics: you set the turn rate, the car keeps its grip (or
+  slides in a drift), and it goes exactly where you point it at 280 km/h. Comet (light and agile), Interceptor
+  (fastest) or Brick (a heavy van).
+
+### Rushtime controls
+
+| Key | Action |
+| --- | --- |
+| ↑ ↓ ← → or W A S D | Drive (↓ brakes, then reverses) |
+| Shift | Rush (boost) |
+| Space | Drift |
+| R | Retry, at any time |
 | Esc | Pause |
 
 ### Balance
@@ -196,7 +227,18 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
   - `roster.js`: cars, stats and drivers
   - `pickups.js`: pickups, mines and smashable props
   - `fx.js`: smoke, fire and sparks as GPU points, and tumbling debris
-  - `stage.js`: renderer, sky, lights and time of day
+  - `stage.js`: renderer, sky, lights and time of day (Rushtime uses it too)
+- `js/rush/`: Rushtime
+  - `main.js`: your car's handling, the run-up (heat, rush, near misses), the crash (chains, explosions, slow motion,
+    crash camera), speed effects (radial blur, streaks), HUD and menus
+  - `city.js`: streets as axis-aligned roads with lane markings, kerbs and pavements, buildings, the quay
+  - `levels.js`: the junctions: roads, traffic lanes, red lights and the timed tanker and bus
+  - `traffic.js`: lanes and drivers (following, stopping at red, reacting late, swerving); far traffic glides along
+    its lane without physics
+  - `props.js`: lamp posts, trees, traffic lights, bins, hydrants and bollards that get knocked flying
+  - `roster.js`: your cars and the traffic
+- `assets/cars/toy-bus.glb`, `toy-tanker.glb`, `toy-lorry.glb`, `toy-flatbed.glb`: Rushtime's big vehicles, made in
+  Blender (source: `assets/src/rush-vehicles.blend`)
 
 ## Performance
 

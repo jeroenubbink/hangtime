@@ -74,16 +74,18 @@ button.link.back { padding: 0 0 8px; text-decoration: none; font-size: 14px; }
 .picker { width: min(980px, 100%); max-height: 100%; overflow: auto; text-align: center; }
 .picker-tag { font-size: 15px; letter-spacing: 3px; text-transform: uppercase; opacity: 0.85; margin: 0 0 18px; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
 .picker-row { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; }
-.game-card { flex: 1 1 340px; max-width: 460px; display: flex; flex-direction: column; text-align: left; padding: 0; overflow: hidden;
+.game-card { flex: 1 1 280px; max-width: 420px; display: flex; flex-direction: column; text-align: left; padding: 0; overflow: hidden;
   background: var(--panel); border: 2px solid var(--line); border-radius: 18px; color: var(--ink); text-decoration: none;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45); transition: transform .15s, border-color .15s; cursor: pointer; font: inherit; }
 .game-card:hover { transform: translateY(-4px) scale(1.01); border-color: var(--accent); background: var(--panel); }
 .game-card.derby:hover { border-color: #ff7a1a; }
+.game-card.rush:hover { border-color: #2ee6ff; }
 .game-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #222; }
 .game-title { font-family: 'Russo One', Rubik, sans-serif; font-style: italic; font-size: 38px; letter-spacing: 2px; padding: 14px 20px 0;
   text-shadow: 3px 3px 0 var(--red); }
 .game-title em { font-style: italic; color: var(--accent); }
 .game-card.derby .game-title em { color: #ff7a1a; }
+.game-card.rush .game-title em { color: #2ee6ff; }
 .game-blurb { padding: 6px 20px 20px; font-size: 15px; opacity: 0.8; line-height: 1.45; }
 @media (max-width: 720px) {
   .picker-tag { font-size: 12px; letter-spacing: 2px; margin-bottom: 12px; }
