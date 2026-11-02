@@ -339,7 +339,7 @@ function updatePops(raw) {
       const el = document.createElement('div');
       el.className = 'pop';
       el.innerHTML = `+${inc.total.toLocaleString()}${top !== 'dent' || inc.n > 2 ? `<small>${DAMAGE[top][0]}${inc.n > 1 ? ' ×' + inc.n : ''}</small>` : ''}`;
-      el.style.fontSize = (15 + 30 * k * k) + 'px';
+      el.style.fontSize = (22.5 + 45 * k * k) + 'px';
       el.style.color = `hsl(${Math.round(52 - 50 * k)}, 100%, ${Math.round(62 - 8 * k)}%)`;
       box.appendChild(el);
       inc.el = el; inc.born = 0;
@@ -1355,7 +1355,7 @@ function updateHud(dt) {
       if (el.dataset.n !== String(n)) {
         el.dataset.n = n;
         el.textContent = n;
-        el.style.fontSize = (34 + (5 - Math.min(5, n)) * 16) + 'px';
+        el.style.fontSize = (51 + (5 - Math.min(5, n)) * 24) + 'px';
         el.style.color = `hsl(${(Math.min(5, n) - 1) * 12}, 100%, 60%)`;
         el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick');
       }

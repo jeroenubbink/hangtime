@@ -112,13 +112,15 @@ kbd { display: inline-block; min-width: 20px; text-align: center; font: 600 12px
 #crashbox { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); text-align: center; }
 #carnage { font: italic 58px 'Russo One', sans-serif; text-shadow: 3px 3px 0 var(--accent2); font-variant-numeric: tabular-nums; }
 #crash-sub { font-size: 15px; opacity: 0.85; letter-spacing: 1px; }
-#countdown { font: italic 34px 'Russo One', sans-serif; line-height: 1.1; margin-top: 4px; text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5); transition: font-size .2s; }
+#countdown { font: 900 51px 'Titillium Web', 'Russo One', sans-serif; line-height: 1; margin-top: 4px; transition: font-size .2s;
+  -webkit-text-stroke: 2px rgba(0, 0, 0, 0.75); paint-order: stroke fill; text-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55), 0 0 18px rgba(0, 0, 0, 0.45); }
 #countdown.tick { animation: tick .9s ease-out; }
 @keyframes tick { 0% { transform: scale(1.6); opacity: 0.4; } 25% { transform: scale(1); opacity: 1; } }
 #pops { position: absolute; inset: 0; overflow: hidden; }
-.pop { position: absolute; left: 0; top: 0; font: italic 20px 'Russo One', sans-serif; white-space: nowrap; text-align: center;
-  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55), 0 0 12px rgba(0, 0, 0, 0.35); will-change: transform; }
-.pop small { display: block; font: 600 0.45em Rubik, sans-serif; font-style: normal; letter-spacing: 1px; text-transform: uppercase; opacity: 0.95; }
+.pop { position: absolute; left: 0; top: 0; font: 900 30px 'Titillium Web', 'Russo One', sans-serif; line-height: 0.95; white-space: nowrap; text-align: center;
+  -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.75); paint-order: stroke fill;
+  text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.6), 0 0 14px rgba(0, 0, 0, 0.4); will-change: transform; }
+.pop small { display: block; font: 900 0.42em 'Titillium Web', sans-serif; letter-spacing: 1.5px; text-transform: uppercase; -webkit-text-stroke: 0.6px rgba(0, 0, 0, 0.7); }
 #callouts { position: absolute; left: 50%; top: 30%; transition: top .3s; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .call { font: italic 26px 'Russo One', sans-serif; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5); animation: pop 1.5s ease-out forwards; white-space: nowrap; }
 .call small { display: block; font: 600 14px Rubik, sans-serif; text-align: center; opacity: 0.9; font-style: normal; }
