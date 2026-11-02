@@ -63,6 +63,34 @@ kbd { display: inline-block; min-width: 20px; text-align: center; font: 600 12px
 #res-title { font-size: 40px; font-style: italic; }
 #res-title.gold { color: #ffd23a; } #res-title.silver { color: #d8dde6; } #res-title.bronze { color: #e09a5a; } #res-title.none { opacity: 0.7; }
 
+/* Wreck report */
+.card.narrow.wide { width: min(900px, 100%); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); column-gap: 26px; align-content: start; }
+.card.narrow.wide > * { grid-column: 1; }
+.card.narrow.wide > #res-report { grid-column: 2; grid-row: 1 / span 6; }
+#res-report h3 { margin-top: 4px; }
+#res-report:empty { display: none; }
+@media (max-width: 760px) {
+  .card.narrow.wide { display: flex; width: min(460px, 100%); }
+  #res-report h3 { margin-top: 10px; }
+}
+.rep-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 2px; }
+.rep-bar i, .mini i { display: block; height: 100%; animation: grow .7s ease-out both; transform-origin: left; }
+.rep-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 7px 0 10px; font-size: 12px; opacity: 0.9; }
+.rep-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; }
+.rep-list { display: grid; gap: 6px; }
+.rep-row { display: grid; grid-template-columns: 14px 1fr 90px 64px; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05); animation: slidein .45s ease-out both; }
+.rep-row:first-child { background: linear-gradient(90deg, rgba(255, 61, 122, 0.22), rgba(255, 255, 255, 0.04)); }
+.rep-row .chip { width: 14px; height: 14px; border-radius: 4px; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25); }
+.rep-row .who { font-size: 14px; font-weight: 600; line-height: 1.15; min-width: 0; }
+.rep-row .who em { font-style: normal; font-size: 10px; letter-spacing: 1px; margin-left: 6px; padding: 1px 5px; border-radius: 4px; background: rgba(255, 138, 30, 0.3); }
+.rep-row .who small { display: block; font-weight: 400; font-size: 11px; opacity: 0.65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini { display: flex; height: 8px; gap: 1px; border-radius: 4px; overflow: hidden; justify-self: start; }
+.rep-row .num { font: italic 15px 'Russo One', sans-serif; }
+.rep-more { font-size: 12px; opacity: 0.6; text-align: center; }
+@keyframes slidein { from { opacity: 0; transform: translateX(-16px); } }
+@keyframes grow { from { transform: scaleX(0); } }
+
 /* HUD */
 #hud { position: fixed; inset: 0; pointer-events: none; }
 #speedo { position: absolute; right: 26px; bottom: 54px; font: italic 64px 'Russo One', sans-serif; text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.35);
@@ -84,6 +112,13 @@ kbd { display: inline-block; min-width: 20px; text-align: center; font: 600 12px
 #crashbox { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); text-align: center; }
 #carnage { font: italic 58px 'Russo One', sans-serif; text-shadow: 3px 3px 0 var(--accent2); font-variant-numeric: tabular-nums; }
 #crash-sub { font-size: 15px; opacity: 0.85; letter-spacing: 1px; }
+#countdown { font: italic 34px 'Russo One', sans-serif; line-height: 1.1; margin-top: 4px; text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5); transition: font-size .2s; }
+#countdown.tick { animation: tick .9s ease-out; }
+@keyframes tick { 0% { transform: scale(1.6); opacity: 0.4; } 25% { transform: scale(1); opacity: 1; } }
+#pops { position: absolute; inset: 0; overflow: hidden; }
+.pop { position: absolute; left: 0; top: 0; font: italic 20px 'Russo One', sans-serif; white-space: nowrap; text-align: center;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55), 0 0 12px rgba(0, 0, 0, 0.35); will-change: transform; }
+.pop small { display: block; font: 600 0.45em Rubik, sans-serif; font-style: normal; letter-spacing: 1px; text-transform: uppercase; opacity: 0.95; }
 #callouts { position: absolute; left: 50%; top: 30%; transition: top .3s; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .call { font: italic 26px 'Russo One', sans-serif; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5); animation: pop 1.5s ease-out forwards; white-space: nowrap; }
 .call small { display: block; font: 600 14px Rubik, sans-serif; text-align: center; opacity: 0.9; font-style: normal; }

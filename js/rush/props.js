@@ -41,6 +41,22 @@ const MODELS = {
     [new THREE.SphereGeometry(0.2, 8, 5).translate(0, 0.8, 0), '#3a3a40'],
   ]),
   cone: () => sceneryGeo('cone') || new THREE.ConeGeometry(0.3, 0.8, 10).translate(0, 0.4, 0),
+  pump: () => merge([
+    [new THREE.BoxGeometry(1.0, 0.25, 0.7).translate(0, 0.12, 0), '#9a9a9a'],
+    [new THREE.BoxGeometry(0.8, 1.5, 0.5).translate(0, 1.0, 0), '#e8352b'],
+    [new THREE.BoxGeometry(0.7, 0.35, 0.52).translate(0, 1.95, 0), '#f4f4f0'],
+    [new THREE.BoxGeometry(0.5, 0.3, 0.54).translate(0, 1.3, 0), '#2a2d33'],
+    [new THREE.CylinderGeometry(0.05, 0.05, 0.8, 6).translate(0.45, 1.1, 0), '#222222'],
+  ]),
+  // A tall price sign on a pole
+  sign: () => merge([
+    [new THREE.CylinderGeometry(0.16, 0.2, 7, 8).translate(0, 3.5, 0), '#5d6470'],
+    [new THREE.BoxGeometry(2.6, 3.2, 0.4).translate(0, 8.3, 0), '#f4f4f0'],
+    [new THREE.BoxGeometry(2.7, 0.9, 0.44).translate(0, 9.5, 0), '#e8352b'],
+    [new THREE.BoxGeometry(2.2, 0.5, 0.46).translate(0, 8.2, 0), '#2a2d33'],
+    [new THREE.BoxGeometry(2.2, 0.5, 0.46).translate(0, 7.4, 0), '#2a2d33'],
+  ]),
+  pillar: () => merge([[new THREE.BoxGeometry(0.5, 5.4, 0.5).translate(0, 2.7, 0), '#d8dadc'], [new THREE.BoxGeometry(0.8, 0.5, 0.8).translate(0, 0.25, 0), '#9a9a9a']]),
   barrier: () => merge([
     [new THREE.BoxGeometry(2.2, 0.32, 0.12).translate(0, 0.85, 0), (y, f) => (f % 4 < 2 ? '#e8352b' : '#f4f4f0')],
     [new THREE.BoxGeometry(0.08, 0.9, 0.08).translate(-0.9, 0.45, 0), '#3a3a40'],
@@ -52,6 +68,7 @@ const KINDS = {
   lamp: { r: 0.3, slow: 0.1, h: 6 }, light: { r: 0.3, slow: 0.1, h: 4.6 }, tree: { r: 0.45, slow: 0.22, h: 4 },
   bin: { r: 0.35, slow: 0.02, h: 1 }, hydrant: { r: 0.25, slow: 0.05, h: 0.8 }, bollard: { r: 0.25, slow: 0.08, h: 0.9 },
   cone: { r: 0.35, slow: 0, h: 0.8 }, barrier: { r: 1.1, slow: 0.03, h: 1 },
+  pump: { r: 0.5, slow: 0.12, h: 2.1 }, sign: { r: 0.3, slow: 0.15, h: 9.9 }, pillar: { r: 0.35, slow: 0.25, h: 5.4 },
 };
 
 export class Props {
@@ -77,21 +94,23 @@ export class Props {
     const city = this.city;
     for (const r of city.roads) {
       for (const side of [-1, 1]) {
-        const e = side > 0 ? r.hi : r.lo;
-        const lo = r.alongX ? r.rect[0] : r.rect[2], hi = r.alongX ? r.rect[1] : r.rect[3];
-        for (let s = lo + 10, k = 0; s < hi - 10; s += 15, k++) {
-          const at = d => (r.alongX ? [s, e + side * d] : [e + side * d, s]);
+        const e = side > 0 ? r.vHi : r.vLo;
+        // (lamp arms reach out over the road)
+        const arm = Math.atan2(-side * r.rv[1], side * r.rv[0]);
+        for (let s = 10, k = 0; s < r.len - 10; s += 15, k++) {
+          const at = (d, ds = 0) => r.at(s + ds, e + side * d);
           const [x, z] = at(k % 2 ? 2.4 : 0.7);
-          if (city.isRoad(x, z) || city.roadDist(x, z) > 3) continue;
-          if (city.junctions.some(([a, b, c, d]) => x > a - 6 && x < b + 6 && z > c - 6 && z < d + 6)) continue;
+          if (city.isRoad(x, z) || city.roadDist(x, z) > 3 || city.inLot(x, z, 1)) continue;
+          if (city.junctions.some(({ box: [a, b, c, d] }) => x > a - 6 && x < b + 6 && z > c - 6 && z < d + 6)) continue;
           if (k % 2) this.add('tree', x, z, s * 0.7);
-          else this.add('lamp', x, z, r.alongX ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : (side > 0 ? 0 : Math.PI));
+          else this.add('lamp', x, z, arm);
           // (every 7th post, alternating bin and hydrant)
-          if (k % 7 === 3) { const [bx, bz] = at(1.4); this.add((k - 3) % 14 === 0 ? 'bin' : 'hydrant', bx + 1.5 * (r.alongX ? 1 : 0), bz + 1.5 * (r.alongX ? 0 : 1)); }
+          if (k % 7 === 3) { const [bx, bz] = at(1.4, 1.5); this.add((k - 3) % 14 === 0 ? 'bin' : 'hydrant', bx, bz); }
         }
       }
     }
-    for (const [a, b, c, d] of city.junctions) {
+    for (const { box: [a, b, c, d], square } of city.junctions) {
+      if (!square) continue;
       for (const [x, z, rot] of [[a - 1.2, d + 1.2, 0], [b + 1.2, c - 1.2, Math.PI], [a - 1.2, c - 1.2, -Math.PI / 2], [b + 1.2, d + 1.2, Math.PI / 2]]) {
         if (!city.isRoad(x, z)) this.add('light', x, z, rot);
       }
@@ -152,14 +171,31 @@ export class Props {
           const t = Math.max(-v.len / 2 + 0.6, Math.min(v.len / 2 - 0.6, (p.x - c.pos.x) * fx + (p.z - c.pos.z) * fz));
           const dx = p.x - (c.pos.x + fx * t), dz = p.z - (c.pos.z + fz * t);
           if (dx * dx + dz * dz > (p.r + v.r) ** 2) continue;
-          p.alive = false;
           const vel = c.vel.clone().multiplyScalar(0.9 + Math.random() * 0.3).add(new THREE.Vector3((Math.random() - 0.5) * 3, 3 + Math.random() * 4, (Math.random() - 0.5) * 3));
           c.vel.multiplyScalar(1 - p.slow);
-          this.meshes[p.kind].setMatrixAt(p.i, ZERO);
-          this.meshes[p.kind].instanceMatrix.needsUpdate = true;
+          this.knock(p);
           out.push({ prop: p, vehicle: v, vel });
         }
       }
+    }
+    return out;
+  }
+
+  // Take a prop out of the street
+  knock(p) {
+    p.alive = false;
+    this.meshes[p.kind].setMatrixAt(p.i, ZERO);
+    this.meshes[p.kind].instanceMatrix.needsUpdate = true;
+  }
+  // An explosion at (x, z) throws everything standing within R: returns [{ prop, vel }]
+  blast(x, z, R, force = 12) {
+    const out = [];
+    for (const p of this.list) {
+      const d = Math.hypot(p.x - x, p.z - z);
+      if (!p.alive || d > R) continue;
+      this.knock(p);
+      const k = 1 - d / R, dx = (p.x - x) / (d || 1), dz = (p.z - z) / (d || 1);
+      out.push({ prop: p, vel: new THREE.Vector3(dx * force * k + (Math.random() - 0.5) * 3, 6 + 10 * k, dz * force * k + (Math.random() - 0.5) * 3) });
     }
     return out;
   }

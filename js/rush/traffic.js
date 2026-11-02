@@ -2,7 +2,7 @@
 // and, like real drivers, see trouble a moment too late. Far from the action they glide along their lane
 // without physics (cheap); near it they're full rigid bodies that can be hit, spun and piled up.
 import * as THREE from 'three';
-import { laneOffset, rightOf } from './city.js';
+import { laneOffset } from './city.js';
 import { TRAFFIC } from './roster.js';
 
 const RIDE = 0.88;              // a resting car's height above the road
@@ -12,26 +12,59 @@ const _l = new THREE.Vector3(), _f = new THREE.Vector3(), _r = new THREE.Vector3
 const _m = new THREE.Matrix4(), _up = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
 
-// A lane: a straight line along a road, `off` to the right of its centre line
+// Where a lane of road `def.road` runs: from its start to its end, in the direction of travel
+function laneLine(city, def) {
+  const r = city.roads.find(o => o.name === def.road);
+  const off = laneOffset(r, 1, def.i);
+  return def.side > 0 ? [r.at(0, off), r.at(r.len, off)] : [r.at(r.len, -off), r.at(0, -off)];
+}
+// Where lines a0-a1 and b0-b1 cross
+function cross([a0, a1], [b0, b1]) {
+  const dx = a1[0] - a0[0], dz = a1[1] - a0[1], ex = b1[0] - b0[0], ez = b1[1] - b0[1];
+  const den = dx * ez - dz * ex;
+  if (Math.abs(den) < 1e-9) return null;
+  const t = ((b0[0] - a0[0]) * ez - (b0[1] - a0[1]) * ex) / den;
+  return [a0[0] + dx * t, a0[1] + dz * t];
+}
+
+// A lane: a line of travel, straight along a road, or bending off it onto another (`then`: { road, side, i }),
+// or any `path` of points. Positions along it are s, metres from its start.
 export class Lane {
   constructor(city, def, index) {
-    const r = city.roads.find(o => o.name === def.road);
     Object.assign(this, def);
     this.index = index;
     this.city = city;
-    const fwd = def.side > 0;
-    const [dx, dz] = fwd ? r.dir : [-r.dir[0], -r.dir[1]];
-    const [ax, az] = fwd ? [r.x0, r.z0] : [r.x1, r.z1];
-    const off = laneOffset(r, 1, def.i);
-    const [rx, rz] = rightOf(dx, dz);
-    this.dx = dx; this.dz = dz;
-    this.ax = ax + rx * off; this.az = az + rz * off;
-    this.len = Math.hypot(r.x1 - r.x0, r.z1 - r.z0);
-    this.rx = rx; this.rz = rz;
+    let pts;
+    if (def.path) pts = def.path;
+    else {
+      const A = laneLine(city, def);
+      pts = A;
+      if (def.then) {
+        // Along the first lane to where it meets the second, round a short bend, and on along that
+        const B = laneLine(city, def.then), I = cross(A, B);
+        if (I) {
+          const unit = ([p, q]) => { const l = Math.hypot(q[0] - p[0], q[1] - p[1]); return [(q[0] - p[0]) / l, (q[1] - p[1]) / l]; };
+          const [ux, uz] = unit(A), [vx, vz] = unit(B), R = def.bend || 10;
+          pts = [A[0], [I[0] - ux * R, I[1] - uz * R], [I[0] + (vx - ux) * R * 0.15, I[1] + (vz - uz) * R * 0.15], [I[0] + vx * R, I[1] + vz * R], B[1]];
+        }
+      }
+    }
+    this.segs = [];
+    let s0 = 0;
+    for (let k = 0; k < pts.length - 1; k++) {
+      const [ax, az] = pts[k], [bx, bz] = pts[k + 1], len = Math.hypot(bx - ax, bz - az);
+      if (len < 1e-6) continue;
+      this.segs.push({ ax, az, dx: (bx - ax) / len, dz: (bz - az) / len, len, s0 });
+      s0 += len;
+    }
+    this.len = s0;
+    const f = this.segs[0];
+    this.dx = f.dx; this.dz = f.dz;
+    this.straight = this.segs.length === 1;
     // Where the junction is along this lane
     const [jx, jz] = city.level.junction;
-    this.jS = (jx - this.ax) * dx + (jz - this.az) * dz;
-    this.yaw = Math.atan2(-dx, -dz);
+    this.jS = this.progress({ x: jx, z: jz });
+    if (def.stopBefore != null) this.stop = this.jS - def.stopBefore;
     this.cars = [];        // on this lane, sorted by progress
     this.next = 0;         // time to the next spawn
     this.speedMid = (def.speed[0] + def.speed[1]) / 2;
@@ -39,10 +72,31 @@ export class Lane {
     this.from = def.spawn ? Math.max(0, this.jS - 230) : 0;
     this.to = def.spawn ? Math.min(this.len, this.jS + 250) : this.len;
   }
-  x(s) { return this.ax + this.dx * s; }
-  z(s) { return this.az + this.dz * s; }
-  progress(p) { return (p.x - this.ax) * this.dx + (p.z - this.az) * this.dz; }
-  lateral(p) { return (p.x - this.ax) * this.rx + (p.z - this.az) * this.rz; }
+  // The segment at s (the first and last run on beyond the ends)
+  seg(s) {
+    const S = this.segs;
+    for (let k = S.length - 1; k > 0; k--) if (s >= S[k].s0) return S[k];
+    return S[0];
+  }
+  x(s) { const g = this.seg(s); return g.ax + g.dx * (s - g.s0); }
+  z(s) { const g = this.seg(s); return g.az + g.dz * (s - g.s0); }
+  dir(s) { const g = this.seg(s); return [g.dx, g.dz]; }
+  // The segment nearest p, and how far along it p is
+  near(p) {
+    if (this.straight) { const g = this.segs[0]; return [g, (p.x - g.ax) * g.dx + (p.z - g.az) * g.dz]; }
+    let best = null, bt = 0, bd = Infinity;
+    this.segs.forEach((g, k) => {
+      let t = (p.x - g.ax) * g.dx + (p.z - g.az) * g.dz;
+      if (k > 0) t = Math.max(0, t);
+      if (k < this.segs.length - 1) t = Math.min(g.len, t);
+      const ex = p.x - g.ax - g.dx * t, ez = p.z - g.az - g.dz * t, d = ex * ex + ez * ez;
+      if (d < bd) { bd = d; best = g; bt = t; }
+    });
+    return [best, bt];
+  }
+  progress(p) { const [g, t] = this.near(p); return g.s0 + t; }
+  // How far right of the lane p is
+  lateral(p) { const [g] = this.near(p); return -(p.x - g.ax) * g.dz + (p.z - g.az) * g.dx; }
 }
 
 // A traffic driver. Until you crash they're model drivers, so the junction is the same every time you
@@ -163,6 +217,12 @@ export class Traffic {
     this.make = makeVehicle;           // (kind, lane, s, speed) => vehicle
     this.rand = rand;
     this.lanes = level.lanes.map((d, i) => new Lane(city, d, i));
+    // Parked vehicles stand on a short lane of their own, at its red light
+    for (const P of level.parked || []) {
+      const fx = -Math.sin(P.yaw || 0), fz = -Math.cos(P.yaw || 0), len = TRAFFIC[P.kind || 'saloon'].size[1];
+      this.lanes.push(new Lane(city, { path: [[P.x - fx * 6, P.z - fz * 6], [P.x + fx * 6, P.z + fz * 6]], speed: [0, 0], gap: [0, 0],
+        stop: 6 + len / 2 + 1, queue: [P.kind || null], parked: true }, this.lanes.length));
+    }
     this.list = [];
     this.input = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false };
   }
@@ -175,7 +235,7 @@ export class Traffic {
       // Bumper to bumper, back from the stop line
       let at = L.stop - 1;
       const queue = Array.isArray(L.queue) ? L.queue : Array(L.queue || 0).fill(null);
-      for (const k of queue) { const kind = k || this.kind(L), len = TRAFFIC[kind].size[1]; const v = this.add(kind, L, at - len / 2, 0, true); if (k) v.special = k; at -= len + 2; }
+      for (const k of queue) { const kind = k || this.kind(L), len = TRAFFIC[kind].size[1]; const v = this.add(kind, L, at - len / 2, 0, true); if (k && !L.parked) v.special = k; at -= len + 2; }
       const back = at;
       if (L.fill) {
         for (let s = L.fill[0]; s < L.fill[1]; s += L.gap[0] + R() * (L.gap[1] - L.gap[0])) {
@@ -207,6 +267,7 @@ export class Traffic {
   // A mix like a real street: mostly cars, some vans and pickups, and on the busy roads buses and trucks
   kind(L) {
     const r = this.rand();
+    if (L.parked) return ['hatch', 'coupe', 'cab', 'saloon', 'suv', 'pickup', 'van'][Math.floor(r * 7)];
     if (L.spawn) {
       if (r < 0.07) return 'bus';
       if (r < 0.1) return 'tanker';
@@ -248,12 +309,13 @@ export class Traffic {
     const x = L.x(s), z = L.z(s);
     const h0 = this.city.groundHeight(L.x(s - 2), L.z(s - 2)), h1 = this.city.groundHeight(L.x(s + 2), L.z(s + 2));
     c.pos.set(x, (h0 + h1) / 2 + RIDE, z);
-    _f.set(L.dx, (h1 - h0) / 4, L.dz).normalize();
+    const [dx, dz] = L.dir(s);
+    _f.set(dx, (h1 - h0) / 4, dz).normalize();
     _r.crossVectors(_f, _up).normalize();
     _l.crossVectors(_r, _f);
     _m.makeBasis(_r, _l, _f.negate());
     c.q.setFromRotationMatrix(_m);
-    c.vel.set(L.dx * v.glide, 0, L.dz * v.glide);
+    c.vel.set(dx * v.glide, 0, dz * v.glide);
     c.w.set(0, 0, 0);
     c.speed = v.glide;
     for (const w of c.wheels) { w.comp = 0.08; w.contact = true; w.spin += v.glide / 0.36 / 120; }
@@ -261,8 +323,8 @@ export class Traffic {
 
   // Before the physics step: spawn, glide the sleepers, wake the ones near `focus` ({ x, z, dx, dz }: where the
   // player is and which way they're going), drive the awake ones. `crashT`: how long you've been crashing (null
-  // before you crash).
-  update(dt, focus, bodies, spawning, crashT = null) {
+  // before you crash); `hot`: where things the crash has thrown about are (they wake what's near them too).
+  update(dt, focus, bodies, spawning, crashT = null, hot = null) {
     for (const L of this.lanes) {
       if (spawning && L.spawn && (L.next -= dt) <= 0) {
         L.next = L.gap[0] + this.rand() * (L.gap[1] - L.gap[0]);
@@ -288,7 +350,7 @@ export class Traffic {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const v = this.list[i], p = v.car.pos;
       const d = Math.hypot(p.x - focus.x, p.z - focus.z);
-      if (v.asleep && d < WAKE) v.asleep = false;
+      if (v.asleep && (d < WAKE || hot?.some(h => Math.abs(h.x - p.x) < 40 && Math.abs(h.z - p.z) < 40))) v.asleep = false;
       if (!v.asleep) {
         v.s = v.lane.progress(p);
         this.input.throttle = 0;

@@ -9,7 +9,7 @@ import * as store from '../store.js';
 import { createStage, TIMES } from '../derby/stage.js';
 import { Puffs, Debris } from '../derby/fx.js';
 import { Vehicle, contact, damageFrom, subdivide } from '../derby/vehicle.js';
-import { loadSceneryKit } from '../scenery.js';
+import { loadSceneryKit, merge } from '../scenery.js';
 import { City, rng } from './city.js';
 import { LEVELS } from './levels.js';
 import { Traffic } from './traffic.js';
@@ -30,7 +30,7 @@ const DT = 1 / 120;
 const clamp = THREE.MathUtils.clamp;
 const NONE = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false };
 const KMH = 3.6;
-const PRE_INTRO = 2.6, PRE_COUNT = 2.4, PRE_RETRY = 1.2, PRE_ALL = PRE_INTRO + PRE_COUNT;
+const PRE_INTRO = 4.2, PRE_COUNT = 2.4, PRE_RETRY = 1.2, PRE_ALL = PRE_INTRO + PRE_COUNT;
 const FRAGILE = 2.4;
 const ZONE = 45;   // metres around where you crashed (and round the junction): whatever crashes in there is part of your crash
 const CRASH_MAX = 30, CRASH_QUIET = 5, FOLLOW_YOU = 5, SHOT = 2.5;   // seconds
@@ -149,7 +149,8 @@ function startRun(pre) {
   const L = city.level;
   clearRun();
   props?.dispose();
-  props = new Props(scene, city, L.props || []);
+  props = new Props(scene, city, [...(L.props || []), ...pillars(L.station)]);
+  buildStation(L.station);
   // Scripted: the same traffic every time, so a junction can be learned. The traffic always gets exactly
   // PRE_ALL seconds of driving before GO, however much of the intro you watch.
   G.rand = rng(L.seed * 7919 + 17);
@@ -161,7 +162,7 @@ function startRun(pre) {
   player.kind = 'you';
   player.colour = paintOf(def.livery);
   player.setLights(TIMES[settings.time].lamps);
-  player.respawn({ x: L.start.x, z: L.start.z, yaw: 0 });
+  player.respawn({ x: L.start.x, z: L.start.z, yaw: L.start.yaw || 0 });
   for (let i = 0; i < 60; i++) player.car.step(DT, { ...NONE, brake: 1, stop: true });
   Object.assign(G, { t: 0, pre, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0,
     boosting: false, drifting: false, steer: 0, yaw: 0, drift: 0, geysers: [], air: 0, nearT: 0, oncoming: 0, best: 0, ended: false, slow: 1, spike: 0 });
@@ -174,6 +175,7 @@ function startRun(pre) {
   $('hud').classList.remove('hidden');
   $('crashbox').classList.add('hidden');
   $('callouts').innerHTML = '';
+  $('pops').innerHTML = '';
   showScreen(null);
   sound.init();
   if (G.state === 'intro') showMsg(L.name.toUpperCase(), L.blurb, PRE_INTRO);
@@ -288,13 +290,89 @@ function splash(p, n = 40) {
 // ---------- Scoring ----------
 // Damage to anything the crash has reached scores, more the further down the chain it is
 const chainK = gen => Math.min(3, 1 + 0.15 * (gen - 1));
-function scoreEvent(v, pts, label, big = false) {
+function scoreEvent(v, pts, label, big = false, type = 'dent') {
   if (G.state !== 'crash' || G.ended || !v || v.player || !(v.gen > 0)) return;
   const p = Math.round(pts * chainK(v.gen));
   if (p <= 0) return;
   G.score += p;
   G.crash.quiet = 0;
-  if (label) callout(`${label}<small>+${p.toLocaleString()}</small>`, big ? 'big' : '');
+  tally(v, type, p, v.car.pos);
+  if (label && big) callout(`${label}<small>+${p.toLocaleString()}</small>`, 'big');
+}
+
+// What scored, where: each incident gathers everything scored within a few metres for half a second, then
+// pops up its total above the spot (small and yellow for a dent, big and red for well above the average).
+// Each vehicle keeps a ledger by damage type, for the wreck report.
+const DAMAGE = {
+  dent: ['Dents', '#ffd23a'], wreck: ['Wrecked', '#ff8a1e'], split: ['Torn in half', '#ff3d7a'],
+  blast: ['Blast', '#ff2a2a'], splash: ['Splashdown', '#2ee6ff'], prop: ['Street furniture', '#9be36b'],
+};
+const NAMES = { hatch: 'Hatchback', coupe: 'Coupé', cab: 'Taxi', saloon: 'Saloon', suv: 'SUV', pickup: 'Pickup', police: 'Police car', van: 'Van',
+  garbage: 'Garbage truck', bus: 'Bus', tanker: 'Fuel tanker', lorry: 'Box lorry', flatbed: 'Flatbed' };
+function tally(v, type, p, pos) {
+  const C = G.crash;
+  const key = v || 'props';
+  let e = C.ledger.get(key);
+  if (!e) C.ledger.set(key, e = v ? { name: NAMES[v.kind] || v.kind, colour: v.colour, gen: v.gen, by: {}, total: 0 } : { name: 'Street furniture', colour: '#9be36b', gen: 0, by: {}, total: 0 });
+  e.by[type] = (e.by[type] || 0) + p;
+  e.total += p;
+  let inc = C.incidents.find(i => !i.el && i.pos.distanceTo(pos) < 9);
+  if (!inc) C.incidents.push(inc = { pos: pos.clone(), at: C.rt, total: 0, by: {}, n: 0 });
+  inc.n++;
+  inc.pos.lerp(pos, 1 / inc.n);
+  inc.total += p;
+  inc.by[type] = (inc.by[type] || 0) + p;
+}
+const _pp = new THREE.Vector3();
+function updatePops(raw) {
+  const C = G.crash;
+  if (!C) return;
+  const box = $('pops'), W = innerWidth, H = innerHeight;
+  for (let i = C.incidents.length - 1; i >= 0; i--) {
+    const inc = C.incidents[i];
+    if (!inc.el) {
+      if (C.rt - inc.at < 0.5) continue;
+      // How it compares with the crash so far
+      C.popSum += inc.total; C.popN++;
+      const r = inc.total / (C.popSum / C.popN), k = clamp(Math.log2(r) / 2 + 0.35, 0, 1);
+      const top = Object.entries(inc.by).sort((a, b) => b[1] - a[1])[0][0];
+      const el = document.createElement('div');
+      el.className = 'pop';
+      el.innerHTML = `+${inc.total.toLocaleString()}${top !== 'dent' || inc.n > 2 ? `<small>${DAMAGE[top][0]}${inc.n > 1 ? ' ×' + inc.n : ''}</small>` : ''}`;
+      el.style.fontSize = (15 + 30 * k * k) + 'px';
+      el.style.color = `hsl(${Math.round(52 - 50 * k)}, 100%, ${Math.round(62 - 8 * k)}%)`;
+      box.appendChild(el);
+      inc.el = el; inc.born = 0;
+    }
+    inc.born += raw;
+    _pp.copy(inc.pos).setY(inc.pos.y + 2 + inc.born * 1.5).project(camera);
+    const vis = _pp.z < 1 && inc.born < 1.8;
+    inc.el.style.display = vis ? '' : 'none';
+    inc.el.style.transform = `translate(${((_pp.x + 1) / 2 * W).toFixed(0)}px, ${((1 - _pp.y) / 2 * H).toFixed(0)}px) translate(-50%, -50%) scale(${Math.min(1, inc.born * 6).toFixed(2)})`;
+    inc.el.style.opacity = String(clamp((1.8 - inc.born) / 0.5, 0, 1));
+    if (inc.born >= 1.8) { inc.el.remove(); C.incidents.splice(i, 1); }
+  }
+}
+// The wreck report on the results screen: what the damage was, and who took it
+function report() {
+  const C = G.crash;
+  if (!C || !C.ledger.size) return '';
+  const rows = [...C.ledger.values()].sort((a, b) => b.total - a.total);
+  const types = {};
+  for (const e of rows) for (const [t, p] of Object.entries(e.by)) types[t] = (types[t] || 0) + p;
+  const sum = Object.values(types).reduce((a, b) => a + b, 0) || 1;
+  const order = Object.keys(DAMAGE).filter(t => types[t]);
+  const bar = by => order.filter(t => by[t]).map(t => `<i style="flex:${by[t]};background:${DAMAGE[t][1]}"></i>`).join('');
+  const most = rows[0].total || 1;
+  return `<h3>Wreck report</h3>
+    <div class="rep-bar">${bar(types)}</div>
+    <div class="rep-legend">${order.map(t => `<span><i style="background:${DAMAGE[t][1]}"></i>${DAMAGE[t][0]} <b>${Math.round(types[t] / sum * 100)}%</b></span>`).join('')}</div>
+    <div class="rep-list">${rows.slice(0, 8).map((e, i) => `<div class="rep-row" style="animation-delay:${0.15 + i * 0.08}s">
+      <span class="chip" style="background:${e.colour}"></span>
+      <span class="who">${e.name}${e.gen > 1 ? `<em>chain ${e.gen}</em>` : ''}<small>${Object.entries(e.by).sort((a, b) => b[1] - a[1]).map(([t]) => DAMAGE[t][0]).join(' · ')}</small></span>
+      <span class="mini" style="width:${(e.total / most * 100).toFixed(0)}%">${bar(e.by)}</span>
+      <span class="num">${e.total.toLocaleString()}</span></div>`).join('')}
+    ${rows.length > 8 ? `<div class="rep-more">+ ${rows.length - 8} more</div>` : ''}</div>`;
 }
 function spike(k = 0.25, secs = 0.7) { G.spike = Math.max(G.spike, secs); G.spikeK = k; }
 
@@ -353,7 +431,7 @@ function hurt(X, by, dmg, point, n) {
     return;
   }
   if (X.driver && dmg > 4) X.driver.out = true;
-  scoreEvent(X, Math.min(dmg, Math.max(0, was)) * 10 * X.value, null);
+  scoreEvent(X, Math.min(dmg, Math.max(0, was)) * 10 * X.value, null, false, 'dent');
   if (X.hp <= 0 && X.alive) wreck(X, side && dmg >= 30);
 }
 
@@ -365,7 +443,7 @@ function wreck(X, split) {
     while (halves.length > 10) dropHalf(halves.shift());
   } else X.wreck();
   if (X.gen > 0 && G.state === 'crash') G.wrecked++;
-  scoreEvent(X, 500 * X.value, split ? 'TORN IN HALF' : X.special ? X.kind.toUpperCase() + ' DOWN' : 'WRECKED', !!X.special);
+  scoreEvent(X, 500 * X.value, split ? 'TORN IN HALF' : X.special ? X.kind.toUpperCase() + ' DOWN' : 'WRECKED', !!X.special, split ? 'split' : 'wreck');
   sound.crunch(1);
   // Some go up in flames a moment later; a tanker always does
   if (X.def.explosive) X.boomT = 0.25;
@@ -376,19 +454,23 @@ function wreck(X, split) {
 function blowUp(X) {
   X.boomT = null;
   X.blown = true;
+  if (X.launch) launch(X);
   const p = X.car.pos.clone(), big = X.def.explosive ? 2 : 1, R = 8 * big;
   explosion(p, big);
   sound.boom(Math.min(1, 0.6 * big));
-  X.car.vel.y += 7;
-  X.car.w.add(_kick.set(G.rand() - 0.5, 0, G.rand() - 0.5).multiplyScalar(4));
-  scoreEvent(X, 1500 * X.value, X.def.explosive ? 'TANKER BLAST' : 'BLAST', true);
+  if (!X.launch) {
+    X.car.vel.y += 7;
+    X.car.w.add(_kick.set(G.rand() - 0.5, 0, G.rand() - 0.5).multiplyScalar(4));
+  }
+  scoreEvent(X, 1500 * X.value, X.def.explosive ? 'TANKER BLAST' : 'BLAST', true, 'blast');
   for (const B of bodies()) {
     if (B === X) continue;
     const d = B.car.pos.distanceTo(p);
     if (d > R) continue;
     const k = 1 - d / R;
     const dir = B.car.pos.clone().sub(p).setY(0).normalize();
-    B.car.vel.addScaledVector(dir, 14 * k * big).add(_kick.set(0, 5 + 6 * k * big, 0));
+    // (the forecourt's cars make their own way up: see launch())
+    if (!B.launch) B.car.vel.addScaledVector(dir, 14 * k * big).add(_kick.set(0, 5 + 6 * k * big, 0));
     B.car.w.add(_kick.set(G.rand() - 0.5, G.rand() - 0.5, G.rand() - 0.5).multiplyScalar(5 * k));
     if (!B.half) {
       if (!B.gen && X.gen) B.gen = X.gen + 1;
@@ -464,6 +546,99 @@ function wallHit(v, w) {
   if (dmg > 0.5) hurt(v, null, dmg, w.point, w.normal);
 }
 
+// ---------- The petrol station ----------
+// It only goes up if you put your own car into it: under the canopy at speed, or through a pump. Then the
+// pumps blow, the canopy goes, and every car on the forecourt goes up one after another, thrown 10-15 m into
+// the air (the lighter, the higher) and out over the junction, to come down on whatever's there.
+const canopyMats = {};
+const debrisMat = colour => canopyMats[colour] || (canopyMats[colour] = new THREE.MeshLambertMaterial({ color: colour }));
+function pillars(S) {
+  if (!S) return [];
+  return [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([i, k]) => ['pillar', S.x + i * (S.w / 2 - 1.2), S.z + k * (S.d / 2 - 1.2), 0]);
+}
+function buildStation(S) {
+  if (G.station?.mesh) dropMesh(G.station.mesh);
+  G.station = null;
+  if (!S) return;
+  const y = city.base(S.x, S.z) + S.h;
+  const g = merge([
+    [new THREE.BoxGeometry(S.w, 0.5, S.d).translate(0, 0.25, 0), '#f4f4f0'],
+    [new THREE.BoxGeometry(S.w + 0.3, 0.9, S.d + 0.3).translate(0, 0.75, 0), '#e8352b'],
+    [new THREE.BoxGeometry(S.w + 0.34, 0.18, S.d + 0.34).translate(0, 1.0, 0), '#ffd23a'],
+    [new THREE.BoxGeometry(S.w - 2, 0.06, S.d - 2).translate(0, -0.02, 0), '#fffbe0'],
+  ]);
+  const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  mesh.position.set(S.x, y, S.z);
+  mesh.castShadow = mesh.receiveShadow = true;
+  scene.add(mesh);
+  G.station = { S, mesh, lit: false, fx: [] };
+}
+function station() {
+  const T = G.station;
+  if (!T) return;
+  const S = T.S, c = player.car;
+  if (!T.lit && G.state !== 'results' && Math.abs(c.pos.x - S.x) < S.w / 2 && Math.abs(c.pos.z - S.z) < S.d / 2 && c.vel.length() > 14) ignite();
+  // The fireballs over the pumps, one after another
+  for (let i = T.fx.length - 1; i >= 0; i--) {
+    const f = T.fx[i];
+    if ((f.t -= DT) > 0) continue;
+    T.fx.splice(i, 1);
+    explosion(f.p, f.big);
+    sound.boom(0.8);
+    G.shake = Math.max(G.shake, 0.8);
+    for (const k of props.blast(f.p.x, f.p.z, 7, 10)) scatter(k);
+  }
+}
+function ignite() {
+  const T = G.station, S = T.S, c = player.car;
+  T.lit = true;
+  if (G.state === 'run') startCrash({ point: c.pos.clone(), speed: c.vel.length() }, null);
+  callout('FILL \'ER UP', 'big');
+  const y = city.base(S.x, S.z);
+  // The big one under the canopy, then each pump
+  explosion(new THREE.Vector3(S.x, y + 1, S.z), 3);
+  sound.boom(1);
+  spike(0.12, 1.6);
+  G.shake = 1.4;
+  G.flash = 0.6;
+  props.list.filter(p => p.kind === 'pump' && p.alive).sort((a, b) => Math.hypot(a.x - c.pos.x, a.z - c.pos.z) - Math.hypot(b.x - c.pos.x, b.z - c.pos.z))
+    .forEach((p, i) => T.fx.push({ t: 0.1 + i * 0.14, p: new THREE.Vector3(p.x, p.y + 1, p.z), big: 1.5 }));
+  // The canopy comes apart
+  dropMesh(T.mesh);
+  T.mesh = null;
+  for (let i = 0; i < 6; i++) {
+    const w = S.w / 3, d = S.d / 2, m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.6, d), debrisMat(i % 2 ? '#f4f4f0' : '#e8352b'));
+    m.castShadow = true;
+    const p = new THREE.Vector3(S.x + ((i % 3) - 1) * w, y + S.h, S.z + (i < 3 ? -d / 2 : d / 2));
+    debris.add(m, p, new THREE.Vector3((p.x - S.x) * 0.6, 14 + G.rand() * 8, (p.z - S.z) * 0.5), { radius: 1.2, spin: 3, life: 20 });
+  }
+  for (const k of props.blast(S.x, S.z, Math.max(S.w, S.d) / 2 + 2, 8)) scatter(k);
+  // Every vehicle on the forecourt, nearest you first
+  const lot = traffic.list.filter(v => v.lane?.parked && !v.blown).sort((a, b) => a.car.pos.distanceTo(c.pos) - b.car.pos.distanceTo(c.pos));
+  lot.forEach((v, i) => {
+    v.asleep = false;
+    if (!v.gen) v.gen = 1;
+    v.launch = true;
+    if (v.driver) v.driver.out = true;
+    v.boomT = 0.25 + i * 0.16 + G.rand() * 0.1;
+  });
+  startle(new THREE.Vector3(S.x, y, S.z), 80);
+}
+// Up and out toward the junction: 10-15 m high, lighter ones higher, coming down 15-35 m away
+function launch(X) {
+  const c = X.car, [jx, jz] = city.level.junction;
+  const h = clamp(15 - (X.def.mass - 1000) / 700, 10, 15), vy = Math.sqrt(2 * 9.81 * h), T = 2 * vy / 9.81;
+  const tx = jx + (G.rand() - 0.5) * 30, tz = jz + (G.rand() - 0.5) * 12;
+  const dx = tx - c.pos.x, dz = tz - c.pos.z, d = Math.hypot(dx, dz) || 1, hs = clamp(d / T, 3, 12);
+  c.vel.set(dx / d * hs, vy, dz / d * hs);
+  c.w.set((G.rand() - 0.5) * 5, (G.rand() - 0.5) * 3, (G.rand() - 0.5) * 5);
+}
+// A prop thrown by a blast, into the debris
+function scatter(k) {
+  const pc = props.piece(k.prop);
+  debris.add(pc.mesh, pc.pos, k.vel, { radius: pc.radius, spin: 7, life: 14 });
+}
+
 // ---------- The crash ----------
 function startCrash(h, other) {
   if (G.state !== 'run') return;
@@ -472,7 +647,8 @@ function startCrash(h, other) {
   const bonus = clamp((kmh - 110) / 110, 0, 1.5);
   G.impact = { kmh, bonus };
   G.heat = Math.round((G.heat + bonus) * 10) / 10;
-  G.crash = { t: 0, rt: 0, quiet: 0, focus: h.point.clone(), origin: h.point.clone(), subject: player, side: 1, ang: 0, dist: 13, cutT: 0, lastSpike: G.t };
+  G.crash = { t: 0, rt: 0, quiet: 0, focus: h.point.clone(), origin: h.point.clone(), subject: player, side: 1, ang: 0, dist: 13, cutT: 0, lastSpike: G.t,
+    incidents: [], ledger: new Map(), popSum: 0, popN: 0 };
   // Start the camera low beside the impact, looking across the way you came in
   const f = player.forward.clone().setY(0).normalize();
   G.crash.ang = Math.atan2(-f.x, -f.z) + (Math.random() < 0.5 ? 1 : -1) * (0.9 + Math.random() * 0.5);
@@ -509,6 +685,7 @@ function endCrash() {
     ['Longest chain', G.chain],
     ['<b>Total</b>', `<b>${total.toLocaleString()}</b>`],
   ].map(([a, b]) => `<tr><td>${a}</td><td class="num">${b}</td></tr>`).join('');
+  $('res-report').innerHTML = report();
   const next = L.medals.find(t => t > total);
   $('res-note').textContent = total > before && before ? `New best (was ${before.toLocaleString()})!` : next ? `${next.toLocaleString()} for ${['bronze', 'silver', 'gold'][L.medals.indexOf(next)]}.` : 'Gold. Nothing left but a higher score.';
   const keys = Object.keys(LEVELS), i = keys.indexOf(key);
@@ -603,7 +780,9 @@ function oncoming() {
   _f.set(0, 0, -1).applyQuaternion(player.car.q);
   for (const L of traffic.lanes) {
     if (L.spawn) continue;
-    if (Math.abs(L.lateral(p)) < 1.9 && L.dx * _f.x + L.dz * _f.z < -0.6) { const s = L.progress(p); if (s > 0 && s < L.len) return true; }
+    if (Math.abs(L.lateral(p)) > 1.9) continue;
+    const s = L.progress(p), [dx, dz] = L.dir(s);
+    if (dx * _f.x + dz * _f.z < -0.6 && s > 0 && s < L.len) return true;
   }
   return false;
 }
@@ -643,7 +822,7 @@ function water(v) {
     splash(c.pos, 30 + Math.min(40, c.vel.length() * 3));
     sound.splash();
     if (v === player && G.state === 'run') startCrash({ point: c.pos.clone(), speed: c.vel.length() }, null);
-    else if (!v.half) { scoreEvent(v, 900 * v.value, 'SPLASHDOWN', true); if (v.driver) v.driver.out = true; }
+    else if (!v.half) { scoreEvent(v, 900 * v.value, 'SPLASHDOWN', true, 'splash'); if (v.driver) v.driver.out = true; }
   }
   c.vel.multiplyScalar(Math.exp(-2.2 * DT));
   c.vel.y += 7 * DT;
@@ -670,7 +849,9 @@ function step() {
   const fwd = player.forward;
   const focus = G.crash ? { x: G.crash.origin.x, z: G.crash.origin.z, dx: 0, dz: 0 } : { x: c.pos.x, z: c.pos.z, dx: fwd.x, dz: fwd.z };
   const B = bodies();
-  traffic.update(DT, focus, [...B, ...traffic.list.filter(v => v.asleep)], true, G.crash ? G.crash.t : null);
+  // (in a crash, whatever it's thrown about wakes the traffic it's heading for, however far it flies)
+  const hot = G.crash ? B.filter(b => (b.gen > 0 || b === player) && b.car.vel.lengthSq() > 25).map(b => b.car.pos) : null;
+  traffic.update(DT, focus, [...B, ...traffic.list.filter(v => v.asleep)], true, G.crash ? G.crash.t : null, hot);
   if (G.state === 'run') drive(DT);
   else if (running) {
     // Aftertouch: a few seconds to steer your wreck into more trouble
@@ -706,8 +887,10 @@ function step() {
       sparks(pc.pos, 8);
       if (k.prop.kind === 'hydrant') G.geysers.push({ p: new THREE.Vector3(k.prop.x, k.prop.y, k.prop.z), t: 7 });
       if (k.vehicle === player && G.state === 'run') G.shake = Math.max(G.shake, 0.35);
-      if (G.state === 'crash' && (k.vehicle.gen > 0 || k.vehicle === player)) { G.score += 30; G.crash.quiet = 0; }
+      if (G.state === 'crash' && (k.vehicle.gen > 0 || k.vehicle === player)) { G.score += 30; G.crash.quiet = 0; tally(null, 'prop', 30, _pp.set(k.prop.x, k.prop.y, k.prop.z)); }
+      if (k.prop.kind === 'pump' && k.vehicle === player && G.station && !G.station.lit && c.vel.length() > 8) ignite();
     }
+    station();
     if (G.state === 'run') {
       G.oncoming = oncoming();
       nearMisses();
@@ -821,6 +1004,18 @@ function interest(v, all) {
   // A wreck on the move: worth watching near the pile, hardly at all once it's rolled off down the street
   return { k: (sp + c.w.length() * 2) * (d < 30 ? 1 : 0.15), at: null };
 }
+// For the opening shot: the junction, which way your road runs to it (u), and which way is the middle of the
+// road from your car (w)
+function intro() {
+  if (cam.intro?.city === city) return cam.intro;
+  const L = city.level, [jx, jz] = L.junction, s = L.start;
+  const u = new THREE.Vector3(jx - s.x, 0, jz - s.z).normalize();
+  const r = city.roads.find(o => { const [a, v] = o.local(s.x, s.z); return a >= 0 && a <= o.len && v >= o.vLo && v <= o.vHi; });
+  let w = new THREE.Vector3(-u.z, 0, u.x);
+  if (r) { const [, v] = r.local(s.x, s.z), mid = (r.vLo + r.vHi) / 2; w.set(r.rv[0], 0, r.rv[1]).multiplyScalar(v > mid ? -1 : 1); }
+  return (cam.intro = { city, J: new THREE.Vector3(jx, city.base(jx, jz) + 1.5, jz), u, w });
+}
+
 // Keep the camera clear of what stands between it and the action: buildings (pull in), cars, trees, lamp
 // posts and traffic lights (rise over them)
 function unblock(look, p, skip) {
@@ -865,13 +1060,33 @@ function updateCamera(dt, rawDt) {
   let fov = 66;
   camera.up.set(0, 1, 0);
   if (G.state === 'intro') {
-    // The junction first: a slow sweep round it
-    cam.t += rawDt;
-    const [jx, jz] = city.level.junction;
-    const a = 0.6 + cam.t * 0.12;
-    camera.position.set(jx + Math.sin(a) * 34, city.base(jx, jz) + 13 - cam.t * 1.5, jz + 28 + Math.cos(a) * 18);
-    camera.lookAt(jx, city.base(jx, jz) + 1.5, jz);
-    fov = 58;
+    // The junction first, panning across it from over your road; then back down the road to your car, and
+    // round beside it to behind, ready for the countdown. It stays over the road all the way: nothing in the way.
+    const k = clamp((PRE_ALL - G.pre) / PRE_INTRO, 0, 1), I = intro();
+    const ease = t => t * t * (3 - 2 * t);
+    const car = c.pos, J = I.J;
+    const pan = a => _c.set(J.x - (I.u.x * Math.cos(a) - I.w.x * Math.sin(a)) * 20, J.y + 11, J.z - (I.u.z * Math.cos(a) - I.w.z * Math.sin(a)) * 20);
+    const look = new THREE.Vector3();
+    if (k < 0.35) {
+      pan(-0.35 + 0.7 * ease(k / 0.35));
+      look.copy(J);
+    } else if (k < 0.78) {
+      const t = ease((k - 0.35) / 0.43);
+      const from = pan(0.35).clone(), to = _l.copy(car).addScaledVector(I.u, 10).setY(car.y + 3.6);
+      _c.lerpVectors(from, to, t);
+      _c.y += Math.sin(t * Math.PI) * 6;
+      look.lerpVectors(J, car, ease(Math.min(1, t * 1.6)));
+    } else {
+      // Round beside it (on the side toward the middle of the road) to behind
+      const t = ease((k - 0.78) / 0.22), a = t * Math.PI, R = 10 + (6.3 - 10) * t;
+      _c.copy(car).addScaledVector(I.u, Math.cos(a) * R).addScaledVector(I.w, Math.sin(a) * R);
+      _c.y = car.y + 3.6 + (2.05 - 3.6) * t;
+      look.copy(car).addScaledVector(I.u, 7 * t);
+    }
+    camera.position.copy(_c);
+    camera.lookAt(look.x, look.y + 1, look.z);
+    cam.dir.copy(I.u);
+    fov = 58 + 6 * clamp((k - 0.78) / 0.22, 0, 1);
   } else if (G.crash && G.state !== 'run') {
     // Crash cam: it follows the action. First your car, wherever it goes; then whatever's most worth
     // watching (something about to hit, or a wreck still flying), held at least SHOT seconds unless it comes
@@ -1130,6 +1345,21 @@ function updateHud(dt) {
     G.shown = Math.min(G.shown, G.score);
     setText('carnage', Math.round(G.shown).toLocaleString());
     setText('crash-sub', `${G.wrecked} wrecked · chain ${G.chain} · ×${G.heat.toFixed(1)}`);
+    // The countdown to the end: five quiet seconds, or the end of the time limit, whichever's sooner. It shows
+    // once things go quiet (or near the limit), and swells and reddens with every second it ticks down.
+    const C = G.crash, left = Math.min(CRASH_QUIET - C.quiet, CRASH_MAX - C.t);
+    const el = $('countdown'), show = !G.ended && left < CRASH_QUIET - 0.6;
+    el.classList.toggle('hidden', !show);
+    if (show) {
+      const n = Math.max(1, Math.ceil(left));
+      if (el.dataset.n !== String(n)) {
+        el.dataset.n = n;
+        el.textContent = n;
+        el.style.fontSize = (34 + (5 - Math.min(5, n)) * 16) + 'px';
+        el.style.color = `hsl(${(Math.min(5, n) - 1) * 12}, 100%, 60%)`;
+        el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick');
+      }
+    } else el.dataset.n = '';
   }
 }
 
@@ -1298,6 +1528,7 @@ function tick(raw, draw = true) {
   if (G.flash > 0) { flashEl.style.opacity = G.flash; G.flash = Math.max(0, G.flash - raw * 2.5); }
   else if (flashEl.style.opacity !== '0') flashEl.style.opacity = 0;
   updateHud(raw);
+  updatePops(raw);
   if (draw) post.render();
 }
 const flashEl = document.createElement('div');

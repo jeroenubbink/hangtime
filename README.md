@@ -89,10 +89,17 @@ through them. Things to know:
 
 ## Rushtime
 
-- **Three junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
+- **Six junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
   **Dockside Drop**, a downhill run with a crest that throws you, ending at a six-lane harbour road with the
-  water behind it; and **Gridlock Leap**, where your way is jammed solid back from the lights and the roadworks left
-  a ramp: fly onto the jam and shove it into the busy junction.
+  water behind it; **Gridlock Leap**, where your way is jammed solid back from the lights and the roadworks left
+  a ramp: fly onto the jam and shove it into the busy junction; **The Fork**, where your road splits in a Y with
+  traffic streaming through the nose; **The Merge**, down the slip road into a main road whose own traffic is held
+  at the merge; and **Last Chance Gas**, a T-junction with a petrol station straight across it. Thread the narrow
+  gap through the queues and the cross traffic and put your car under the canopy at speed (or through a pump),
+  and the station goes up: the pumps, the canopy, then every car on the forecourt, thrown 10-15 m into the air and
+  out over the junction.
+- **The opening shot** pans across the junction, then flies back down the road to your car and round behind it
+  for the countdown.
 - **The traffic is scripted:** the same every time, so a junction can be learned. Until you crash its drivers are
   model drivers (queues wait, nobody crashes without you); once you've crashed they're slow to see trouble and
   slower to stop, so mostly they drive straight into it.
@@ -103,7 +110,12 @@ through them. Things to know:
   Traffic keeps coming and its drivers react a moment too late, so one hit becomes many. Everything that crashes
   around your crash or in the junction scores; each vehicle hit by something your crash already reached is a link in
   the **chain** and scores more. The crash runs while it keeps scoring: after 25 seconds the drivers start stopping
-  in time, and at 30 it's over. Tankers explode, other wrecks
+  in time, and at 30 it's over. When things go quiet (or near the limit) a countdown shows, swelling as it runs out.
+- **Scores pop up** over every incident: everything scored within a few metres in half a second, added up, small
+  and yellow for a dent, big and red for well above the crash's average. The results show a **wreck report**: the
+  damage by type, and the vehicles that took the most, with what happened to each.
+- **The town:** brick walk-ups over shop fronts mixed with stone-based towers, the tallest stepping back in tiers to
+  a crown, water tanks on the roofs. Tankers explode, other wrecks
   sometimes catch fire and go up, cars split in half, lamp posts and trees go flying, hydrants gush, and on the
   docks cars go over the quay into the water. Steer for a few seconds after impact to push your wreck further.
 - **Traffic:** six kinds of car, vans, pickups, police cars, garbage trucks, city buses, fuel tankers, box lorries
