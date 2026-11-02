@@ -452,7 +452,7 @@ function startCrash(h, other) {
   const bonus = clamp((kmh - 110) / 110, 0, 1.5);
   G.impact = { kmh, bonus };
   G.heat = Math.round((G.heat + bonus) * 10) / 10;
-  G.crash = { t: 0, rt: 0, quiet: 0, focus: h.point.clone(), origin: h.point.clone(), ang: 0, dist: 13, cutT: 0, lastSpike: G.t };
+  G.crash = { t: 0, rt: 0, quiet: 0, focus: h.point.clone(), origin: h.point.clone(), subject: player, side: 1, ang: 0, dist: 13, cutT: 0, lastSpike: G.t };
   // Start the camera low beside the impact, looking across the way you came in
   const f = player.forward.clone().setY(0).normalize();
   G.crash.ang = Math.atan2(-f.x, -f.z) + (Math.random() < 0.5 ? 1 : -1) * (0.9 + Math.random() * 0.5);
@@ -765,32 +765,42 @@ function pileCentre(C) {
   }
   return w > 0.05 ? out.divideScalar(w) : out.copy(C.origin);
 }
-// Who's about to hit the pile: still driving, its path running into one of the wrecks (or you), arriving
-// in 1 to 3 s. Returns { v, at }: the vehicle and the wreck it's heading for.
-function nextIncoming(C) {
-  const wrecks = [player, ...traffic.list].filter(w => (w === player || (w.gen > 0 && w.touchT != null && !w.asleep)) &&
-    w.car.vel.length() < 6 && Math.hypot(w.car.pos.x - C.origin.x, w.car.pos.z - C.origin.z) < 32);
-  let best = null, soonest = 3;
-  for (const v of traffic.list) {
-    if (v.asleep || v.driver?.out || !v.alive || v.gen > 0) continue;
-    const p = v.car.pos, vx = v.car.vel.x, vz = v.car.vel.z, sp = Math.hypot(vx, vz);
-    if (sp < 6) continue;
-    for (const w of wrecks) {
-      const dx = w.car.pos.x - p.x, dz = w.car.pos.z - p.z;
-      const along = (dx * vx + dz * vz) / sp, miss = Math.abs(dx * vz - dz * vx) / sp;
-      if (along < 8 || along > 45 || miss > (w.len || 4) / 2 + 1.5) continue;
-      const eta = along / sp;
-      if (eta > 1 && eta < soonest) { soonest = eta; best = { v, at: w }; }
+// How worth watching a vehicle is right now. Most of all: one still driving that's about to run into
+// something (sooner is better). Then: a wreck that's still flying, tumbling or sliding. At rest: nothing.
+// Returns { k, at }: the score, and where it's going to hit (or null).
+function interest(v, all) {
+  if (!v || v.asleep) return { k: 0, at: null };
+  const c = v.car, sp = c.vel.length();
+  if (sp < 2.5) return { k: 0, at: null };
+  if (v !== player && v.driver && !v.driver.out && v.alive) {
+    // Still driving: what's in its path?
+    const hx = c.vel.x / sp, hz = c.vel.z / sp;
+    let eta = Infinity, at = null;
+    for (const b of all) {
+      if (b === v) continue;
+      const dx = b.car.pos.x - c.pos.x, dz = b.car.pos.z - c.pos.z;
+      if (Math.abs(dx) > 50 || Math.abs(dz) > 50) continue;
+      const along = dx * hx + dz * hz, miss = Math.abs(dx * hz - dz * hx);
+      if (along < 3 || miss > (b.len || 4) / 2 + 1.2) continue;
+      // Only something already wrecked, stopped or crossing counts: not the car ahead going the same way
+      const bv = b.car.vel.x * hx + b.car.vel.z * hz;
+      if (sp - bv < 5) continue;
+      const t = along / (sp - bv);
+      if (t < eta) { eta = t; at = b; }
     }
+    if (eta < 2.5) return { k: 30 + sp * 0.5 - eta * 6, at };
+    return { k: 0, at: null };
   }
-  return best;
+  // A wreck on the move: worth more the nearer the pile it is
+  const C = G.crash, d = C ? Math.hypot(c.pos.x - C.focus.x, c.pos.z - C.focus.z) : 0;
+  return { k: (sp + c.w.length() * 2) * (d < 30 ? 1 : 0.3), at: null };
 }
 // Keep the camera clear of what stands between it and the action: buildings (pull in), cars, trees, lamp
 // posts and traffic lights (rise over them)
 function unblock(look, p, skip) {
   clear(look, p);
   for (const b of bodies()) {
-    if (b === skip || b === player && C_YOU()) continue;
+    if (b === skip) continue;
     const q = b.car.pos;
     if (Math.hypot(q.x - p.x, q.z - p.z) < (b.len || 2) / 2 + 3) p.y = Math.max(p.y, q.y + 3.5);
   }
@@ -811,7 +821,6 @@ function blocked(from, to) {
   }
   return false;
 }
-const C_YOU = () => G.crash && G.crash.rt < FOLLOW_YOU;
 
 const cam = { dir: new THREE.Vector3(0, 0, -1), mode: 'menu', t: 0, roll: 0, look: new THREE.Vector3(), menuA: 0 };
 const _c = new THREE.Vector3(), _l = new THREE.Vector3();
@@ -838,66 +847,56 @@ function updateCamera(dt, rawDt) {
     camera.lookAt(jx, city.base(jx, jz) + 1.5, jz);
     fov = 58;
   } else if (G.crash && G.state !== 'run') {
-    // Crash cam, a director with three kinds of shot, each held at least SHOT seconds:
-    //  - first, your wreck (with the pile in frame if you've been thrown clear of it);
-    //  - something about to hit the pile: from beside the pile, side-on to its path, so you see it come in;
-    //  - nothing coming: a slow, wide circle over the pile.
+    // Crash cam: it follows the action. First your car, wherever it goes; then whatever's most worth
+    // watching (something about to hit, or a wreck still flying), held at least SHOT seconds unless it comes
+    // to rest. It looks a little ahead of its subject, toward what it's going to hit, and leans to the pile.
     const C = G.crash;
     C.cutT += rawDt;
+    const all = bodies().filter(b => !b.half);
     const pile = pileCentre(C);
     C.focus.lerp(pile, 1 - Math.exp(-rawDt * 2));
-    let look;
     if (C.rt < FOLLOW_YOU) {
-      const p = c.pos, sep = Math.hypot(p.x - C.focus.x, p.z - C.focus.z);
-      // Thrown clear: frame you and the pile together
-      _l.copy(p);
-      if (sep > 12) _l.lerp(C.focus, 0.5);
-      C.ang += rawDt * 0.25;
-      const d = 10 + Math.max(0, sep - 12) * 0.6;
-      _c.set(_l.x + Math.sin(C.ang) * d, _l.y + 3.2 + Math.max(0, sep - 12) * 0.15, _l.z + Math.cos(C.ang) * d);
-      look = _l;
-      C.on = 'you';
+      if (C.subject !== player) { C.subject = player; C.side = 1; }
     } else {
-      const S = C.shot;
-      const over = !S || (C.cutT > SHOT && (S.kind === 'pile' || (S.hitAt != null && G.t - S.hitAt > 0.5) || S.v.driver?.out || C.cutT > 4.5));
-      if (S?.kind === 'incoming' && S.hitAt == null && S.v.touchT > S.from) S.hitAt = G.t;
-      if (over) {
-        const n = nextIncoming(C);
-        if (n) {
-          // Beside the wreck it's heading for, square to its path, on whichever side has more room
-          const v = n.v, at = n.at.car.pos;
-          const u = _v.set(at.x - v.car.pos.x, 0, at.z - v.car.pos.z).normalize();
-          const mid = v.car.pos.clone().lerp(at, 0.6);
-          // Far enough off to the side to have both in frame
-          const off = Math.max(12, 0.8 * v.car.pos.distanceTo(at));
-          let pos = null;
-          for (const side of [1, -1]) {
-            const p = new THREE.Vector3(mid.x - u.z * side * off - u.x * 3, at.y + 4.5, mid.z + u.x * side * off - u.z * 3);
-            unblock(mid, p, v);
-            if (!pos || p.distanceTo(mid) - p.y * 0.3 > pos.distanceTo(mid) - pos.y * 0.3 + 1) pos = p;
-          }
-          C.shot = { kind: 'incoming', v, at: n.at, pos, from: G.t, hitAt: null };
-        } else if (!S || S.kind !== 'pile') C.shot = { kind: 'pile' };
-        if (C.shot !== S) { C.cutT = 0; C.cutNow = true; }
-      }
-      if (C.shot.kind === 'incoming') {
-        _c.copy(C.shot.pos);
-        _l.copy(C.shot.v.car.pos).lerp(C.shot.at.car.pos, 0.5);
-        look = _l;
-        C.on = 'incoming ' + C.shot.v.kind;
-      } else {
-        C.ang += rawDt * 0.15;
-        _c.set(C.focus.x + Math.sin(C.ang) * 17, C.focus.y + 8, C.focus.z + Math.cos(C.ang) * 17);
-        look = C.focus;
-        C.on = 'pile';
-      }
+      const cur = interest(C.subject, all);
+      C.restT = cur.k < 3 ? (C.restT || 0) + rawDt : 0;
+      let best = null, bk = 0;
+      for (const v of all) { const n = interest(v, all); if (n.k > bk) { bk = n.k; best = v; } }
+      const tired = C.restT > 0.8 || C.cutT > 6;
+      if (best && best !== C.subject && C.cutT > SHOT && (tired || bk > cur.k * 1.8)) {
+        C.subject = best;
+        C.side = -C.side || 1;
+        C.cutT = 0;
+        C.cutNow = true;
+      } else if (!best && tired && C.subject) { C.subject = null; C.cutT = 0; }
     }
-    if (C.shot?.kind !== 'incoming') unblock(look, _c, null);
+    const S = C.subject;
+    let look;
+    if (S) {
+      const p = S.car.pos, v = S.car.vel, sp = Math.hypot(v.x, v.z);
+      if (sp > 3) C.dir = (C.dir || new THREE.Vector3()).set(v.x / sp, 0, v.z / sp);
+      else C.dir = C.dir || S.forward.clone().setY(0).normalize();
+      const d = C.dir, n = interest(S, all);
+      // Behind and to one side of it, up a little
+      _c.set(p.x - d.x * 9 + d.z * 4 * C.side, p.y + 3.6, p.z - d.z * 9 - d.x * 4 * C.side);
+      // Toward where it's headed (what it's about to hit, if anything), with a pull toward the pile
+      _l.copy(p).addScaledVector(v, 0.35);
+      if (n.at) _l.lerp(n.at.car.pos, 0.4);
+      _l.lerp(C.focus, 0.2);
+      look = _l;
+      C.on = S === player ? 'you' : (n.at ? 'incoming ' : 'wreck ') + S.kind;
+    } else {
+      C.ang += rawDt * 0.15;
+      _c.set(C.focus.x + Math.sin(C.ang) * 17, C.focus.y + 8, C.focus.z + Math.cos(C.ang) * 17);
+      look = C.focus;
+      C.on = 'pile';
+    }
+    unblock(look, _c, S);
     if (C.cutNow || C.rt < 0.02) { camera.position.copy(_c); C.look = look.clone(); C.cutNow = false; }
-    else camera.position.lerp(_c, 1 - Math.exp(-rawDt * 4));
-    C.look = (C.look || look.clone()).lerp(look, 1 - Math.exp(-rawDt * 6));
+    else camera.position.lerp(_c, 1 - Math.exp(-rawDt * 5));
+    C.look = (C.look || look.clone()).lerp(look, 1 - Math.exp(-rawDt * 7));
     camera.lookAt(C.look.x, C.look.y + 0.8, C.look.z);
-    fov = 54;
+    fov = 56;
   } else {
     // Chase: low and close; it pulls in and widens as you go faster, and more when you burn rush
     const speed = c.vel.length();
