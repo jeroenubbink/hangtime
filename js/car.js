@@ -453,7 +453,7 @@ export const HOUSE = {
   taxi: { name: 'Taxi', c: ['#ffd23a', '#2a2f3a', '#ffffff', '#2a2f3a', '#ffffff'] },
   council: { name: 'Council', c: ['#3cbf4a', '#ff8a1e', '#ffe14a', '#2b4a2f', '#ffffff'] },
 };
-export const liveryOf = k => LIVERIES[k] || HOUSE[k];
+export const liveryOf = k => (Object.hasOwn(LIVERIES, k) ? LIVERIES[k] : Object.hasOwn(HOUSE, k) ? HOUSE[k] : undefined);
 // The palette cells (32×128 px, column and row) the toy models paint each livery colour from
 const LIVERY_CELLS = [[4, 3], [6, 3], [12, 2], [12, 3], [1, 3]];
 // A livery key or a plain colour, as one colour (for sparks, map dots and the like)

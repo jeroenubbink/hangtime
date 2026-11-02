@@ -14,7 +14,7 @@ export const validCode = c => typeof c === 'string' && /^[a-z0-9]{6}$/.test(c);
 // Join room `code` of `game`. Messages are { t: type, d: data }; `send` goes to everyone, or to one peer.
 export async function openRoom(game, code) {
   const { joinRoom, selfId } = await import(TRYSTERO);
-  const room = joinRoom({ appId: `hangtime-${game}-${PROTOCOL}`, password: code, relayConfig: { urls: RELAYS, warnOnRelayFailure: false } }, code);
+  const room = joinRoom({ appId: `hangtime-${game}`, password: code, relayConfig: { urls: RELAYS, warnOnRelayFailure: false } }, code);
   const msg = room.makeAction('m');
   const handlers = {};
   msg.onMessage = (data, { peerId }) => {
@@ -27,7 +27,6 @@ export async function openRoom(game, code) {
     self: selfId,
     on(type, fn) { handlers[type] = fn; },
     send(type, d, to) { if (open) msg.send({ t: type, d }, to ? { target: to } : undefined).catch(() => {}); },
-    peers: () => Object.keys(room.getPeers()),
     set onJoin(fn) { room.onPeerJoin = fn; },
     set onLeave(fn) { room.onPeerLeave = fn; },
     leave() { if (!open) return; open = false; try { room.leave(); } catch { /* already gone */ } },

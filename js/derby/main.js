@@ -66,10 +66,18 @@ const isLocked = key => {
 };
 // The livery a car wears: the one you picked for it, or its own
 const paintOf = key => (liveryOf(settings.paints[key]) ? settings.paints[key] : ROSTER[key].livery);
+// Names can come from other players: never let them into the page as HTML
+const esc = t => String(t).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+// A livery nobody in `used` wears yet (house colours stay put), which is then taken
+function freeLivery(used, paint) {
+  if (used.has(paint) && !HOUSE[paint]) paint = Object.keys(LIVERIES).find(p => !used.has(p)) || paint;
+  used.add(paint);
+  return paint;
+}
 
 // ---------- World state ----------
 let arena = null, pickups = null, mines = null, props = null, debris = null;
-let vehicles = [], halves = [], showroom = null;
+let vehicles = [], halves = [], showroom = null, halfSerial = 0;
 const G = { state: 'menu', match: null, cup: null, sim: false, camMode: 0, slowmo: 0, hitstop: 0, shake: 0, ff: false, follow: null, flash: 0 };
 window.derby = G;
 
@@ -78,6 +86,7 @@ function clearWorld() {
   for (const h of halves) scene.remove(h.model);
   vehicles = [];
   halves = [];
+  halfSerial = 0;
   if (showroom) { scene.remove(showroom.model); showroom = null; }
   mystery.visible = false;
   pickups?.dispose(); props?.dispose(); mines?.clear(); debris?.clear();
@@ -276,7 +285,7 @@ const FX = {
     for (let i = 0; i < 10; i++) puff(X.car.pos, '#9a9288', 1.2, 1.2, 0.8, 0.4, 3);
     sound.crunch(1); sound.glass(); sound.cheer(0.8);
     if (X === G.follow || L === G.follow) { G.shake = 1; G.hitstop = 0.14; G.punch = 10; }
-    if (L.player) { G.slowmo = Math.max(G.slowmo, 0.5); callout(kind, 'big'); }
+    if (L.player) { G.slowmo = Math.max(G.slowmo, 0.5); callout(esc(kind), 'big'); }
   },
   // `lp`, `dir`: where and which way, in X's own frame
   hurt(X, by, dmg, point, n, lp, dir, zone) {
@@ -313,7 +322,7 @@ const FX = {
     const M = G.match;
     X.diedAt = M.time;
     if (split) {
-      halves.push(...X.split());
+      halves.push(...X.split().map(h => Object.assign(h, { nid: ++halfSerial })));
       X.halved = true;
       while (halves.length > 8) scene.remove(halves.shift().model);
     } else X.wreck();
@@ -371,7 +380,7 @@ const FX = {
   },
   mine(owner, p, y) { mines.drop(owner, p, y); },
   blast(p) {
-    mines.removeNear(p);
+    if (G.match?.guest) mines.removeNear(p);     // the host's mine is already gone
     if (G.sim) return;
     explosion(p, 0.9);
     ring(p, ITEMS.mine.colour);
@@ -386,7 +395,7 @@ const FX = {
   },
   award(v, pts, label, quiet, big, n) {
     v.chain = { n, t: G.match.time };
-    if (v.player && !G.sim && !quiet) callout(`${label}<small>+${pts}</small>`, big ? 'big' : '');
+    if (v.player && !G.sim && !quiet) callout(`${esc(label)}<small>+${pts}</small>`, big ? 'big' : '');
   },
   sudden() {
     if (G.sim) return;
@@ -410,12 +419,7 @@ function lineup() {
   const drivers = shuffle(DRIVERS.slice());
   // Each opponent in its own livery, none the same as yours (house colours stay put)
   const used = new Set([paintOf(settings.car)]);
-  return cars.map((car, i) => {
-    let paint = ROSTER[car].livery;
-    if (used.has(paint) && !HOUSE[paint]) paint = Object.keys(LIVERIES).find(p => !used.has(p));
-    used.add(paint);
-    return { car, driver: drivers[i], paint };
-  });
+  return cars.map((car, i) => ({ car, driver: drivers[i], paint: freeLivery(used, ROSTER[car].livery) }));
 }
 
 // `spec`: an online guest builds the match the host describes
@@ -434,7 +438,7 @@ function startMatch(type, arenaKey, { sim = false, spec = null } = {}) {
       { key: c.car, human: !!c.peer }));
     spawns = spec.cars.map(c => c.spawn);
   } else {
-    const me = new Vehicle(arena, scene, 0, ROSTER[settings.car], paintOf(settings.car), { player: true, name: NET.role === 'host' ? NET.name : 'You' });
+    const me = new Vehicle(arena, scene, 0, ROSTER[settings.car], paintOf(settings.car), { player: true, name: NET.role === 'host' ? hostName() : 'You' });
     me.key = settings.car;
     // Friends online take the places of computer drivers, preferably ones in the same car
     const ups = lineup().slice();
@@ -444,11 +448,7 @@ function startMatch(type, arenaKey, { sim = false, spec = null } = {}) {
     }
     // Two cars in the same colours would be confusing: later ones switch to a free livery (house colours stay put)
     const used = new Set([me.paint]);
-    const own = paint => {
-      if (used.has(paint) && !HOUSE[paint]) paint = Object.keys(LIVERIES).find(p => !used.has(p)) || paint;
-      used.add(paint);
-      return paint;
-    };
+    const own = paint => freeLivery(used, paint);
     vehicles = [me,
       ...humans.map((h, i) => Object.assign(new Vehicle(arena, scene, i + 1, ROSTER[h.car], own(h.paint), { name: h.name }), { key: h.car, peer: h.peer, human: true })),
       ...ups.map((u, i) => Object.assign(new Vehicle(arena, scene, humans.length + i + 1, ROSTER[u.car], own(u.paint), { driver: new DerbyDriver(u.driver), name: u.driver.name }), { key: u.car }))];
@@ -764,7 +764,7 @@ function kill(X, by, zone, dmg, cause) {
   if (cause !== 'ring' && !split) {
     X.car.vel.y += 6.5;
     X.car.w.add(_kick.set((Math.random() - 0.5) * 5, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 5));
-    fx('wheel', X, Math.floor(Math.random() * 4), X.car.vel.clone().add(new THREE.Vector3((Math.random() - 0.5) * 10, 7, (Math.random() - 0.5) * 10)), false);
+    if (!G.sim) fx('wheel', X, Math.floor(Math.random() * 4), X.car.vel.clone().add(new THREE.Vector3((Math.random() - 0.5) * 10, 7, (Math.random() - 0.5) * 10)), false);
   }
   X.respawnT = M.type === 'brawl' || M.type === 'spree' ? 3.5 : null;
   // In the spree the clock is your life: a wreck costs time, not the run
@@ -966,12 +966,13 @@ function showResults(order, title, sub, note, cupDone) {
     const table = Object.entries(G.cup.points).sort((a, b) => b[1] - a[1]);
     const byName = Object.fromEntries(vehicles.map(v => [v.name, v]));
     html = '<tr><th>#</th><th>Driver</th><th>Car</th><th class="num">This round</th><th class="num">Points</th></tr>' + table.map(([name, pts], i) => {
-      const v = byName[name], r = order.indexOf(v);
-      return `<tr class="${v.player ? 'me' : ''}"><td>${i + 1}</td><td><span class="dot" style="background:${v.colour}"></span>${name}</td><td>${v.def.name}</td><td class="num">${ordinal(r + 1)} (+${CUP_POINTS[r]})</td><td class="num">${pts}</td></tr>`;
+      // Online the line-up can change between rounds: someone with points may not be in this one
+      const v = byName[name], r = v ? order.indexOf(v) : -1;
+      return `<tr class="${v?.player ? 'me' : ''}"><td>${i + 1}</td><td><span class="dot" style="background:${esc(v?.colour || 'transparent')}"></span>${esc(name)}</td><td>${v ? v.def.name : '–'}</td><td class="num">${r < 0 ? '–' : `${ordinal(r + 1)} (+${CUP_POINTS[r]})`}</td><td class="num">${esc(pts)}</td></tr>`;
     }).join('');
   } else {
     html = '<tr><th>#</th><th>Driver</th><th>Car</th><th class="num">Takedowns</th><th class="num">Damage</th><th class="num">Points</th></tr>' + order.map((v, i) =>
-      `<tr class="${v.player ? 'me' : ''}"><td>${i + 1}</td><td><span class="dot" style="background:${v.colour}"></span>${v.name}</td><td>${v.def.name}</td><td class="num">${v.takedowns}</td><td class="num">${Math.round(v.dealt)}</td><td class="num">${v.score.toLocaleString()}</td></tr>`).join('');
+      `<tr class="${v.player ? 'me' : ''}"><td>${i + 1}</td><td><span class="dot" style="background:${esc(v.colour)}"></span>${esc(v.name)}</td><td>${v.def.name}</td><td class="num">${v.takedowns}</td><td class="num">${Math.round(v.dealt)}</td><td class="num">${v.score.toLocaleString()}</td></tr>`).join('');
   }
   $('res-table').innerHTML = html;
   $('res-note').textContent = M.guest ? [note, `Waiting for ${NET.hostName} to start the next one…`].filter(Boolean).join(' ') : note;
@@ -1022,7 +1023,7 @@ function callout(html, cls = '') {
 }
 function feed(by, X, how) {
   const el = document.createElement('div');
-  const name = v => `<b style="color:${v.colour}">${v.name}</b>`;
+  const name = v => `<b style="color:${esc(v.colour)}">${esc(v.name)}</b>`;
   el.innerHTML = by && by !== X ? `${name(by)}<em>${how}</em>${name(X)}` : `${name(X)}<em>${how}</em>`;
   const box = $('feed');
   box.prepend(el);
@@ -1443,6 +1444,8 @@ window.addEventListener('keydown', e => {
   }
 });
 window.addEventListener('keyup', e => keys.delete(e.code));
+// A guest's match starts from the network, not a click: any key or tap lets the sound play
+for (const t of ['keydown', 'pointerdown']) window.addEventListener(t, () => sound.init());
 window.addEventListener('blur', () => keys.clear());
 
 if (matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window) document.body.classList.add('touch');
@@ -1479,6 +1482,7 @@ function toMenu() {
   G.match = null;
   G.state = 'menu';
   G.cup = null;
+  NET.time = null;
   muteLoops();
   $('hud').classList.add('hidden');
   lctx.clearRect(0, 0, labels.width, labels.height);
@@ -1608,7 +1612,7 @@ function cycleCar(d) {
 }
 $('car-prev').onclick = () => cycleCar(-1);
 $('car-next').onclick = () => cycleCar(1);
-$('btn-go').onclick = () => { if (!isLocked(settings.car)) { sound.init(); play(); } };
+$('btn-go').onclick = () => { if (!isLocked(settings.car) && NET.role !== 'guest') { sound.init(); play(); } };
 $('btn-help').onclick = () => showScreen('help');
 $('btn-help-close').onclick = () => { store.save('derby.seenHelp', true); showScreen(G.state === 'menu' ? 'menu' : null); };
 $('btn-resume').onclick = resume;
@@ -1621,7 +1625,7 @@ window.addEventListener('keydown', e => {
   if (G.state !== 'menu' || $('menu').classList.contains('hidden')) return;
   if (e.code === 'ArrowLeft') cycleCar(-1);
   if (e.code === 'ArrowRight') cycleCar(1);
-  if (e.code === 'Enter') $('btn-go').onclick();
+  if (e.code === 'Enter' && !$('btn-go').disabled) $('btn-go').onclick();
 });
 
 const go = () => { G.state = 'play'; showMsg('CRUNCH!', EVENTS[G.match.type].name, 1); sound.beep(true); sound.cheer(0.6); };
@@ -1663,7 +1667,7 @@ function frame(now) {
     let n = 0;
     while (acc >= DT && n++ < 40) { step(); acc -= DT; }
     if (n >= 40) acc = 0;
-    if (G.match?.net) netSend(raw);
+    if (G.match?.net && !G.match.over) netSend(raw);
   }
   const dt = raw * scale;
   for (const v of vehicles) if (!v.gone && !v.halved) v.pose();
@@ -1710,9 +1714,10 @@ const NET = {
   fx: [], sendT: 0, status: '',
 };
 G.net = NET;
-const timeKey = () => (G.match?.guest && NET.time) || settings.time;
+// A guest plays at the host's time of day (set when a match comes in, cleared back in the menu)
+const timeKey = () => (NET.role === 'guest' && NET.time) || settings.time;
 const HEARTBEAT = 1000, TIMEOUT = 10000, FIND_TIMEOUT = 30000;
-if (!settings.name) settings.name = 'Driver ' + (10 + Math.floor(Math.random() * 90));
+if (!settings.name) { settings.name = 'Driver ' + (10 + Math.floor(Math.random() * 90)); store.save('derby.settings', settings); }
 NET.name = settings.name;
 
 const r2 = x => Math.round(x * 100) / 100, r3 = x => Math.round(x * 1000) / 1000;
@@ -1722,14 +1727,20 @@ const enc = a => (a instanceof Vehicle ? { v: a.id } : a?.isVector3 ? { p: [r2(a
 const dec = a => (a?.v != null ? byId(a.v) : a?.p ? new THREE.Vector3(...a.p) : a);
 
 // The friends who'll be in the host's next match, with names nobody else has
+// The host's own name in a match: not one a computer driver has (scores are kept by name)
+function hostName() {
+  let name = NET.name;
+  for (let k = 2; DRIVERS.some(d => d.name === name); k++) name = `${NET.name} ${k}`;
+  return name;
+}
 function netHumans() {
   if (NET.role !== 'host') return [];
-  const taken = new Set([NET.name, ...DRIVERS.map(d => d.name)]);
-  return [...NET.peers].filter(([, p]) => p.ready).slice(0, 7).map(([peer, p]) => {
+  const taken = new Set([hostName(), ...DRIVERS.map(d => d.name)]);
+  return [...NET.peers].slice(0, 7).map(([peer, p]) => {
     let name = p.name;
     for (let k = 2; taken.has(name); k++) name = `${p.name} ${k}`;
     taken.add(name);
-    const car = ROSTER[p.car] ? p.car : 'comet';
+    const car = Object.hasOwn(ROSTER, p.car) ? p.car : 'comet';
     return { peer, name, car, paint: liveryOf(p.paint) ? p.paint : ROSTER[car].livery };
   });
 }
@@ -1753,9 +1764,10 @@ function netSend(dt, now = false) {
       r2(v.nitro), r2(v.shield), r2(v.ram), v.item || 0, v.score, v.takedowns, Math.round(v.dealt), r2(v.invuln),
       ...c.wheels.map(w => r2(w.comp)), ...c.wheels.map(w => r2(w.slip)), ...v.wheelHp.map(r2)];
   });
-  const hs = halves.map(h => [h.owner.id, r2(h.car.pos.x), r2(h.car.pos.y), r2(h.car.pos.z), r3(h.car.q.x), r3(h.car.q.y), r3(h.car.q.z), r3(h.car.q.w)]);
-  NET.room.send('snap', { t: r3(M.time), s: G.state === 'countdown' ? 0 : 1, tl: M.timeLeft === Infinity ? -1 : r2(M.timeLeft), sd: M.sudden ? 1 : 0,
-    c: cars, h: hs, p: pickups.state(), e: NET.fx.splice(0) });
+  const hs = halves.map(h => [h.nid, r2(h.car.pos.x), r2(h.car.pos.y), r2(h.car.pos.z), r3(h.car.q.x), r3(h.car.q.y), r3(h.car.q.z), r3(h.car.q.w)]);
+  const snap = { t: r3(M.time), s: G.state === 'countdown' ? 0 : 1, tl: M.timeLeft === Infinity ? -1 : r2(M.timeLeft), sd: M.sudden ? 1 : 0,
+    c: cars, h: hs, p: pickups.state(), e: NET.fx.splice(0) };
+  for (const v of vehicles) if (v.peer) NET.room.send('snap', snap, v.peer);
 }
 
 // Guest: take in the host's latest state
@@ -1794,12 +1806,14 @@ function applySnap(s) {
     v.item = a[23] || null;
     [v.score, v.takedowns, v.dealt, v.invuln] = a.slice(24, 28);
   }
-  const seen = {};
+  // Halves go by serial number (both sides count them the same way); ones the host has dropped go here too
+  const live = new Set();
   for (const a of s.h) {
-    const k = seen[a[0]] = (seen[a[0]] || 0) + 1;
-    const h = halves.filter(x => x.owner.id === a[0])[k - 1];
+    live.add(a[0]);
+    const h = halves.find(x => x.nid === a[0]);
     if (h) h.net = { p: new THREE.Vector3(a[1], a[2], a[3]), q: new THREE.Quaternion(a[4], a[5], a[6], a[7]).normalize() };
   }
+  for (let i = halves.length - 1; i >= 0; i--) if (!live.has(halves[i].nid)) { scene.remove(halves[i].model); halves.splice(i, 1); }
   pickups.sync(s.p);
 }
 
@@ -1837,15 +1851,19 @@ async function hostGame() {
   NET.code = newCode();
   NET.status = 'Opening a room…';
   renderNet();
-  try { NET.room = await openRoom('crunch', NET.code); }
-  catch (e) { console.warn(e); endSession("Couldn't load the online code. Check your connection and try again."); return; }
-  const room = NET.room;
+  const code = NET.code;
+  let room;
+  try { room = await openRoom('crunch', code); }
+  catch (e) { console.warn(e); if (NET.code === code) endSession("Couldn't load the online code. Check your connection and try again."); return; }
+  // Stopped (or started again) while the room was opening
+  if (NET.role !== 'host' || NET.code !== code) { room.leave(); return; }
+  NET.room = room;
   NET.status = '';
   room.on('hello', (d, id) => {
     if (d?.v !== PROTOCOL) { room.send('nope', 'version', id); return; }
     if (!NET.peers.has(id) && NET.peers.size >= 7) { room.send('nope', 'full', id); return; }
     const p = NET.peers.get(id) || {};
-    NET.peers.set(id, Object.assign(p, pick(d), { seen: performance.now(), ready: true }));
+    NET.peers.set(id, Object.assign(p, pick(d), { seen: performance.now() }));
     room.send('welcome', { name: NET.name, playing: !!G.match && !G.match.over && G.state !== 'menu' }, id);
     lobby();
   });
@@ -1853,10 +1871,11 @@ async function hostGame() {
   room.on('in', (d, id) => {
     const p = NET.peers.get(id);
     if (!p || !Array.isArray(d)) return;
-    p.input = { throttle: +d[0] || 0, brake: +d[1] || 0, steer: clamp(+d[2] || 0, -1, 1), handbrake: !!d[3], boost: !!d[4] };
+    p.input = { throttle: clamp(+d[0] || 0, 0, 1), brake: clamp(+d[1] || 0, 0, 1), steer: clamp(+d[2] || 0, -1, 1), handbrake: !!d[3], boost: !!d[4] };
     p.inAt = p.seen = performance.now();
   });
-  room.on('ping', (d, id) => { const p = NET.peers.get(id); if (p) p.seen = performance.now(); });
+  // A ping from a guest we've dropped (a tab asleep in the background, say): ask them to say hello again
+  room.on('ping', (d, id) => { const p = NET.peers.get(id); if (p) p.seen = performance.now(); else room.send('who', null, id); });
   room.on('act', (a, id) => {
     const v = vehicles.find(x => x.peer === id);
     if (!v || !G.match || G.match.guest) return;
@@ -1869,7 +1888,7 @@ async function hostGame() {
   renderNet();
 }
 // What a guest says about itself, cleaned up
-const pick = d => ({ name: String(d?.name || 'Friend').slice(0, 16).trim() || 'Friend', car: ROSTER[d?.car] ? d.car : 'comet', paint: String(d?.paint || '') });
+const pick = d => ({ name: String(d?.name || 'Friend').slice(0, 16).trim() || 'Friend', car: Object.hasOwn(ROSTER, d?.car) ? d.car : 'comet', paint: String(d?.paint || '').slice(0, 24) });
 
 // A friend's car in the current match goes to the computer
 function handOver(v) {
@@ -1882,12 +1901,12 @@ function dropPeer(id) {
   if (!p) return;
   NET.peers.delete(id);
   const v = vehicles.find(x => x.peer === id);
-  if (v && G.match && !G.match.over) { handOver(v); callout(`${v.name} left`, 'item'); }
+  if (v && G.match && !G.match.over) { handOver(v); callout(`${esc(v.name)} left`, 'item'); }
   lobby();
 }
 // Tell everyone who's here
 function lobby() {
-  NET.lobby = [NET.name + ' (host)', ...[...NET.peers.values()].filter(p => p.ready).map(p => p.name)];
+  NET.lobby = [NET.name + ' (host)', ...[...NET.peers.values()].map(p => p.name)];
   NET.room?.send('hb', { lobby: NET.lobby, playing: !!G.match && !G.match.over && G.state !== 'menu' });
   renderNet();
 }
@@ -1899,9 +1918,12 @@ async function joinGame(code) {
   NET.joinAt = performance.now();
   NET.status = 'Looking for the game…';
   renderNet();
-  try { NET.room = await openRoom('crunch', code); }
-  catch (e) { console.warn(e); endSession("Couldn't load the online code. Check your connection and try again."); return; }
-  const room = NET.room;
+  let room;
+  try { room = await openRoom('crunch', code); }
+  catch (e) { console.warn(e); if (NET.code === code) endSession("Couldn't load the online code. Check your connection and try again."); return; }
+  // Left (or joined another game) while the room was opening
+  if (NET.role !== 'guest' || NET.code !== code) { room.leave(); return; }
+  NET.room = room;
   const fromHost = fn => (d, id) => { if (id === NET.host) { NET.seen = performance.now(); fn(d); } };
   room.onJoin = id => { if (!NET.host) room.send('hello', hello(), id); };
   room.on('welcome', (d, id) => {
@@ -1914,11 +1936,22 @@ async function joinGame(code) {
     renderNet();
   });
   room.on('nope', (d, id) => endSession(d === 'full' ? 'That game is full (eight cars).' : 'That game is on a different version. Reload the page (both of you) and try again.'));
+  // The host dropped us: say hello again. A match we were in has gone to the computer, so leave it
+  room.on('who', fromHost(() => {
+    room.send('hello', hello(), NET.host);
+    if (G.match?.guest && !G.match.over) { G.match.over = true; toMenu(); toast("You were away too long; you'll drive in the next match."); }
+  }));
   room.on('hb', fromHost(d => { NET.lobby = Array.isArray(d?.lobby) ? d.lobby.map(String) : []; NET.playing = !!d?.playing; renderNet(); }));
   room.on('start', fromHost(d => {
-    if (d?.v !== PROTOCOL || !ARENAS[d.arena] || !Array.isArray(d.cars)) return;
+    if (d?.v !== PROTOCOL || !Object.hasOwn(ARENAS, d.arena) || !Array.isArray(d.cars)) return;
     // Not in this one (it's single-player, or we came too late): wait for the next
     if (!d.cars.some(c => c.peer === NET.room.self)) { NET.playing = true; renderNet(); return; }
+    if (!Object.hasOwn(EVENTS, d.type) || !Object.hasOwn(TIMES, d.time)) return;
+    for (const c of d.cars) {
+      c.name = String(c.name ?? '').slice(0, 20);
+      if (!Object.hasOwn(ROSTER, c.car)) c.car = 'comet';
+      if (!liveryOf(c.paint)) c.paint = ROSTER[c.car].livery;
+    }
     G.cup = d.cup;
     NET.playing = true;
     startMatch(d.type, d.arena, { spec: d });
@@ -1934,7 +1967,7 @@ async function joinGame(code) {
   }));
   room.on('abort', fromHost(() => {
     NET.playing = false;
-    if (G.match?.guest) { G.match.over = true; toMenu(); toast(`${NET.hostName} ended the match.`); }
+    if (G.match?.guest && !G.match.over) { G.match.over = true; toMenu(); toast(`${NET.hostName} ended the match.`); }
   }));
   room.on('bye', fromHost(() => endSession(`${NET.hostName} closed the game.`)));
   room.onLeave = id => { if (id === NET.host) endSession(`${NET.hostName} left.`); };
@@ -2010,7 +2043,8 @@ $('btn-invite').onclick = () => hostGame();
 $('net-leave').onclick = () => endSession();
 $('net-copy').onclick = () => {
   const url = $('net-url').value;
-  navigator.clipboard?.writeText(url).then(() => { $('net-copy').textContent = 'Copied'; setTimeout(() => ($('net-copy').textContent = 'Copy'), 1500); },
+  if (!navigator.clipboard) { $('net-url').select(); return; }
+  navigator.clipboard.writeText(url).then(() => { $('net-copy').textContent = 'Copied'; setTimeout(() => ($('net-copy').textContent = 'Copy'), 1500); },
     () => { $('net-url').select(); });
 };
 $('net-name').onchange = () => {
