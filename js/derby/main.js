@@ -13,6 +13,7 @@ import { DerbyDriver } from './ai.js';
 import { ROSTER, CORE, DRIVERS, statBars } from './roster.js';
 import { Pickups, Mines, Props, ITEMS, drawIcon } from './pickups.js';
 import { loadSceneryKit } from '../scenery.js';
+import { openRoom, newCode, validCode, PROTOCOL } from '../net.js';
 
 const $ = id => document.getElementById(id);
 const DEBRIS = { door: 'debris-door', doorWin: 'debris-door-window', bumper: 'debris-bumper', plate: 'debris-plate-a', plateB: 'debris-plate-b',
@@ -49,13 +50,13 @@ const smoke = new Puffs(scene, 1400, { soft: 0.15 });
 const glow = new Puffs(scene, 900, { additive: true, soft: 0.35 });
 
 // ---------- Settings & records ----------
-const settings = Object.assign({ event: 'elim', car: 'comet', paints: {}, arena: 'bowl', time: 'day' }, store.load('derby.settings', {}));
+const settings = Object.assign({ event: 'elim', car: 'comet', paints: {}, arena: 'bowl', time: 'day', name: '' }, store.load('derby.settings', {}));
 const records = Object.assign({ wins: {}, cups: 0, best: { brawl: 0, spree: 0 }, takedowns: 0, played: 0 }, store.load('derby.records', {}));
 if (!ROSTER[settings.car]) settings.car = 'comet';
 if (!ARENAS[settings.arena]) settings.arena = 'bowl';
 if (!TIMES[settings.time]) settings.time = 'day';
 if (!EVENTS[settings.event]) settings.event = 'elim';
-const saveSettings = () => store.save('derby.settings', settings);
+const saveSettings = () => { store.save('derby.settings', settings); netPick(); };
 const saveRecords = () => store.save('derby.records', records);
 const isLocked = key => {
   const l = ROSTER[key].locked;
@@ -99,7 +100,7 @@ function loadArena(key) {
 }
 
 function applyTime() {
-  const t = stage.setTime(settings.time);
+  const t = stage.setTime(timeKey());
   arena?.setLighting(t.lamps);
   for (const v of vehicles) v.setLights(t.lamps);
   if (showroom) showroom.setLights(t.lamps);
@@ -256,6 +257,148 @@ function gear(v) {
   u.spikes.visible = v.ram > 0;
 }
 
+// ---------- What happens, as everyone sees it ----------
+// What a hit, wreck or pickup looks and sounds like. The game logic calls fx(); online, the host also sends each
+// one to its guests, who see it from their own car (on every screen `.player` is whoever is at that screen).
+// A few change state as well (a wreck, a lost wheel, a respawn), so a guest's cars match the host's.
+const FX = {
+  clash(p, base, a, b) {
+    if (G.sim) return;
+    const near = G.follow && p.distanceTo(G.follow.car.pos) < 30;
+    sparks(p, Math.min(70, 6 + Math.round(base * 2)), 9 + Math.min(10, base * 0.3));
+    if (near || base > 15) sound.crunch(Math.min(1, (base + 3) / 30) * (near ? 1 : 0.5));
+    if (base > 18) sound.glass();
+    if ((a?.player || b?.player) && base > 2) G.shake = Math.max(G.shake, Math.min(0.9, base * 0.025));
+  },
+  crush(L, X, kind) {
+    if (G.sim) return;
+    glassBurst(X.car.pos.clone().setY(X.car.pos.y + 0.6), 34);
+    for (let i = 0; i < 10; i++) puff(X.car.pos, '#9a9288', 1.2, 1.2, 0.8, 0.4, 3);
+    sound.crunch(1); sound.glass(); sound.cheer(0.8);
+    if (X === G.follow || L === G.follow) { G.shake = 1; G.hitstop = 0.14; G.punch = 10; }
+    if (L.player) { G.slowmo = Math.max(G.slowmo, 0.5); callout(kind, 'big'); }
+  },
+  // `lp`, `dir`: where and which way, in X's own frame
+  hurt(X, by, dmg, point, n, lp, dir, zone) {
+    if (G.sim) return;
+    const roof = zone === 'roof', side = zone === 'left' || zone === 'right';
+    if (roof) X.crushRoof(dmg); else X.dent(lp, dir, dmg);
+    X.flashT = 0.14;
+    if (dmg > 9) glassBurst(point, Math.min(30, dmg * 0.8));
+    if (by?.player || X.player) pops.push({ p: point.clone(), text: String(Math.round(dmg)), colour: X.player ? '#ff4a3d' : dmg > 25 ? '#ff7a1a' : '#ffd23a', t: 0, size: Math.min(46, 18 + dmg * 0.8) });
+    if (dmg > 12 && (by === G.follow || X === G.follow)) { G.hitstop = Math.max(G.hitstop, Math.min(0.1, dmg * 0.003)); G.punch = Math.max(G.punch || 0, Math.min(9, dmg * 0.25)); }
+    // Loose parts
+    const vel = X.car.vel.clone().addScaledVector(n, -(4 + dmg * 0.15)).add(new THREE.Vector3(0, 3 + dmg * 0.1, 0));
+    if (roof) { /* glass and the roof take it; nothing falls off */ }
+    else if (zone === 'rear' && dmg > 9) { const p = X.losePart('spoiler'); if (p) debris.add(p.mesh, p.pos, vel, { radius: 0.2 }); }
+    if (zone === 'front' && dmg > 9) { const p = X.losePart('grill'); if (p) debris.add(p.mesh, p.pos, vel, { radius: 0.2 }); }
+    if (side && dmg > 11 && !X.lostParts.has('door-' + zone)) { X.lostParts.add('door-' + zone); fling(Math.random() < 0.5 ? 'door' : 'doorWin', X.colour, point, vel); }
+    else if (!side && dmg > 13 && !X.lostParts.has('bumper-' + zone)) { X.lostParts.add('bumper-' + zone); fling('bumper', null, point, vel); }
+    if (dmg > 7) for (let k = 0; k < Math.min(3, Math.floor(dmg / 10)); k++) fling(['plate', 'plateB', 'plateS'][k % 3], X.colour, point, vel.clone().add(new THREE.Vector3((Math.random() - 0.5) * 4, Math.random() * 3, (Math.random() - 0.5) * 4)), { life: 10 });
+    if (X.player && dmg > 6) G.flash = Math.min(1, dmg / 30);
+  },
+  wheel(X, i, vel, say) {
+    const w = X.loseWheel(i);
+    if (!w || G.sim) return;
+    debris.add(w.mesh, w.pos, vel, { radius: 0.42, roll: w.roll, life: 16 });
+    if (say && X.player) callout('LOST A WHEEL', 'bad');
+  },
+  wall(v, p, dmg, speed) {
+    if (G.sim) return;
+    sparks(p, Math.min(30, 3 + dmg));
+    if (v === G.follow || speed > 10) sound.crunch(Math.min(1, dmg / 25));
+    if (v.player) G.shake = Math.max(G.shake, Math.min(0.8, dmg * 0.03));
+  },
+  wreck(X, by, split, how, cause) {
+    const M = G.match;
+    X.diedAt = M.time;
+    if (split) {
+      halves.push(...X.split());
+      X.halved = true;
+      while (halves.length > 8) scene.remove(halves.shift().model);
+    } else X.wreck();
+    if (G.sim) return;
+    if (cause !== 'ring' && !split) {
+      for (let k = 0; k < 3; k++) fling(['plate', 'plateB', 'bumper'][k], X.colour, X.car.pos.clone().setY(X.car.pos.y + 0.8), X.car.vel.clone().add(new THREE.Vector3((Math.random() - 0.5) * 12, 6 + Math.random() * 6, (Math.random() - 0.5) * 12)));
+    }
+    if (cause !== 'ring') {
+      explosion(X.car.pos, split ? 1.4 : 1);
+      sound.boom(X === G.follow ? 1 : 0.6);
+      sound.cheer(split ? 1 : 0.7);
+      if (X === G.follow || by === G.follow) G.shake = 1;
+    }
+    if (by?.player && by !== X) {
+      // Takedown cam: a slow-motion cut to the victim, from the side
+      G.slowmo = 1.1;
+      const side = new THREE.Vector3().subVectors(X.car.pos, by.car.pos).setY(0).normalize();
+      G.killCam = { t: 1.1, target: X, from: X.car.pos.clone().add(new THREE.Vector3(-side.z, 0, side.x).multiplyScalar(7)).addScaledVector(side, -3).setY(X.car.pos.y + 2.2) };
+      keepInside(G.killCam.from);
+    }
+    if (X.player) {
+      G.slowmo = 1.2;
+      callout(cause === 'ring' ? 'OVER THE EDGE' : split ? 'CUT IN HALF!' : 'WRECKED', 'big bad');
+      if (M.type === 'spree') callout('−15 s', 'big bad');
+      if (M.type === 'elim') {
+        if (!M.net) $('btn-ff').classList.remove('hidden');
+        G.follow = by && by.alive ? by : vehicles.find(v => v.alive) || X;
+      }
+    }
+    feed(by, X, how);
+  },
+  respawn(v, spawn) {
+    v.gone = false;
+    v.halved = false;
+    v.respawnT = null;
+    v.respawn(spawn);
+    v.invuln = 2;
+    if (v.player) G.follow = v;
+  },
+  pickup(v, type, pos) {
+    if (G.sim) return;
+    ring(pos, ITEMS[type].colour);
+    if (v.player) { sound.pickup(); callout(ITEMS[type].note, 'item'); }
+  },
+  ring(p, colour) { ring(p, colour); },
+  shock(p) {
+    if (G.sim) return;
+    ring(p, ITEMS.shock.colour); ring(p.clone().setY(p.y + 0.6), '#ffffff'); sound.boom(0.5);
+  },
+  hop(p) {
+    if (G.sim) return;
+    ring(p.clone().setY(p.y - 0.6), ITEMS.hop.colour);
+    for (let i = 0; i < 14; i++) puff(p.clone().setY(p.y - 0.7), '#b8ab98', 1.1, 1.1, 0.6, 0.45, 2.4);
+    sound.thud(6);
+  },
+  mine(owner, p, y) { mines.drop(owner, p, y); },
+  blast(p) {
+    mines.removeNear(p);
+    if (G.sim) return;
+    explosion(p, 0.9);
+    ring(p, ITEMS.mine.colour);
+    sound.boom(0.9);
+    if (G.follow.car.pos.distanceTo(p) < 14) G.shake = Math.max(G.shake, 0.8);
+  },
+  prop(i, vel) {
+    if (G.sim) return;
+    const k = props.knock(props.list[i]);
+    debris.add(k.mesh, k.pos, vel, { radius: k.radius * 0.6, spin: 9, life: 10 });
+    sound.thud(3);
+  },
+  award(v, pts, label, quiet, big, n) {
+    v.chain = { n, t: G.match.time };
+    if (v.player && !G.sim && !quiet) callout(`${label}<small>+${pts}</small>`, big ? 'big' : '');
+  },
+  sudden() {
+    if (G.sim) return;
+    callout('SUDDEN DEATH', 'big');
+    sound.cheer(0.8);
+  },
+};
+function fx(name, ...args) {
+  FX[name](...args);
+  if (G.match?.net && !G.match.guest) NET.fx.push([name, ...args.map(enc)]);
+}
+
 // ---------- Matches ----------
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
@@ -275,30 +418,56 @@ function lineup() {
   });
 }
 
-function startMatch(type, arenaKey, { sim = false } = {}) {
+// `spec`: an online guest builds the match the host describes
+function startMatch(type, arenaKey, { sim = false, spec = null } = {}) {
   G.sim = sim;
+  if (spec) NET.time = spec.time;
   loadArena(arenaKey);
-  const t = TIMES[settings.time];
-  const spawns = shuffle(arena.spawns.slice());
-  const ups = lineup();
+  const t = TIMES[timeKey()];
+  let spawns = shuffle(arena.spawns.slice());
+  const humans = sim || spec || type === 'spree' ? [] : netHumans();    // the spree is one against seven
   if (sim) {
     // Balancing runs: all eight core cars, all computer-driven
     vehicles = CORE.map((car, i) => new Vehicle(arena, scene, i, ROSTER[car], ROSTER[car].livery, { driver: new DerbyDriver(DRIVERS[i % 7]), name: ROSTER[car].name }));
+  } else if (spec) {
+    vehicles = spec.cars.map(c => Object.assign(new Vehicle(arena, scene, c.id, ROSTER[c.car], c.paint, { player: c.peer === NET.room.self, name: c.name }),
+      { key: c.car, human: !!c.peer }));
+    spawns = spec.cars.map(c => c.spawn);
   } else {
-    const me = new Vehicle(arena, scene, 0, ROSTER[settings.car], paintOf(settings.car), { player: true, name: 'You' });
-    vehicles = [me, ...ups.map((u, i) => new Vehicle(arena, scene, i + 1, ROSTER[u.car], u.paint, { driver: new DerbyDriver(u.driver), name: u.driver.name }))];
+    const me = new Vehicle(arena, scene, 0, ROSTER[settings.car], paintOf(settings.car), { player: true, name: NET.role === 'host' ? NET.name : 'You' });
+    me.key = settings.car;
+    // Friends online take the places of computer drivers, preferably ones in the same car
+    const ups = lineup().slice();
+    for (const h of humans) {
+      const k = ups.findIndex(u => u.car === h.car);
+      ups.splice(k < 0 ? ups.length - 1 : k, 1);
+    }
+    // Two cars in the same colours would be confusing: later ones switch to a free livery (house colours stay put)
+    const used = new Set([me.paint]);
+    const own = paint => {
+      if (used.has(paint) && !HOUSE[paint]) paint = Object.keys(LIVERIES).find(p => !used.has(p)) || paint;
+      used.add(paint);
+      return paint;
+    };
+    vehicles = [me,
+      ...humans.map((h, i) => Object.assign(new Vehicle(arena, scene, i + 1, ROSTER[h.car], own(h.paint), { name: h.name }), { key: h.car, peer: h.peer, human: true })),
+      ...ups.map((u, i) => Object.assign(new Vehicle(arena, scene, humans.length + i + 1, ROSTER[u.car], own(u.paint), { driver: new DerbyDriver(u.driver), name: u.driver.name }), { key: u.car }))];
   }
   vehicles.forEach((v, i) => {
     v.colour = colourOf(v.paint);
+    v.chain = { n: 0, t: -10 };
     v.respawn(spawns[i]);
     v.setLights(t.lamps);
   });
+  // Your own car comes first, on every screen
+  if (spec) vehicles.sort((a, b) => b.player - a.player);
   for (let i = 0; i < 90; i++) for (const v of vehicles) v.car.step(DT, HOLD);
   pickups = new Pickups(scene, arena, type === 'spree' ? ['repair', 'nitro', 'shield', 'ram', 'shock', 'mine', 'hop', 'time', 'time'] : ['repair', 'nitro', 'shield', 'ram', 'shock', 'mine', 'hop']);
-  props = new Props(scene, arena, sim ? 0 : 26, Math.floor(Math.random() * 1000));
+  const seed = spec ? spec.seed : Math.floor(Math.random() * 1000);
+  props = new Props(scene, arena, sim ? 0 : 26, seed);
   G.match = { type, arena: arenaKey, time: 0, countdown: sim ? 0 : 3.4, out: [], over: false, sudden: false,
     timeLeft: type === 'brawl' ? EVENTS.brawl.secs : type === 'spree' ? SPREE_START : Infinity,
-    chain: { n: 0, t: -10 }, repairCost: 300, kills: [], lastKiller: null, steps: 0 };
+    repairCost: 300, kills: [], steps: 0, net: !!spec || humans.length > 0, guest: !!spec };
   G.follow = vehicles[0];
   G.killCam = null;
   G.state = sim ? 'play' : 'countdown';
@@ -309,11 +478,17 @@ function startMatch(type, arenaKey, { sim = false } = {}) {
     showScreen(null);
     $('hud').classList.remove('hidden');
     $('btn-ff').classList.add('hidden');
+    $('btn-restart').classList.toggle('hidden', !!spec);
     $('feed').innerHTML = '';
     $('callouts').innerHTML = '';
     sound.init();
     sound.crowdBase = arenaKey === 'deck' ? 0.15 : 0.55;
     sound.crowd(sound.crowdBase);
+  }
+  if (G.match.net && !spec) {
+    NET.fx.length = 0;
+    NET.room.send('start', { v: PROTOCOL, type, arena: arenaKey, time: settings.time, seed, cup: G.cup && { round: G.cup.round, points: G.cup.points },
+      cars: vehicles.map((v, i) => ({ id: v.id, car: v.key, paint: v.paint, name: v.name, peer: v.peer || (v.player ? NET.room.self : null), spawn: spawns[i] })) });
   }
 }
 
@@ -348,6 +523,7 @@ function step() {
     if (G.state === 'countdown') inp = HOLD;
     else if (v.alive && G.state === 'play') {
       if (v.player && !G.sim) inp = playerInput;
+      else if (v.peer) inp = remoteInput(v);
       else {
         inp = v.driver.drive(v, aiCtx, DT);
         if (v.driver.useItem) useItem(v);
@@ -366,9 +542,9 @@ function step() {
     else v.nitro = Math.min(1, v.nitro + DT * 0.025);
     inp.boost = v.boosting;
     // Aftertouch: for a moment after being wrecked, steer the wreck (into someone, ideally)
-    if (!v.alive && v.player && !G.sim && M.time - v.diedAt < AFTERTOUCH && !v.halved) {
+    if (!v.alive && ((v.player && !G.sim) || v.peer) && M.time - v.diedAt < AFTERTOUCH && !v.halved) {
       const r = _af.set(1, 0, 0).applyQuaternion(c.q).setY(0).normalize();
-      c.vel.addScaledVector(r, playerInput.steer * 9 * DT);
+      c.vel.addScaledVector(r, (v.peer ? remoteInput(v) : playerInput).steer * 9 * DT);
     }
     c.wallHit = null;
     c.step(DT, inp);
@@ -383,7 +559,7 @@ function step() {
     // (on its roof it counts whatever the speed: it can slide about up there for a long time)
     const flipped = v.alive && (up.y < -0.2 || (up.y < 0.35 && Math.abs(c.speed) < 4));
     v.flipT = flipped ? v.flipT + DT : Math.max(0, v.flipT - DT * 2);
-    if (v.player && v.flipT > 4) unflip(v);
+    if ((v.player || v.peer) && v.flipT > 4) unflip(v);
     // Spun round by a hit
     if (v.spinRef) {
       if (M.time - v.spinRef.t > 1.6) v.spinRef = null;
@@ -416,10 +592,7 @@ function step() {
   for (const g of pickups.update(DT, vehicles, M.time)) collect(g.vehicle, g.type, g.pos);
   for (const m of mines.update(DT, vehicles)) mineBlast(m.owner, m.pos);
   for (const p of props.update(vehicles)) {
-    if (!G.sim) {
-      debris.add(p.mesh, p.pos, p.vel, { radius: p.radius * 0.6, spin: 9, life: 10 });
-      sound.thud(3);
-    }
+    fx('prop', p.i, p.vel);
     if (p.vehicle.alive) award(p.vehicle, 15, p.prop.kind === 'cone' ? 'CONE' : arena.key === 'bowl' ? 'HAY BALE' : 'OIL DRUM', p.pos, true);
     if (p.vehicle.player && M.type === 'spree') gainTime(1);
   }
@@ -441,9 +614,8 @@ function rules() {
   if (M.over) return;
   if (M.steps % 60 === 0) tips();
   const alive = vehicles.filter(v => v.alive);
-  const me = vehicles[0];
   if (M.type === 'elim') {
-    if (!M.sudden && M.time > SUDDEN_AFTER) { M.sudden = true; if (!G.sim) { callout('SUDDEN DEATH', 'big'); sound.cheer(0.8); } }
+    if (!M.sudden && M.time > SUDDEN_AFTER) { M.sudden = true; fx('sudden'); }
     // Sudden death: engines overheat, so it always ends
     if (M.sudden) for (const v of alive) {
       v.hp -= DT;
@@ -463,15 +635,7 @@ function rules() {
 function collided(A, B, h) {
   const base = damageFrom(h.j);
   const va = A.half ? null : A, vb = B.half ? null : B;
-  if (!G.sim && h.speed > 2.5) {
-    const near = G.follow && h.point.distanceTo(G.follow.car.pos) < 30;
-    if (base > 0 || h.speed > 5) {
-      sparks(h.point, Math.min(70, 6 + Math.round(base * 2)), 9 + Math.min(10, base * 0.3));
-      if (near || base > 15) sound.crunch(Math.min(1, (base + 3) / 30) * (near ? 1 : 0.5));
-      if (base > 18) sound.glass();
-    }
-    if ((va?.player || vb?.player) && base > 2) G.shake = Math.max(G.shake, Math.min(0.9, base * 0.025));
-  }
+  if (h.speed > 2.5 && (base > 0 || h.speed > 5)) fx('clash', h.point, base, va, vb);
   if (G.hitLog && va && vb) G.hitLog.push([+h.speed.toFixed(1), +base.toFixed(1), +(h.j / 1000).toFixed(1)]);
   if (va) va.bumpT = G.match.time;
   if (vb) vb.bumpT = G.match.time;
@@ -530,12 +694,7 @@ function crush(L, X, h) {
   // The lander bounces off; the one underneath is pinned
   L.car.vel.y = Math.max(L.car.vel.y, 3.5);
   X.car.vel.x *= 0.55; X.car.vel.z *= 0.55;
-  if (G.sim) return;
-  glassBurst(X.car.pos.clone().setY(X.car.pos.y + 0.6), 34);
-  for (let i = 0; i < 10; i++) puff(X.car.pos, '#9a9288', 1.2, 1.2, 0.8, 0.4, 3);
-  sound.crunch(1); sound.glass(); sound.cheer(0.8);
-  if (X === G.follow || L === G.follow) { G.shake = 1; G.hitstop = 0.14; G.punch = 10; }
-  if (L.player) { G.slowmo = Math.max(G.slowmo, 0.5); callout(kind, 'big'); }
+  fx('crush', L, X, kind);
 }
 const _down = new THREE.Vector3(0, -1, 0);
 
@@ -544,7 +703,7 @@ const BONUS = { 'ROOF CRUSH': 80, 'DEATH FROM ABOVE': 140, MEGA: 50, AFTERTOUCH:
 // Damage X by `dmg` at world point `point`, the hit pushing along `n` (into X). `by` gets the credit.
 function hurt(X, by, dmg, point, n, { zone, kind = 'HIT', quiet = false } = {}) {
   if (!X.alive || dmg <= 0.5) return;
-  if (X.shield > 0 || X.invuln > 0) { if (!G.sim) ring(point, '#7ff0ff'); return; }
+  if (X.shield > 0 || X.invuln > 0) { fx('ring', point, '#7ff0ff'); return; }
   const M = G.match;
   if (M.sudden) dmg *= 1.5;
   if (X.player && M.type === 'spree') dmg *= 0.75;   // one against seven: a bit of armour
@@ -556,19 +715,12 @@ function hurt(X, by, dmg, point, n, { zone, kind = 'HIT', quiet = false } = {}) 
   if (roof) for (const k in X.zones) X.zones[k] = Math.min(1.6, X.zones[k] + dmg / 160);
   else X.zones[zone] = Math.min(1.6, X.zones[zone] + dmg / 55);
   const q = X.car.q.clone().invert();
-  const dir = n.clone().applyQuaternion(q);
-  if (!G.sim) { if (roof) X.crushRoof(dmg); else X.dent(lp, dir, dmg); }
+  fx('hurt', X, by, dmg, point, n, lp, n.clone().applyQuaternion(q), zone);
   // Arcade knockback: a solid hit pops the car up and twists it
   if (dmg > 6 && !roof) {
     const k = Math.min(1, (dmg - 6) / 30);
     X.car.vel.y = Math.min(X.car.vel.y + 1 + 3 * k, 9);
     X.car.w.addScaledVector(_kick.crossVectors(_up, n), 2.2 * k);
-  }
-  if (!G.sim) {
-    X.flashT = 0.14;
-    if (dmg > 9) glassBurst(point, Math.min(30, dmg * 0.8));
-    if (by?.player || X.player) pops.push({ p: point.clone(), text: String(Math.round(dmg)), colour: X.player ? '#ff4a3d' : dmg > 25 ? '#ff7a1a' : '#ffd23a', t: 0, size: Math.min(46, 18 + dmg * 0.8) });
-    if (dmg > 12 && (by === G.follow || X === G.follow)) { G.hitstop = Math.max(G.hitstop, Math.min(0.1, dmg * 0.003)); G.punch = Math.max(G.punch || 0, Math.min(9, dmg * 0.25)); }
   }
   X.car.powerK = clamp(1 - 0.5 * Math.max(0, X.zones.front - 0.5), 0.5, 1);
   const out = n.clone().negate();
@@ -578,22 +730,9 @@ function hurt(X, by, dmg, point, n, { zone, kind = 'HIT', quiet = false } = {}) 
     if (X.car.wheels[i].lost || Math.hypot(lp.x - W.p.x, lp.z - W.p.z) > 1.35) return;
     X.wheelHp[i] -= dmg / (side ? 24 : 40);
     if (X.wheelHp[i] > 0) return;
-    const w = X.loseWheel(i);
-    if (w && !G.sim) debris.add(w.mesh, w.pos, X.car.vel.clone().addScaledVector(out, 5).add(new THREE.Vector3(0, 4, 0)), { radius: 0.42, roll: w.roll, life: 16 });
+    fx('wheel', X, i, X.car.vel.clone().addScaledVector(out, 5).add(new THREE.Vector3(0, 4, 0)), true);
     if (by && by !== X) award(by, 50, 'WHEEL OFF', point);
-    if (X.player && !G.sim) callout('LOST A WHEEL', 'bad');
   });
-  // Loose parts
-  if (!G.sim) {
-    const vel = X.car.vel.clone().addScaledVector(out, 4 + dmg * 0.15).add(new THREE.Vector3(0, 3 + dmg * 0.1, 0));
-    if (roof) { /* glass and the roof take it; nothing falls off */ }
-    else if (zone === 'rear' && dmg > 9) { const p = X.losePart('spoiler'); if (p) debris.add(p.mesh, p.pos, vel, { radius: 0.2 }); }
-    if (zone === 'front' && dmg > 9) { const p = X.losePart('grill'); if (p) debris.add(p.mesh, p.pos, vel, { radius: 0.2 }); }
-    if (side && dmg > 11 && !X.lostParts.has('door-' + zone)) { X.lostParts.add('door-' + zone); fling(Math.random() < 0.5 ? 'door' : 'doorWin', X.colour, point, vel); }
-    else if (!side && dmg > 13 && !X.lostParts.has('bumper-' + zone)) { X.lostParts.add('bumper-' + zone); fling('bumper', null, point, vel); }
-    if (dmg > 7) for (let k = 0; k < Math.min(3, Math.floor(dmg / 10)); k++) fling(['plate', 'plateB', 'plateS'][k % 3], X.colour, point, vel.clone().add(new THREE.Vector3((Math.random() - 0.5) * 4, Math.random() * 3, (Math.random() - 0.5) * 4)), { life: 10 });
-    if (X.player && dmg > 6) G.flash = Math.min(1, dmg / 30);
-  }
   if (by && by !== X) {
     X.lastHit = { by, t: M.time };
     by.dealt += dmg;
@@ -609,11 +748,7 @@ function hurt(X, by, dmg, point, n, { zone, kind = 'HIT', quiet = false } = {}) 
 function wallHit(v, w) {
   const dmg = damageFrom(w.impulse) * 0.55;
   if (dmg <= 0.5) return;
-  if (!G.sim) {
-    sparks(w.point, Math.min(30, 3 + dmg));
-    if (v === G.follow || w.speed > 10) sound.crunch(Math.min(1, dmg / 25));
-    if (v.player) G.shake = Math.max(G.shake, Math.min(0.8, dmg * 0.03));
-  }
+  fx('wall', v, w.point, dmg, w.speed);
   // Shoved into the wall by someone: they get it
   const M = G.match, by = v.lastHit && M.time - v.lastHit.t < 1.2 ? v.lastHit.by : null;
   hurt(v, by, dmg, w.point, w.normal, { kind: by ? 'WALLED' : 'HIT', quiet: !by });
@@ -623,64 +758,30 @@ function kill(X, by, zone, dmg, cause) {
   if (!X.alive) return;
   const M = G.match;
   const split = !cause && (((zone === 'left' || zone === 'right') && dmg >= 20) || X.zones.left + X.zones.right >= 2);
-  if (split) {
-    const hs = X.split();
-    X.halved = true;
-    halves.push(...hs);
-    while (halves.length > 8) scene.remove(halves.shift().model);
-  } else X.wreck();
+  const how = zone === 'roof' ? 'flattened' : cause === 'ring' ? 'ring out' : cause === 'heat' ? 'overheated' : cause === 'stalled' ? 'stalled' : split ? 'torn in half' : zone === 'front' ? 'engine blown' : 'wrecked';
+  fx('wreck', X, by, split, how, cause);
   // Burnout-style: a wreck goes up in the air, tumbling
   if (cause !== 'ring' && !split) {
     X.car.vel.y += 6.5;
     X.car.w.add(_kick.set((Math.random() - 0.5) * 5, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 5));
-    if (!G.sim) {
-      const i = Math.floor(Math.random() * 4), w = X.loseWheel(i);
-      if (w) debris.add(w.mesh, w.pos, X.car.vel.clone().add(new THREE.Vector3((Math.random() - 0.5) * 10, 7, (Math.random() - 0.5) * 10)), { radius: 0.42, roll: w.roll, life: 16 });
-      for (let k = 0; k < 3; k++) fling(['plate', 'plateB', 'bumper'][k], X.colour, X.car.pos.clone().setY(X.car.pos.y + 0.8), X.car.vel.clone().add(new THREE.Vector3((Math.random() - 0.5) * 12, 6 + Math.random() * 6, (Math.random() - 0.5) * 12)));
-    }
+    fx('wheel', X, Math.floor(Math.random() * 4), X.car.vel.clone().add(new THREE.Vector3((Math.random() - 0.5) * 10, 7, (Math.random() - 0.5) * 10)), false);
   }
-  X.diedAt = M.time;
   X.respawnT = M.type === 'brawl' || M.type === 'spree' ? 3.5 : null;
   // In the spree the clock is your life: a wreck costs time, not the run
-  if (X.player && M.type === 'spree') { M.timeLeft -= 15; if (!G.sim) callout('−15 s', 'big bad'); }
+  if (X.player && M.type === 'spree') M.timeLeft -= 15;
   M.out.push(X);
-  if (!G.sim && cause !== 'ring') {
-    explosion(X.car.pos, split ? 1.4 : 1);
-    sound.boom(X === G.follow ? 1 : 0.6);
-    sound.cheer(split ? 1 : 0.7);
-    if (X === G.follow || by === G.follow) G.shake = 1;
-  }
-  const how = zone === 'roof' ? 'flattened' : cause === 'ring' ? 'ring out' : cause === 'heat' ? 'overheated' : cause === 'stalled' ? 'stalled' : split ? 'torn in half' : zone === 'front' ? 'engine blown' : 'wrecked';
   if (G.tally) G.tally['kill: ' + how] = (G.tally['kill: ' + how] || 0) + 1;
   if (by && by !== X) {
     by.takedowns++;
     award(by, 250, split ? 'TORN IN HALF' : zone === 'roof' ? 'PANCAKED' : 'TAKEDOWN', X.car.pos, false, true);
     if (split) award(by, 150, 'SPLIT BONUS', X.car.pos, true);
-    if (by.player && M.lastKiller === X) award(by, 150, 'REVENGE', X.car.pos, false, true);
+    if ((by.player || by.human) && by.lastKiller === X) award(by, 150, 'REVENGE', X.car.pos, false, true);
     const recent = M.kills.filter(k => k.by === by && M.time - k.t < 3);
     if (recent.length) award(by, 200, recent.length > 1 ? 'TRIPLE TAKEDOWN' : 'DOUBLE TAKEDOWN', X.car.pos, false, true);
     M.kills.push({ by, t: M.time });
-    if (by.player && !G.sim) {
-      // Takedown cam: a slow-motion cut to the victim, from the side
-      G.slowmo = 1.1;
-      const side = new THREE.Vector3().subVectors(X.car.pos, by.car.pos).setY(0).normalize();
-      G.killCam = { t: 1.1, target: X, from: X.car.pos.clone().add(new THREE.Vector3(-side.z, 0, side.x).multiplyScalar(7)).addScaledVector(side, -3).setY(X.car.pos.y + 2.2) };
-      keepInside(G.killCam.from);
-    }
     if (by.player && M.type === 'spree') gainTime(8);
   }
-  if (X.player) {
-    M.lastKiller = by;
-    if (!G.sim) {
-      G.slowmo = 1.2;
-      callout(cause === 'ring' ? 'OVER THE EDGE' : split ? 'CUT IN HALF!' : 'WRECKED', 'big bad');
-      if (M.type === 'elim') {
-        $('btn-ff').classList.remove('hidden');
-        G.follow = by && by.alive ? by : vehicles.find(v => v.alive) || X;
-      }
-    }
-  }
-  if (!G.sim) feed(by, X, how);
+  X.lastKiller = by;
 }
 
 function respawnVehicle(v) {
@@ -691,14 +792,10 @@ function respawnVehicle(v) {
     for (const o of vehicles) if (o !== v && !o.gone) d = Math.min(d, Math.hypot(o.car.pos.x - s.x, o.car.pos.z - s.z));
     if (d > bd) { bd = d; best = s; }
   }
-  v.gone = false;
-  v.halved = false;
-  v.respawnT = null;
-  v.respawn(best);
-  v.invuln = 2;
-  if (v.player) G.follow = v;
+  fx('respawn', v, best);
 }
 
+const canUnflip = v => v?.alive && (v.flipT > 0.2 || Math.abs(v.car.speed) < 2 || v.up.y < 0.5);
 function unflip(v) {
   const c = v.car;
   const yaw = v.yaw;
@@ -724,10 +821,7 @@ function collect(v, type, pos) {
   else if (type === 'ram') v.ram = it.secs;
   else if (type === 'time') { if (G.match.type === 'spree' && v.player) gainTime(10); }
   else v.item = type;
-  if (!G.sim) {
-    ring(pos, it.colour);
-    if (v.player) { sound.pickup(); callout(it.note, 'item'); }
-  }
+  fx('pickup', v, type, pos);
 }
 
 function useItem(v) {
@@ -745,20 +839,16 @@ function useItem(v) {
       o.car.w.add(new THREE.Vector3((Math.random() - 0.5) * 4 * f, (Math.random() - 0.5) * 6 * f, (Math.random() - 0.5) * 4 * f));
       hurt(o, v, 8 + 18 * f, o.car.pos.clone().addScaledVector(dir, -1), dir, { kind: 'SHOCKWAVE' });
     }
-    if (!G.sim) { ring(c.pos, ITEMS.shock.colour); ring(c.pos.clone().setY(c.pos.y + 0.6), '#ffffff'); sound.boom(0.5); }
+    fx('shock', c.pos);
   } else if (v.item === 'hop') {
     if (c.grounded === 0 && c.airTime > 0.3) return;   // keep it for when we're down again
     c.vel.y = Math.max(0, c.vel.y) + 7.5;
     c.vel.addScaledVector(v.forward, 2.5);
     c.w.multiplyScalar(0.3);
-    if (!G.sim) {
-      ring(c.pos.clone().setY(c.pos.y - 0.6), ITEMS.hop.colour);
-      for (let i = 0; i < 14; i++) puff(c.pos.clone().setY(c.pos.y - 0.7), '#b8ab98', 1.1, 1.1, 0.6, 0.45, 2.4);
-      sound.thud(6);
-    }
+    fx('hop', c.pos);
   } else if (v.item === 'mine') {
     const back = c.pos.clone().addScaledVector(v.forward, -(v.len / 2 + 1.4));
-    mines.drop(v, back, arena.groundHeight(back.x, back.z));
+    fx('mine', v, back, arena.groundHeight(back.x, back.z));
   }
   v.item = null;
 }
@@ -776,12 +866,7 @@ function mineBlast(owner, pos) {
     o.car.w.z += (Math.random() - 0.5) * 7 * f;
     hurt(o, owner === o ? null : owner, 10 + 22 * f, pos.clone().setY(o.car.pos.y - 0.4), new THREE.Vector3(0, 1, 0), { kind: 'MINE' });
   }
-  if (!G.sim) {
-    explosion(pos, 0.9);
-    ring(pos, ITEMS.mine.colour);
-    sound.boom(0.9);
-    if (G.follow.car.pos.distanceTo(pos) < 14) G.shake = Math.max(G.shake, 0.8);
-  }
+  fx('blast', pos);
 }
 
 // ---------- Scoring ----------
@@ -795,13 +880,15 @@ function award(v, pts, label, pos, quiet = false, big = false) {
   if (!v || !pts) return;
   const M = G.match;
   if (G.tally) G.tally[label] = (G.tally[label] || 0) + 1;
-  if (v.player) {
-    if (M.time - M.chain.t < 4) M.chain.n = Math.min(8, M.chain.n + 1); else M.chain.n = 0;
-    M.chain.t = M.time;
-    pts = Math.round(pts * (1 + 0.25 * M.chain.n));
+  // People (not the computer drivers) build combos
+  if (v.player || v.human) {
+    const ch = v.chain;
+    if (M.time - ch.t < 4) ch.n = Math.min(8, ch.n + 1); else ch.n = 0;
+    ch.t = M.time;
+    pts = Math.round(pts * (1 + 0.25 * ch.n));
+    fx('award', v, pts, label, quiet, big, ch.n);
   }
   v.score += pts;
-  if (v.player && !G.sim && !quiet) callout(`${label}<small>+${pts}</small>`, big ? 'big' : '');
 }
 
 // ---------- End of a match ----------
@@ -818,7 +905,8 @@ function endMatch() {
   const M = G.match;
   M.over = true;
   if (G.sim) { G.state = 'over'; return; }
-  const order = standings();
+  // An online guest gets the final order (and championship table) from the host
+  const order = M.order || standings();
   const me = vehicles[0];
   const place = order.indexOf(me);
   let title, sub = '';
@@ -842,19 +930,25 @@ function endMatch() {
   // Championship points
   let cupDone = false;
   if (G.cup) {
-    order.forEach((v, i) => { G.cup.points[v.name] = (G.cup.points[v.name] || 0) + CUP_POINTS[i]; });
-    G.cup.round++;
+    if (!M.guest) {
+      order.forEach((v, i) => { G.cup.points[v.name] = (G.cup.points[v.name] || 0) + CUP_POINTS[i]; });
+      G.cup.round++;
+    }
     cupDone = G.cup.round >= CUP_ROUNDS.length;
     if (cupDone) {
       const table = Object.entries(G.cup.points).sort((a, b) => b[1] - a[1]);
-      if (table[0][0] === 'You') { records.cups++; notes.push('Champion! The cup is yours.'); title = 'CHAMPION!'; }
-      else title = `${ordinal(table.findIndex(t => t[0] === 'You') + 1)} OVERALL`;
+      if (table[0][0] === me.name) { records.cups++; notes.push('Champion! The cup is yours.'); title = 'CHAMPION!'; }
+      else title = `${ordinal(table.findIndex(t => t[0] === me.name) + 1)} OVERALL`;
     }
+  }
+  if (M.net && !M.guest) {
+    netSend(0, true);
+    NET.room.send('end', { order: order.map(v => v.id), cup: G.cup && { round: G.cup.round, points: G.cup.points } });
   }
   const before = Object.keys(ROSTER).filter(isLocked);
   saveRecords();
   for (const k of before) if (!isLocked(k)) notes.push(`Unlocked: ${ROSTER[k].name}!`);
-  setTimeout(() => showResults(order, title, sub, notes.join(' '), cupDone), G.cup ? 1800 : 2400);
+  setTimeout(() => { if (G.match === M) showResults(order, title, sub, notes.join(' '), cupDone); }, G.cup ? 1800 : 2400);
   G.state = 'over';
   if (!G.sim) {
     showMsg(title, '', 2.2);
@@ -880,7 +974,8 @@ function showResults(order, title, sub, note, cupDone) {
       `<tr class="${v.player ? 'me' : ''}"><td>${i + 1}</td><td><span class="dot" style="background:${v.colour}"></span>${v.name}</td><td>${v.def.name}</td><td class="num">${v.takedowns}</td><td class="num">${Math.round(v.dealt)}</td><td class="num">${v.score.toLocaleString()}</td></tr>`).join('');
   }
   $('res-table').innerHTML = html;
-  $('res-note').textContent = note;
+  $('res-note').textContent = M.guest ? [note, `Waiting for ${NET.hostName} to start the next one…`].filter(Boolean).join(' ') : note;
+  $('btn-next').classList.toggle('hidden', !!M.guest);
   $('btn-next').textContent = G.cup && !cupDone ? 'Next round ▸' : 'Again';
   $('btn-next').dataset.next = G.cup && !cupDone ? 'cup' : '';
   if (cupDone) G.cup = null;
@@ -957,7 +1052,7 @@ function updateHud() {
     }
   }
   setText('score', me.score.toLocaleString());
-  setText('combo', M.chain.n && M.time - M.chain.t < 4 ? `COMBO ×${(1 + 0.25 * M.chain.n).toFixed(2)}` : '');
+  setText('combo', me.chain.n && M.time - me.chain.t < 4 ? `COMBO ×${(1 + 0.25 * me.chain.n).toFixed(2)}` : '');
   drawCarStatus(me);
   drawRadar();
 }
@@ -1317,7 +1412,11 @@ function readInput() {
   }
   Object.assign(playerInput, { throttle, brake, steer, handbrake, boost });
 }
-function pressItem() { if (G.state === 'play' && vehicles[0]?.alive) useItem(vehicles[0]); }
+function pressItem() {
+  if (G.state !== 'play' || !vehicles[0]?.alive) return;
+  if (G.match.guest) NET.room.send('act', 'item', NET.host);
+  else useItem(vehicles[0]);
+}
 
 window.addEventListener('keydown', e => {
   keys.add(e.code);
@@ -1326,14 +1425,17 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyM') sound.setMuted(!sound.muted);
   if (e.repeat) return;
   if (e.code === 'Escape') {
-    if (G.state === 'play' || G.state === 'countdown') { G.paused = G.state; G.state = 'paused'; showScreen('pause'); muteLoops(); }
+    // Online the match can't stop for one player: the menu opens over it
+    if (G.match?.net && (G.state === 'play' || G.state === 'countdown')) { if ($('pause').classList.contains('hidden')) showScreen('pause'); else resume(); }
+    else if (G.state === 'play' || G.state === 'countdown') { G.paused = G.state; G.state = 'paused'; showScreen('pause'); muteLoops(); }
     else if (G.state === 'paused') resume();
   }
   if (G.state !== 'play' && G.state !== 'countdown') return;
   if (e.code === 'KeyE' || e.code === 'Enter' || e.code === 'KeyF') pressItem();
   if (e.code === 'KeyC') { G.camMode = (G.camMode + 1) % CAMS.length; cam.snap = true; callout(CAMS[G.camMode] + ' camera', 'item'); }
-  if (e.code === 'KeyR' && me?.alive && (me.flipT > 0.2 || Math.abs(me.car.speed) < 2 || me.up.y < 0.5)) unflip(me);
-  if (e.code === 'KeyX' && G.match.type === 'spree' && me?.alive && me.score >= G.match.repairCost && me.hp < me.maxHp) {
+  if (e.code === 'KeyR' && G.match.guest) NET.room.send('act', 'flip', NET.host);
+  else if (e.code === 'KeyR' && canUnflip(me)) unflip(me);
+  if (e.code === 'KeyX' && !G.match.guest && G.match.type === 'spree' && me?.alive && me.score >= G.match.repairCost && me.hp < me.maxHp) {
     me.score -= G.match.repairCost;
     callout(`REPAIRED<small>−${G.match.repairCost}</small>`, 'item');
     G.match.repairCost += 150;
@@ -1360,7 +1462,7 @@ for (const b of document.querySelectorAll('#touch button')) {
 }
 
 function muteLoops() { sound.engine(0, 0, false); sound.skid(0); sound.boost(0); sound.voices([]); sound.crowd(0); }
-function resume() { showScreen(null); G.state = G.paused; sound.crowd(sound.crowdBase || 0.5); }
+function resume() { showScreen(null); if (G.state === 'paused') G.state = G.paused; sound.crowd(sound.crowdBase || 0.5); }
 
 // ---------- Screens & menu ----------
 function showScreen(id) {
@@ -1369,6 +1471,12 @@ function showScreen(id) {
 }
 
 function toMenu() {
+  // Leaving an online match: the host ends it for everyone; a guest's car goes to the computer
+  if (G.match?.net && !G.match.over && G.state !== 'menu') {
+    if (G.match.guest) NET.room?.send('act', 'quit', NET.host);
+    else NET.room?.send('abort', null);
+  }
+  G.match = null;
   G.state = 'menu';
   G.cup = null;
   muteLoops();
@@ -1487,6 +1595,7 @@ function renderMenu() {
   $('btn-go').textContent = locked ? 'LOCKED' : 'CRUNCH ▸';
   const r = records;
   const totalWins = Object.values(r.wins).reduce((a, b) => a + b, 0);
+  renderNet();
   $('records').textContent = r.played ? `Wins ${totalWins} · Cups ${r.cups} · Takedowns ${r.takedowns} · Best brawl ${r.best.brawl.toLocaleString()} · Best spree ${r.best.spree.toLocaleString()}` : 'Tip: T-bone them. Doors are thin.';
 }
 
@@ -1515,6 +1624,8 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Enter') $('btn-go').onclick();
 });
 
+const go = () => { G.state = 'play'; showMsg('CRUNCH!', EVENTS[G.match.type].name, 1); sound.beep(true); sound.cheer(0.6); };
+
 // ---------- Main loop ----------
 let last = performance.now(), acc = 0;
 function frame(now) {
@@ -1533,21 +1644,27 @@ function frame(now) {
   }
   if (G.state === 'paused' || !G.match) { renderer.render(scene, camera); return; }
   // Time: slow motion after the player's takedowns, a short freeze on big hits, fast forward when spectating
+  // (online, time runs at the same pace for everyone)
   let scale = 1;
   if (G.slowmo > 0) { G.slowmo -= raw; scale = 0.3; }
   if (G.hitstop > 0) { G.hitstop -= raw; scale = 0.04; }
   if (G.ff) scale = 3;
+  if (G.match.net) scale = 1;
   if (G.state === 'countdown') {
     const before = Math.ceil(G.match.countdown);
     G.match.countdown -= raw;
     const after = Math.ceil(G.match.countdown);
     if (after !== before && after > 0 && after <= 3) { showMsg(String(after), ARENAS[G.match.arena].name, 1); sound.beep(false); }
-    if (G.match.countdown <= 0) { G.state = 'play'; showMsg('CRUNCH!', EVENTS[G.match.type].name, 1); sound.beep(true); sound.cheer(0.6); }
+    if (G.match.countdown <= 0 && !G.match.guest) go();
   }
-  acc += raw * scale;
-  let n = 0;
-  while (acc >= DT && n++ < 40) { step(); acc -= DT; }
-  if (n >= 40) acc = 0;
+  if (G.match.guest) follow(raw);
+  else {
+    acc += raw * scale;
+    let n = 0;
+    while (acc >= DT && n++ < 40) { step(); acc -= DT; }
+    if (n >= 40) acc = 0;
+    if (G.match?.net) netSend(raw);
+  }
   const dt = raw * scale;
   for (const v of vehicles) if (!v.gone && !v.halved) v.pose();
   for (const h of halves) { h.model.position.copy(h.car.pos); h.model.quaternion.copy(h.car.q); }
@@ -1582,6 +1699,327 @@ Object.assign(flashEl.style, { position: 'fixed', inset: 0, pointerEvents: 'none
   background: 'radial-gradient(ellipse at center, transparent 45%, rgba(220,30,20,0.55) 100%)' });
 document.body.appendChild(flashEl);
 
+// ---------- Online ----------
+// Low-key multiplayer: invite friends with a link and they take the places of computer drivers in your next
+// match. The host's browser runs the match; guests send their controls and get back where every car is (30 times
+// a second) plus everything that happened (the fx() calls). There's no server: see net.js.
+const NET = {
+  room: null, role: null, code: null, name: '', time: null,
+  peers: new Map(),       // host: peer id → { name, car, paint, seen, input, inAt }
+  host: null, hostName: '', seen: 0, joinAt: 0, tries: 0, playing: false, lobby: [],
+  fx: [], sendT: 0, status: '',
+};
+G.net = NET;
+const timeKey = () => (G.match?.guest && NET.time) || settings.time;
+const HEARTBEAT = 1000, TIMEOUT = 10000, FIND_TIMEOUT = 30000;
+if (!settings.name) settings.name = 'Driver ' + (10 + Math.floor(Math.random() * 90));
+NET.name = settings.name;
+
+const r2 = x => Math.round(x * 100) / 100, r3 = x => Math.round(x * 1000) / 1000;
+const byId = id => vehicles.find(v => v.id === id);
+// fx() arguments over the wire: cars by id, vectors as arrays
+const enc = a => (a instanceof Vehicle ? { v: a.id } : a?.isVector3 ? { p: [r2(a.x), r2(a.y), r2(a.z)] } : a);
+const dec = a => (a?.v != null ? byId(a.v) : a?.p ? new THREE.Vector3(...a.p) : a);
+
+// The friends who'll be in the host's next match, with names nobody else has
+function netHumans() {
+  if (NET.role !== 'host') return [];
+  const taken = new Set([NET.name, ...DRIVERS.map(d => d.name)]);
+  return [...NET.peers].filter(([, p]) => p.ready).slice(0, 7).map(([peer, p]) => {
+    let name = p.name;
+    for (let k = 2; taken.has(name); k++) name = `${p.name} ${k}`;
+    taken.add(name);
+    const car = ROSTER[p.car] ? p.car : 'comet';
+    return { peer, name, car, paint: liveryOf(p.paint) ? p.paint : ROSTER[car].livery };
+  });
+}
+
+function remoteInput(v) {
+  const p = NET.peers.get(v.peer);
+  return p?.input && performance.now() - p.inAt < 1000 ? p.input : NONE;
+}
+
+// Host: the state of the match, sent with what happened since the last one
+function netSend(dt, now = false) {
+  if ((NET.sendT += dt) < 1 / 30 && !now) return;
+  NET.sendT = 0;
+  const M = G.match;
+  const cars = vehicles.map(v => {
+    const c = v.car;
+    let f = (v.alive ? 1 : 0) | (v.gone ? 2 : 0) | (v.halved ? 4 : 0) | (v.boosting ? 8 : 0);
+    c.wheels.forEach((w, i) => { f |= (w.lost ? 16 << i : 0) | (w.contact ? 256 << i : 0); });
+    return [v.id, r2(c.pos.x), r2(c.pos.y), r2(c.pos.z), r3(c.q.x), r3(c.q.y), r3(c.q.z), r3(c.q.w), r2(c.vel.x), r2(c.vel.y), r2(c.vel.z),
+      r2(c.steer), Math.round(c.rpm), r2(c.speed), f, r2(v.hp), r2(v.zones.front), r2(v.zones.rear), r2(v.zones.left), r2(v.zones.right),
+      r2(v.nitro), r2(v.shield), r2(v.ram), v.item || 0, v.score, v.takedowns, Math.round(v.dealt), r2(v.invuln),
+      ...c.wheels.map(w => r2(w.comp)), ...c.wheels.map(w => r2(w.slip)), ...v.wheelHp.map(r2)];
+  });
+  const hs = halves.map(h => [h.owner.id, r2(h.car.pos.x), r2(h.car.pos.y), r2(h.car.pos.z), r3(h.car.q.x), r3(h.car.q.y), r3(h.car.q.z), r3(h.car.q.w)]);
+  NET.room.send('snap', { t: r3(M.time), s: G.state === 'countdown' ? 0 : 1, tl: M.timeLeft === Infinity ? -1 : r2(M.timeLeft), sd: M.sudden ? 1 : 0,
+    c: cars, h: hs, p: pickups.state(), e: NET.fx.splice(0) });
+}
+
+// Guest: take in the host's latest state
+const _q = new THREE.Quaternion();
+function applySnap(s) {
+  const M = G.match;
+  for (const e of s.e) {
+    try { FX[e[0]]?.(...e.slice(1).map(dec)); } catch (err) { console.warn('fx', e[0], err); }
+  }
+  M.time = s.t;
+  M.timeLeft = s.tl < 0 ? Infinity : s.tl;
+  M.sudden = !!s.sd;
+  if (s.s === 1 && G.state === 'countdown') go();
+  const now = performance.now();
+  for (const a of s.c) {
+    const v = byId(a[0]);
+    if (!v) continue;
+    const c = v.car;
+    v.net = { p: new THREE.Vector3(a[1], a[2], a[3]), q: new THREE.Quaternion(a[4], a[5], a[6], a[7]).normalize(), vel: new THREE.Vector3(a[8], a[9], a[10]), at: now };
+    c.vel.copy(v.net.vel);
+    c.steer = a[11]; c.rpm = a[12]; c.speed = a[13];
+    const f = a[14];
+    v.alive = !!(f & 1); v.gone = !!(f & 2); v.halved = !!(f & 4); v.boosting = !!(f & 8);
+    if (v.gone) v.model.visible = false;
+    c.grounded = 0;
+    c.wheels.forEach((w, i) => {
+      w.lost = !!(f & (16 << i));
+      w.contact = !!(f & (256 << i));
+      c.grounded += w.contact;
+      w.comp = a[28 + i];
+      w.slip = a[32 + i];
+      v.wheelHp[i] = a[36 + i];
+      v.model.userData.wheels[i].steerer.visible = !w.lost;
+    });
+    [v.hp, v.zones.front, v.zones.rear, v.zones.left, v.zones.right, v.nitro, v.shield, v.ram] = a.slice(15, 23);
+    v.item = a[23] || null;
+    [v.score, v.takedowns, v.dealt, v.invuln] = a.slice(24, 28);
+  }
+  const seen = {};
+  for (const a of s.h) {
+    const k = seen[a[0]] = (seen[a[0]] || 0) + 1;
+    const h = halves.filter(x => x.owner.id === a[0])[k - 1];
+    if (h) h.net = { p: new THREE.Vector3(a[1], a[2], a[3]), q: new THREE.Quaternion(a[4], a[5], a[6], a[7]).normalize() };
+  }
+  pickups.sync(s.p);
+}
+
+// Guest, every frame: move the cars toward where the host says they are (and a little ahead, by their speed)
+const _np = new THREE.Vector3();
+function follow(dt) {
+  const M = G.match, now = performance.now();
+  M.time += dt;
+  for (const v of vehicles) {
+    const n = v.net, c = v.car;
+    if (!n) continue;
+    const age = Math.min(0.2, (now - n.at) / 1000);
+    _np.copy(n.p).addScaledVector(n.vel, age);
+    const k = 1 - Math.exp(-dt * (v.player ? 30 : 18));
+    if (c.pos.distanceToSquared(_np) > 16) { c.pos.copy(_np); c.q.copy(n.q); }
+    else { c.pos.lerp(_np, k); c.q.slerp(n.q, k); }
+    for (const w of c.wheels) w.spin += c.speed / WHEEL_RADIUS * dt;
+  }
+  for (const h of halves) if (h.net) { h.car.pos.lerp(h.net.p, 1 - Math.exp(-dt * 18)); h.car.q.slerp(h.net.q, 1 - Math.exp(-dt * 18)); }
+  pickups.animate(M.time);
+  mines.update(dt, vehicles, false);
+  if (Math.floor(M.time * 2) !== Math.floor((M.time - dt) * 2)) tips();
+  // Our controls, 30 times a second
+  if ((NET.sendT += dt) >= 1 / 30) {
+    NET.sendT = 0;
+    const i = playerInput;
+    NET.room.send('in', [r2(i.throttle), r2(i.brake), r2(i.steer), i.handbrake ? 1 : 0, i.boost ? 1 : 0], NET.host);
+  }
+}
+
+// ----- Hosting -----
+async function hostGame() {
+  if (NET.room) return;
+  NET.role = 'host';
+  NET.code = newCode();
+  NET.status = 'Opening a room…';
+  renderNet();
+  try { NET.room = await openRoom('crunch', NET.code); }
+  catch (e) { console.warn(e); endSession("Couldn't load the online code. Check your connection and try again."); return; }
+  const room = NET.room;
+  NET.status = '';
+  room.on('hello', (d, id) => {
+    if (d?.v !== PROTOCOL) { room.send('nope', 'version', id); return; }
+    if (!NET.peers.has(id) && NET.peers.size >= 7) { room.send('nope', 'full', id); return; }
+    const p = NET.peers.get(id) || {};
+    NET.peers.set(id, Object.assign(p, pick(d), { seen: performance.now(), ready: true }));
+    room.send('welcome', { name: NET.name, playing: !!G.match && !G.match.over && G.state !== 'menu' }, id);
+    lobby();
+  });
+  room.on('pick', (d, id) => { const p = NET.peers.get(id); if (p) { Object.assign(p, pick(d)); lobby(); } });
+  room.on('in', (d, id) => {
+    const p = NET.peers.get(id);
+    if (!p || !Array.isArray(d)) return;
+    p.input = { throttle: +d[0] || 0, brake: +d[1] || 0, steer: clamp(+d[2] || 0, -1, 1), handbrake: !!d[3], boost: !!d[4] };
+    p.inAt = p.seen = performance.now();
+  });
+  room.on('ping', (d, id) => { const p = NET.peers.get(id); if (p) p.seen = performance.now(); });
+  room.on('act', (a, id) => {
+    const v = vehicles.find(x => x.peer === id);
+    if (!v || !G.match || G.match.guest) return;
+    if (a === 'item' && G.state === 'play' && v.alive) useItem(v);
+    if (a === 'flip' && canUnflip(v)) unflip(v);
+    if (a === 'quit') handOver(v);
+  });
+  room.on('bye', (d, id) => dropPeer(id));
+  room.onLeave = id => dropPeer(id);
+  renderNet();
+}
+// What a guest says about itself, cleaned up
+const pick = d => ({ name: String(d?.name || 'Friend').slice(0, 16).trim() || 'Friend', car: ROSTER[d?.car] ? d.car : 'comet', paint: String(d?.paint || '') });
+
+// A friend's car in the current match goes to the computer
+function handOver(v) {
+  v.peer = null;
+  v.human = false;
+  v.driver = new DerbyDriver(DRIVERS[v.id % DRIVERS.length]);
+}
+function dropPeer(id) {
+  const p = NET.peers.get(id);
+  if (!p) return;
+  NET.peers.delete(id);
+  const v = vehicles.find(x => x.peer === id);
+  if (v && G.match && !G.match.over) { handOver(v); callout(`${v.name} left`, 'item'); }
+  lobby();
+}
+// Tell everyone who's here
+function lobby() {
+  NET.lobby = [NET.name + ' (host)', ...[...NET.peers.values()].filter(p => p.ready).map(p => p.name)];
+  NET.room?.send('hb', { lobby: NET.lobby, playing: !!G.match && !G.match.over && G.state !== 'menu' });
+  renderNet();
+}
+
+// ----- Joining -----
+async function joinGame(code) {
+  NET.role = 'guest';
+  NET.code = code;
+  NET.joinAt = performance.now();
+  NET.status = 'Looking for the game…';
+  renderNet();
+  try { NET.room = await openRoom('crunch', code); }
+  catch (e) { console.warn(e); endSession("Couldn't load the online code. Check your connection and try again."); return; }
+  const room = NET.room;
+  const fromHost = fn => (d, id) => { if (id === NET.host) { NET.seen = performance.now(); fn(d); } };
+  room.onJoin = id => { if (!NET.host) room.send('hello', hello(), id); };
+  room.on('welcome', (d, id) => {
+    if (NET.host && NET.host !== id) return;
+    NET.host = id;
+    NET.hostName = String(d?.name || 'Host').slice(0, 16);
+    NET.seen = performance.now();
+    NET.playing = !!d?.playing;
+    NET.status = '';
+    renderNet();
+  });
+  room.on('nope', (d, id) => endSession(d === 'full' ? 'That game is full (eight cars).' : 'That game is on a different version. Reload the page (both of you) and try again.'));
+  room.on('hb', fromHost(d => { NET.lobby = Array.isArray(d?.lobby) ? d.lobby.map(String) : []; NET.playing = !!d?.playing; renderNet(); }));
+  room.on('start', fromHost(d => {
+    if (d?.v !== PROTOCOL || !ARENAS[d.arena] || !Array.isArray(d.cars)) return;
+    // Not in this one (it's single-player, or we came too late): wait for the next
+    if (!d.cars.some(c => c.peer === NET.room.self)) { NET.playing = true; renderNet(); return; }
+    G.cup = d.cup;
+    NET.playing = true;
+    startMatch(d.type, d.arena, { spec: d });
+  }));
+  room.on('snap', fromHost(d => { if (G.match?.guest && !G.match.over) applySnap(d); }));
+  room.on('end', fromHost(d => {
+    const M = G.match;
+    if (!M?.guest || M.over) return;
+    M.order = d.order.map(byId).filter(Boolean);
+    G.cup = d.cup;
+    NET.playing = false;
+    endMatch();
+  }));
+  room.on('abort', fromHost(() => {
+    NET.playing = false;
+    if (G.match?.guest) { G.match.over = true; toMenu(); toast(`${NET.hostName} ended the match.`); }
+  }));
+  room.on('bye', fromHost(() => endSession(`${NET.hostName} closed the game.`)));
+  room.onLeave = id => { if (id === NET.host) endSession(`${NET.hostName} left.`); };
+}
+const hello = () => ({ v: PROTOCOL, name: NET.name, car: isLocked(settings.car) ? 'comet' : settings.car, paint: paintOf(settings.car) });
+// A guest changed car, paint or name: tell the host
+function netPick() { if (NET.role === 'guest' && NET.host) NET.room.send('pick', hello(), NET.host); }
+
+// Leave the session, whichever side we're on, and say why
+function endSession(why) {
+  const wasGuestMatch = G.match?.guest;
+  if (NET.room) { NET.room.send('bye', null); const r = NET.room; setTimeout(() => r.leave(), 300); }
+  Object.assign(NET, { room: null, role: null, code: null, host: null, hostName: '', playing: false, lobby: [], status: '', time: null });
+  NET.peers.clear();
+  NET.fx.length = 0;
+  if (location.search.includes('join=')) history.replaceState(null, '', location.pathname + location.hash);
+  if (wasGuestMatch) { G.match.over = true; toMenu(); }
+  else if (G.match?.net) { G.match.net = false; for (const v of vehicles) if (v.peer) handOver(v); }
+  renderNet();
+  if (G.state === 'menu') renderMenu();
+  if (why) toast(why);
+}
+
+// Heartbeats, and nobody gets stuck: a host that's gone quiet, a game that can't be found, guests that vanished
+setInterval(() => {
+  if (!NET.room) return;
+  const now = performance.now();
+  if (NET.role === 'host') {
+    for (const [id, p] of NET.peers) if (now - p.seen > TIMEOUT) dropPeer(id);
+    lobby();
+  } else if (!NET.host) {
+    if (now - NET.joinAt > FIND_TIMEOUT) endSession("Couldn't find that game. The link may be old, or the host has closed it.");
+    else if (++NET.tries % 3 === 0) NET.room.send('hello', hello());
+  } else {
+    if (now - NET.seen > TIMEOUT) endSession(`Lost the connection to ${NET.hostName}.`);
+    else NET.room.send('ping', null, NET.host);
+  }
+}, HEARTBEAT);
+window.addEventListener('pagehide', () => NET.room?.send('bye', null));
+
+// ----- Online panel in the menu -----
+function renderNet() {
+  const on = !!NET.role, guest = NET.role === 'guest';
+  $('btn-invite').classList.toggle('hidden', on);
+  $('net').classList.toggle('hidden', !on);
+  $('menu').classList.toggle('guest', guest);
+  if (!on) return;
+  const link = NET.code ? `${location.origin}${location.pathname}?join=${NET.code}` : '';
+  $('net-link').classList.toggle('hidden', guest || !NET.room);
+  $('net-url').value = link;
+  let status = NET.status;
+  if (!status && guest) status = NET.playing ? `In ${NET.hostName}'s game. A match is on: you're in the next one.` : `In ${NET.hostName}'s game. Pick a car; you'll drive when they start.`;
+  if (!status) status = NET.peers.size ? 'Your friends drive in your next match.' + (settings.event === 'spree' ? ' (Wrecking Spree is single-player: pick another event.)' : '')
+    : 'Send this link to friends. They take the places of computer drivers in your next match.';
+  $('net-status').textContent = status;
+  $('net-players').textContent = NET.lobby.length > 1 ? 'Here: ' + NET.lobby.join(', ') : '';
+  $('net-leave').textContent = guest ? 'Leave the game' : 'Stop the online game';
+  if (document.activeElement !== $('net-name')) $('net-name').value = NET.name;
+  if (G.state === 'menu') {
+    $('btn-go').disabled = guest || isLocked(settings.car);
+    $('btn-go').textContent = guest ? (NET.host ? 'WAITING FOR HOST…' : 'CONNECTING…') : isLocked(settings.car) ? 'LOCKED' : 'CRUNCH ▸';
+  }
+}
+let toastT = 0;
+function toast(text) {
+  const el = $('net-toast');
+  el.textContent = text;
+  el.classList.remove('hidden');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.classList.add('hidden'), 6000);
+}
+$('btn-invite').onclick = () => hostGame();
+$('net-leave').onclick = () => endSession();
+$('net-copy').onclick = () => {
+  const url = $('net-url').value;
+  navigator.clipboard?.writeText(url).then(() => { $('net-copy').textContent = 'Copied'; setTimeout(() => ($('net-copy').textContent = 'Copy'), 1500); },
+    () => { $('net-url').select(); });
+};
+$('net-name').onchange = () => {
+  NET.name = settings.name = $('net-name').value.slice(0, 16).trim() || NET.name;
+  saveSettings();
+  if (NET.role === 'host') lobby();
+};
+for (const id of ['net-name', 'net-url']) $(id).addEventListener('keydown', e => e.stopPropagation());
+
 // ---------- Balancing ----------
 // Runs AI-only matches without drawing and reports how each car does. From the console:
 //   await derby.simulate(20, 'elim', 'bowl')
@@ -1613,3 +2051,6 @@ G.debug = { get vehicles() { return vehicles; }, get arena() { return arena; }, 
 toMenu();
 if (!store.load('derby.seenHelp', false)) showScreen('help');
 requestAnimationFrame(frame);
+// Opened from a friend's invite
+const invite = new URLSearchParams(location.search).get('join');
+if (validCode(invite)) joinGame(invite);

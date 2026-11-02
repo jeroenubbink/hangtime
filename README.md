@@ -51,7 +51,26 @@ textures are generated in code.
 - **Points** for damage, T-bones, roof crushes, reverse rams, air strikes, spin-outs, wheels knocked off, takedowns, ring-outs,
   revenge, double takedowns and smashed cones, hay bales and oil drums, with a combo for keeping it up.
 - **Unlocks:** two mystery cars wait in wrapped boxes: win a championship for one, and win with four different cars for the other.
+- **Play with friends online:** see below.
 - Day, sunset or floodlit night; keyboard, gamepad and touch.
+
+### Playing online
+
+Click **Play with friends online** in the menu and send the link to up to seven friends. Each one picks a car and takes
+the place of a computer driver in your next match; you choose the event and arena as usual. Last Car Standing, Brawl
+and the Championship can be played together; Wrecking Spree stays single-player.
+
+There's no game server. Your browser runs the match, and your friends' browsers send their controls and show what yours
+sends back, directly over WebRTC. To find each other, the browsers exchange a short encrypted handshake through five
+public [Nostr](https://nostr.com) relays (via [Trystero](https://github.com/dmotz/trystero)); nothing else passes
+through them. Things to know:
+
+- Keep the game in front while you host: a browser pauses hidden tabs, which pauses the match for everyone.
+- If you leave, your friends go back to the menu with a message. If a friend leaves, a computer driver takes over
+  their car.
+- Players can see each other's IP addresses, as with any peer-to-peer connection.
+- A few networks (some offices, universities and mobile carriers) block direct connections; those players can't join
+  without a relay server, which this game doesn't use.
 
 ### Crunchtime controls
 
@@ -166,9 +185,11 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
 - `assets/cars/toy-*.glb`, `assets/scenery/nature.glb`, `assets/scenery/derby.glb`: both games' toy cars, the round
   trees, bushes and flowers, and Crunchtime's cones, drums, bales, tyre stacks, fence panels, barn and windmill,
   modelled in Blender (source: `assets/src/toys.blend`)
+- `js/net.js`: online rooms over WebRTC, found through public Nostr relays (Trystero, loaded only when you go online)
 - `js/toon.js`: the shared toybox look for both games: two-tone shading, rim light and a colour boost, patched into three.js's shaders
 - `js/derby/`: Crunchtime
-  - `main.js`: events, scoring, hits and damage rules, cameras, HUD, menus, and the balancing simulator
+  - `main.js`: events, scoring, hits and damage rules, cameras, HUD, menus, online play (the host runs the match and
+    sends snapshots and effects to guests) and the balancing simulator
   - `vehicle.js`: a derby car: model, dents, lost wheels and parts, splitting in two, and car-to-car impacts
   - `arena.js`: the three arenas (height functions for the ground, distance functions for the walls) and their scenery
   - `ai.js`: opponents: picking victims, leading their aim, swooping run-ups, reverse rams, repairs, the rooftop edge

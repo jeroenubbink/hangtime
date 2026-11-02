@@ -174,12 +174,12 @@ export class DerbyDriver {
       s *= 1 + (1 - v.hp / v.maxHp) * 0.8;                                         // finish off the weak
       if (me.lastHit && me.lastHit.by === v && ctx.time - me.lastHit.t < 8) s *= T.grudge;   // revenge
       if (v === this.target) s *= 1.35;                                            // stick with it
-      if (v.player) s *= ctx.playerBias || 1.1;
+      if (v.player || v.human) s *= ctx.playerBias || 1.1;
       if (v.shield > 0) s *= 0.3;
-      // Don't all pile onto one car: the player gets at most three hunters at a time, anyone else four
+      // Don't all pile onto one car: a human gets at most three hunters at a time, anyone else four
       let hunters = 0;
       for (const o of ctx.vehicles) if (o !== me && o.alive && o.driver?.target === v) hunters++;
-      if (v !== this.target && hunters >= (v.player ? 3 : 4)) s *= 0.3;
+      if (v !== this.target && hunters >= (v.player || v.human ? 3 : 4)) s *= 0.3;
       s *= T.aggro;
       if (s > bs) { bs = s; best = v; }
     }

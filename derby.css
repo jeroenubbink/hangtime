@@ -82,6 +82,20 @@ kbd { display: inline-block; min-width: 20px; text-align: center; font: 600 12px
 #btn-go:disabled { background: #555; border-color: #555; color: #bbb; cursor: not-allowed; }
 #records { font-size: 12px; opacity: 0.65; margin-top: 10px; text-align: center; }
 #menu.cup .arena-col { opacity: 0.35; pointer-events: none; }
+.links { display: flex; gap: 20px; justify-content: center; }
+
+/* Online: the invite panel, and what a guest doesn't choose (the host does) */
+#net { margin-top: 14px; padding: 2px 14px 12px; border: 1px solid var(--accent); border-radius: 12px; background: rgba(255, 122, 26, 0.1); }
+#net h3 { margin-top: 12px; }
+#net-status { font-size: 14px; line-height: 1.4; }
+#net-link { display: flex; gap: 6px; margin-top: 10px; }
+#net input { flex: 1; min-width: 0; font: 14px Rubik, sans-serif; color: inherit; background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; user-select: text; -webkit-user-select: text; }
+#net-players:not(:empty) { font-size: 13px; opacity: 0.8; margin-top: 8px; }
+.net-name { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; }
+#menu.guest .ev-title, #menu.guest #events, #menu.guest .arena-row { display: none; }
+#net-toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 20; max-width: calc(100% - 32px);
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 10px 16px; text-align: center; }
 
 .card.help { width: min(880px, 100%); }
 .help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 24px; margin-bottom: 16px; }

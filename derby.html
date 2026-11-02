@@ -17,6 +17,7 @@
   <canvas id="labels"></canvas>
 
   <div id="loading">Warming up engines…</div>
+  <div id="net-toast" class="hidden" role="status"></div>
 
   <div id="hud" class="hidden">
     <div id="status"><div id="status-main"></div><div id="status-sub"></div></div>
@@ -43,7 +44,15 @@
       <a class="back" href="index.html#games">‹ Games</a>
       <h1>CRUNCH<span>TIME</span></h1>
       <p class="tag">demolition derby · eight cars · one left standing</p>
-      <h3>Event</h3>
+      <div id="net" class="hidden">
+        <h3>Online</h3>
+        <div id="net-status"></div>
+        <div id="net-link" class="hidden"><input id="net-url" readonly aria-label="Invite link"><button id="net-copy">Copy</button></div>
+        <div id="net-players"></div>
+        <label class="net-name">Your name <input id="net-name" maxlength="16" autocomplete="off"></label>
+        <button id="net-leave" class="link">Leave</button>
+      </div>
+      <h3 class="ev-title">Event</h3>
       <div id="events" class="events"></div>
       <h3>Car</h3>
       <div class="garage">
@@ -62,7 +71,7 @@
       </div>
       <button id="btn-go" class="primary">CRUNCH ▸</button>
       <div id="records"></div>
-      <button id="btn-help" class="link">How to play</button>
+      <div class="links"><button id="btn-invite" class="link">Play with friends online</button><button id="btn-help" class="link">How to play</button></div>
     </div>
   </div>
 

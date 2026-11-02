@@ -111,39 +111,51 @@ export class Pickups {
     for (const p of this.list) {
       if (!p.active) {
         p.wait -= dt;
-        if (p.wait <= 0) {
-          p.active = true;
-          p.type = this.pick();
-          p.mesh = new THREE.Mesh(this.box, this.mats[p.type]);
-          p.mesh.position.set(p.x, p.y + 1.4, p.z);
-          this.group.add(p.mesh);
-          p.beam.material.color.set(ITEMS[p.type].colour);
-          p.beam.visible = true;
-        }
+        if (p.wait <= 0) this.show(p, this.pick());
         continue;
       }
-      p.mesh.rotation.y = time * 1.8;
-      p.mesh.rotation.x = Math.sin(time * 1.3) * 0.3;
-      p.mesh.position.y = p.y + 1.4 + Math.sin(time * 2.4 + p.x) * 0.2;
       for (const v of vehicles) {
         if (!v.alive) continue;
         const c = v.car.pos;
         if ((c.x - p.x) ** 2 + (c.z - p.z) ** 2 < 2.6 * 2.6 && Math.abs(c.y - p.y - 1) < 3) {
           got.push({ vehicle: v, type: p.type, pos: p.mesh.position.clone() });
-          this.group.remove(p.mesh);
-          p.mesh = null;
-          p.active = false;
-          p.beam.visible = false;
+          this.show(p, null);
           p.wait = 7 + Math.random() * 6;
           break;
         }
       }
     }
+    this.animate(time);
     return got;
   }
+
+  // Put a crate of `type` on pad p, or take it away (null)
+  show(p, type) {
+    if (p.mesh) { this.group.remove(p.mesh); p.mesh = null; }
+    p.active = !!type;
+    p.type = type;
+    p.beam.visible = !!type;
+    if (!type) return;
+    p.mesh = new THREE.Mesh(this.box, this.mats[type]);
+    p.mesh.position.set(p.x, p.y + 1.4, p.z);
+    this.group.add(p.mesh);
+    p.beam.material.color.set(ITEMS[type].colour);
+  }
+
+  animate(time) {
+    for (const p of this.list) {
+      if (!p.mesh) continue;
+      p.mesh.rotation.y = time * 1.8;
+      p.mesh.rotation.x = Math.sin(time * 1.3) * 0.3;
+      p.mesh.position.y = p.y + 1.4 + Math.sin(time * 2.4 + p.x) * 0.2;
+    }
+  }
+
+  // Online: what's on each pad, and showing what the host says is there
+  state() { return this.list.map(p => (p.active ? p.type : 0)); }
+  sync(types) { this.list.forEach((p, i) => { if ((types[i] || null) !== p.type) this.show(p, types[i] || null); }); }
 }
 
-// ---------- Mines ----------
 export class Mines {
   constructor(scene) {
     this.scene = scene;
@@ -171,7 +183,8 @@ export class Mines {
   remove(i) { this.scene.remove(this.list[i].mesh); this.list.splice(i, 1); }
 
   // Returns mines set off this step: [{ owner, pos }]
-  update(dt, vehicles) {
+  // `detect`: false for an online guest, whose mines only blink (the host says when they go off)
+  update(dt, vehicles, detect = true) {
     const out = [];
     for (let i = this.list.length - 1; i >= 0; i--) {
       const m = this.list[i];
@@ -179,6 +192,7 @@ export class Mines {
       m.lamp.visible = Math.sin(m.t * (m.t > 1 ? 14 : 5)) > 0;
       if (m.t < 1) continue;                    // arming
       if (m.t > 40) { this.remove(i); continue; }
+      if (!detect) continue;
       for (const v of vehicles) {
         if (!v.alive) continue;
         const p = v.car.pos;
@@ -190,6 +204,11 @@ export class Mines {
       }
     }
     return out;
+  }
+
+  removeNear(pos) {
+    const i = this.list.findIndex(m => m.mesh.position.distanceTo(pos) < 0.5);
+    if (i >= 0) this.remove(i);
   }
 
   clear() { while (this.list.length) this.remove(0); }
@@ -260,9 +279,9 @@ export class Props {
   dispose() { for (const m of Object.values(this.meshes)) this.scene.remove(m); }
 
   // Knock over props cars drive into. Returns [{ vehicle, prop, mesh, vel }] for the caller to score and fling.
+  // Cars running over props: returns the hits; `knock` sends each one flying
   update(vehicles) {
     const out = [];
-    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
     for (const p of this.list) {
       if (!p.alive) continue;
       for (const v of vehicles) {
@@ -270,23 +289,29 @@ export class Props {
         const c = v.car;
         const dx = c.pos.x - p.x, dz = c.pos.z - p.z;
         if (dx * dx + dz * dz > 9 || Math.abs(c.pos.y - p.y) > 2.5) continue;
-        // Close enough: test against the car's length
         const lp = v.localPoint(new THREE.Vector3(p.x, c.pos.y, p.z));
         if (Math.abs(lp.x) > v.r + 0.3 || Math.abs(lp.z) > v.len / 2 + 0.3) continue;
         p.alive = false;
-        const k = this.kinds[p.kind], m = this.meshes[p.kind];
-        m.setMatrixAt(p.index, zero);
-        m.instanceMatrix.needsUpdate = true;
-        const mesh = new THREE.Mesh(k.geo, propMat(k.mat, p.colour));
-        mesh.rotation.y = p.rot;
-        k.geo.userData.shared = true;
         const sp = c.vel.length();
         const vel = c.vel.clone().multiplyScalar(1.15).add(new THREE.Vector3((Math.random() - 0.5) * 3, 3 + sp * 0.25, (Math.random() - 0.5) * 3));
-        c.vel.multiplyScalar(1 - k.mass * 0.03);
-        out.push({ vehicle: v, prop: p, mesh, pos: new THREE.Vector3(p.x, p.y + 0.4, p.z), vel, radius: k.r });
+        c.vel.multiplyScalar(1 - this.kinds[p.kind].mass * 0.03);
+        out.push({ vehicle: v, prop: p, i: this.list.indexOf(p), vel });
         break;
       }
     }
     return out;
   }
+
+  // Take prop p off its spot; returns a loose copy to throw about
+  knock(p) {
+    p.alive = false;
+    const k = this.kinds[p.kind], m = this.meshes[p.kind];
+    m.setMatrixAt(p.index, ZERO);
+    m.instanceMatrix.needsUpdate = true;
+    const mesh = new THREE.Mesh(k.geo, propMat(k.mat, p.colour));
+    mesh.rotation.y = p.rot;
+    k.geo.userData.shared = true;
+    return { mesh, pos: new THREE.Vector3(p.x, p.y + 0.4, p.z), radius: k.r };
+  }
 }
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
