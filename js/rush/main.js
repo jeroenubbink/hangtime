@@ -14,6 +14,7 @@ import { City, rng } from './city.js';
 import { LEVELS } from './levels.js';
 import { Traffic } from './traffic.js';
 import { Props } from './props.js';
+import { buildStation as stationModel, DEBRIS_COLOURS } from './station.js';
 import { RIDES, TRAFFIC, TRAFFIC_PAINTS } from './roster.js';
 
 const $ = id => document.getElementById(id);
@@ -480,6 +481,8 @@ function blowUp(X) {
     }
   }
   startle(p, 70);
+  // (a blast beside the petrol station sets it off)
+  if (G.station && !G.station.lit && G.crash && atStation(p, 4)) ignite(p, X);
   if (G.crash) spike(0.2, 1.1);
   G.shake = Math.max(G.shake, player && player.car.pos.distanceTo(p) < 40 ? 1 : 0.4);
 }
@@ -547,37 +550,42 @@ function wallHit(v, w) {
 }
 
 // ---------- The petrol station ----------
-// It only goes up if you put your own car into it: under the canopy at speed, or through a pump. Then the
-// pumps blow, the canopy goes, and every car on the forecourt goes up one after another, thrown 10-15 m into
-// the air (the lighter, the higher) and out over the junction, to come down on whatever's there.
+// Fuel's Paradise goes up when something hits it hard enough: a car under the canopy at speed, through a pump
+// or a pillar, or a blast beside it (yours to set off, or, once you've crashed, the traffic's). Then the pumps
+// blow, the canopy and its logo go, and every car on the forecourt goes up one after another, thrown 10-15 m
+// into the air (the lighter, the higher) and out over the junction, to come down on whatever's there.
 const canopyMats = {};
 const debrisMat = colour => canopyMats[colour] || (canopyMats[colour] = new THREE.MeshLambertMaterial({ color: colour }));
 function pillars(S) {
   if (!S) return [];
   return [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([i, k]) => ['pillar', S.x + i * (S.w / 2 - 1.2), S.z + k * (S.d / 2 - 1.2), 0]);
 }
+// (its materials and textures are made once and kept: see station.js)
+function dropStationPart(m) { if (!m) return; scene.remove(m); m.traverse(o => o.geometry?.dispose()); }
 function buildStation(S) {
-  if (G.station?.mesh) dropMesh(G.station.mesh);
+  const T = G.station;
+  if (T) for (const k of ['canopy', 'kerbs', 'logo', 'face', 'front']) dropStationPart(T[k]);
   G.station = null;
   if (!S) return;
-  const y = city.base(S.x, S.z) + S.h;
-  const g = merge([
-    [new THREE.BoxGeometry(S.w, 0.5, S.d).translate(0, 0.25, 0), '#f4f4f0'],
-    [new THREE.BoxGeometry(S.w + 0.3, 0.9, S.d + 0.3).translate(0, 0.75, 0), '#e8352b'],
-    [new THREE.BoxGeometry(S.w + 0.34, 0.18, S.d + 0.34).translate(0, 1.0, 0), '#ffd23a'],
-    [new THREE.BoxGeometry(S.w - 2, 0.06, S.d - 2).translate(0, -0.02, 0), '#fffbe0'],
-  ]);
-  const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true }));
-  mesh.position.set(S.x, y, S.z);
-  mesh.castShadow = mesh.receiveShadow = true;
-  scene.add(mesh);
-  G.station = { S, mesh, lit: false, fx: [] };
+  const L = city.level, P = L.props || [], sign = P.find(p => p[0] === 'sign');
+  const parts = stationModel({ ...S, pumps: P.filter(p => p[0] === 'pump').map(p => [p[1], p[2]]) }, city.base(S.x, S.z),
+    sign && [sign[1], sign[2]], L.blocks?.find(b => b.shop));
+  for (const m of Object.values(parts)) if (m) scene.add(m);
+  G.station = { S, ...parts, lit: false, fx: [], sign: props.list.find(p => p.kind === 'sign') };
 }
+// Is `p` in under the canopy (or within `m` of it)?
+function atStation(p, m = 0) {
+  const S = G.station.S;
+  return Math.abs(p.x - S.x) < S.w / 2 + m && Math.abs(p.z - S.z) < S.d / 2 + m && p.y < city.base(S.x, S.z) + S.h + 2;
+}
+// Until you've crashed only you can set it off
+const canLight = v => G.station && !G.station.lit && G.state !== 'results' && (v === player || !!G.crash);
 function station() {
   const T = G.station;
   if (!T) return;
-  const S = T.S, c = player.car;
-  if (!T.lit && G.state !== 'results' && Math.abs(c.pos.x - S.x) < S.w / 2 && Math.abs(c.pos.z - S.z) < S.d / 2 && c.vel.length() > 14) ignite();
+  if (!T.lit) for (const B of bodies()) {
+    if (canLight(B) && B.car.vel.length() > 14 && atStation(B.car.pos)) { ignite(B.car.pos, B); break; }
+  }
   // The fireballs over the pumps, one after another
   for (let i = T.fx.length - 1; i >= 0; i--) {
     const f = T.fx[i];
@@ -589,10 +597,12 @@ function station() {
     for (const k of props.blast(f.p.x, f.p.z, 7, 10)) scatter(k);
   }
 }
-function ignite() {
-  const T = G.station, S = T.S, c = player.car;
+// Something's set it off at `p`: `by` (you, or anything else)
+function ignite(p, by) {
+  const T = G.station, S = T.S;
+  p = p.clone();
   T.lit = true;
-  if (G.state === 'run') startCrash({ point: c.pos.clone(), speed: c.vel.length() }, null);
+  if (by === player && G.state === 'run') startCrash({ point: p.clone(), speed: player.car.vel.length() }, null);
   callout('FILL \'ER UP', 'big');
   const y = city.base(S.x, S.z);
   // The big one under the canopy, then each pump
@@ -601,23 +611,29 @@ function ignite() {
   spike(0.12, 1.6);
   G.shake = 1.4;
   G.flash = 0.6;
-  props.list.filter(p => p.kind === 'pump' && p.alive).sort((a, b) => Math.hypot(a.x - c.pos.x, a.z - c.pos.z) - Math.hypot(b.x - c.pos.x, b.z - c.pos.z))
-    .forEach((p, i) => T.fx.push({ t: 0.1 + i * 0.14, p: new THREE.Vector3(p.x, p.y + 1, p.z), big: 1.5 }));
-  // The canopy comes apart
-  dropMesh(T.mesh);
-  T.mesh = null;
+  const far = q => Math.hypot(q.x - p.x, q.z - p.z);
+  props.list.filter(q => q.kind === 'pump' && q.alive).sort((a, b) => far(a) - far(b))
+    .forEach((q, i) => T.fx.push({ t: 0.1 + i * 0.14, p: new THREE.Vector3(q.x, q.y + 1, q.z), big: 1.5 }));
+  // The canopy comes apart, and the logo goes up off the roof, spinning
+  dropStationPart(T.canopy);
+  T.canopy = null;
   for (let i = 0; i < 6; i++) {
-    const w = S.w / 3, d = S.d / 2, m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.6, d), debrisMat(i % 2 ? '#f4f4f0' : '#e8352b'));
+    const w = S.w / 3, d = S.d / 2, m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.6, d), debrisMat(DEBRIS_COLOURS[i % DEBRIS_COLOURS.length]));
     m.castShadow = true;
-    const p = new THREE.Vector3(S.x + ((i % 3) - 1) * w, y + S.h, S.z + (i < 3 ? -d / 2 : d / 2));
-    debris.add(m, p, new THREE.Vector3((p.x - S.x) * 0.6, 14 + G.rand() * 8, (p.z - S.z) * 0.5), { radius: 1.2, spin: 3, life: 20 });
+    const q = new THREE.Vector3(S.x + ((i % 3) - 1) * w, y + S.h, S.z + (i < 3 ? -d / 2 : d / 2));
+    debris.add(m, q, new THREE.Vector3((q.x - S.x) * 0.6, 14 + G.rand() * 8, (q.z - S.z) * 0.5), { radius: 1.2, spin: 3, life: 20 });
+  }
+  if (T.logo) {
+    scene.remove(T.logo);
+    debris.add(T.logo, T.logo.position.clone(), new THREE.Vector3((G.rand() - 0.5) * 4, 22, 7), { radius: 0.6, spin: 4, life: 20 });
+    T.logo = null;
   }
   for (const k of props.blast(S.x, S.z, Math.max(S.w, S.d) / 2 + 2, 8)) scatter(k);
-  // Every vehicle on the forecourt, nearest you first
-  const lot = traffic.list.filter(v => v.lane?.parked && !v.blown).sort((a, b) => a.car.pos.distanceTo(c.pos) - b.car.pos.distanceTo(c.pos));
+  // Every vehicle on the forecourt, nearest the blast first
+  const lot = traffic.list.filter(v => v.lane?.parked && !v.blown).sort((a, b) => far(a.car.pos) - far(b.car.pos));
   lot.forEach((v, i) => {
     v.asleep = false;
-    if (!v.gen) v.gen = 1;
+    if (!v.gen) v.gen = (by?.gen || 0) + 1;
     v.launch = true;
     if (v.driver) v.driver.out = true;
     v.boomT = 0.25 + i * 0.16 + G.rand() * 0.1;
@@ -635,7 +651,14 @@ function launch(X) {
 }
 // A prop thrown by a blast, into the debris
 function scatter(k) {
-  const pc = props.piece(k.prop);
+  const pc = props.piece(k.prop), T = G.station;
+  // (the price sign's face is the station's: it goes with it)
+  if (k.prop.kind === 'sign' && T?.face) {
+    scene.remove(T.face);
+    T.face.position.set(0, T.face.position.y - pc.pos.y, 0);
+    pc.mesh.add(T.face);
+    T.face = null;
+  }
   debris.add(pc.mesh, pc.pos, k.vel, { radius: pc.radius, spin: 7, life: 14 });
 }
 
@@ -881,14 +904,13 @@ function step() {
       if (h) collided(all[i], all[j], h);
     }
     for (const k of props.update(all.filter(b => !b.half))) {
-      const pc = props.piece(k.prop);
-      debris.add(pc.mesh, pc.pos, k.vel, { radius: pc.radius, spin: 7, life: 14 });
+      scatter(k);
       sound.thud(4);
-      sparks(pc.pos, 8);
+      sparks(_pp.set(k.prop.x, k.prop.y + 1, k.prop.z), 8);
       if (k.prop.kind === 'hydrant') G.geysers.push({ p: new THREE.Vector3(k.prop.x, k.prop.y, k.prop.z), t: 7 });
       if (k.vehicle === player && G.state === 'run') G.shake = Math.max(G.shake, 0.35);
       if (G.state === 'crash' && (k.vehicle.gen > 0 || k.vehicle === player)) { G.score += 30; G.crash.quiet = 0; tally(null, 'prop', 30, _pp.set(k.prop.x, k.prop.y, k.prop.z)); }
-      if (k.prop.kind === 'pump' && k.vehicle === player && G.station && !G.station.lit && c.vel.length() > 8) ignite();
+      if ((k.prop.kind === 'pump' || k.prop.kind === 'pillar') && canLight(k.vehicle) && k.vehicle.car.vel.length() > 8) ignite(k.vehicle.car.pos, k.vehicle);
     }
     station();
     if (G.state === 'run') {
@@ -1536,7 +1558,7 @@ Object.assign(flashEl.style, { position: 'fixed', inset: 0, pointerEvents: 'none
   background: 'radial-gradient(ellipse at center, transparent 45%, rgba(220,30,20,0.55) 100%)' });
 document.body.appendChild(flashEl);
 
-G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, playerInput, step, startRun, skipTo, keys, camera, tick };
+G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render() };
 toMenu();
 if (!store.load('rush.seenHelp', false)) showScreen('help');
 requestAnimationFrame(frame);

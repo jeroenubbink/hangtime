@@ -358,7 +358,8 @@ export class Traffic {
         v.input = { ...this.input };
       }
       const behind = (p.x - focus.x) * focus.dx + (p.z - focus.z) * focus.dz < -150;
-      if ((v.s > v.lane.to - 3 && (v.asleep || d > 60)) || (behind && !v.touched)) this.remove(v);
+      // (not one the crash has had: shoved past the end of its lane, it's still in play)
+      if (!v.touched && !v.gen && ((v.s > v.lane.to - 3 && (v.asleep || d > 60)) || behind)) this.remove(v);
     }
     for (const L of this.lanes) L.cars.sort((a, b) => a.s - b.s);
   }

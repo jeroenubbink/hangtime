@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { merge, sceneryGeo } from '../scenery.js';
 import { CURB } from './city.js';
+import { PUMP, PILLAR, SIGN } from './station.js';
 
 const CELL = 20;
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -41,22 +42,8 @@ const MODELS = {
     [new THREE.SphereGeometry(0.2, 8, 5).translate(0, 0.8, 0), '#3a3a40'],
   ]),
   cone: () => sceneryGeo('cone') || new THREE.ConeGeometry(0.3, 0.8, 10).translate(0, 0.4, 0),
-  pump: () => merge([
-    [new THREE.BoxGeometry(1.0, 0.25, 0.7).translate(0, 0.12, 0), '#9a9a9a'],
-    [new THREE.BoxGeometry(0.8, 1.5, 0.5).translate(0, 1.0, 0), '#e8352b'],
-    [new THREE.BoxGeometry(0.7, 0.35, 0.52).translate(0, 1.95, 0), '#f4f4f0'],
-    [new THREE.BoxGeometry(0.5, 0.3, 0.54).translate(0, 1.3, 0), '#2a2d33'],
-    [new THREE.CylinderGeometry(0.05, 0.05, 0.8, 6).translate(0.45, 1.1, 0), '#222222'],
-  ]),
-  // A tall price sign on a pole
-  sign: () => merge([
-    [new THREE.CylinderGeometry(0.16, 0.2, 7, 8).translate(0, 3.5, 0), '#5d6470'],
-    [new THREE.BoxGeometry(2.6, 3.2, 0.4).translate(0, 8.3, 0), '#f4f4f0'],
-    [new THREE.BoxGeometry(2.7, 0.9, 0.44).translate(0, 9.5, 0), '#e8352b'],
-    [new THREE.BoxGeometry(2.2, 0.5, 0.46).translate(0, 8.2, 0), '#2a2d33'],
-    [new THREE.BoxGeometry(2.2, 0.5, 0.46).translate(0, 7.4, 0), '#2a2d33'],
-  ]),
-  pillar: () => merge([[new THREE.BoxGeometry(0.5, 5.4, 0.5).translate(0, 2.7, 0), '#d8dadc'], [new THREE.BoxGeometry(0.8, 0.5, 0.8).translate(0, 0.25, 0), '#9a9a9a']]),
+  // Fuel's Paradise: its pumps, canopy pillars and price sign (the sign's face is the station's)
+  pump: PUMP, pillar: PILLAR, sign: SIGN,
   barrier: () => merge([
     [new THREE.BoxGeometry(2.2, 0.32, 0.12).translate(0, 0.85, 0), (y, f) => (f % 4 < 2 ? '#e8352b' : '#f4f4f0')],
     [new THREE.BoxGeometry(0.08, 0.9, 0.08).translate(-0.9, 0.45, 0), '#3a3a40'],
@@ -68,7 +55,7 @@ const KINDS = {
   lamp: { r: 0.3, slow: 0.1, h: 6 }, light: { r: 0.3, slow: 0.1, h: 4.6 }, tree: { r: 0.45, slow: 0.22, h: 4 },
   bin: { r: 0.35, slow: 0.02, h: 1 }, hydrant: { r: 0.25, slow: 0.05, h: 0.8 }, bollard: { r: 0.25, slow: 0.08, h: 0.9 },
   cone: { r: 0.35, slow: 0, h: 0.8 }, barrier: { r: 1.1, slow: 0.03, h: 1 },
-  pump: { r: 0.5, slow: 0.12, h: 2.1 }, sign: { r: 0.3, slow: 0.15, h: 9.9 }, pillar: { r: 0.35, slow: 0.25, h: 5.4 },
+  pump: { r: 0.5, slow: 0.12, h: 2.1 }, sign: { r: 0.3, slow: 0.15, h: 11.5 }, pillar: { r: 0.45, slow: 0.25, h: 5.4 },
 };
 
 export class Props {

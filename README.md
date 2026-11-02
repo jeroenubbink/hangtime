@@ -89,15 +89,14 @@ through them. Things to know:
 
 ## Rushtime
 
-- **Six junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
+- **Four junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
   **Dockside Drop**, a downhill run with a crest that throws you, ending at a six-lane harbour road with the
   water behind it; **Gridlock Leap**, where your way is jammed solid back from the lights and the roadworks left
-  a ramp: fly onto the jam and shove it into the busy junction; **The Fork**, where your road splits in a Y with
-  traffic streaming through the nose; **The Merge**, down the slip road into a main road whose own traffic is held
-  at the merge; and **Last Chance Gas**, a T-junction with a petrol station straight across it. Thread the narrow
-  gap through the queues and the cross traffic and put your car under the canopy at speed (or through a pump),
-  and the station goes up: the pumps, the canopy, then every car on the forecourt, thrown 10-15 m into the air and
-  out over the junction.
+  a ramp: fly onto the jam and shove it into the busy junction; and **Last Chance Gas**, a T-junction with
+  Fuel's Paradise straight across it, a petrol station with a sunset-and-flaming-palm logo on its roof. Anything
+  that hits it hard enough sets it off: your car under the canopy at speed or through a pump or pillar, or, once
+  you've crashed, the traffic you've thrown at it, or a blast beside it. Then the pumps go, the canopy and its logo
+  fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction.
 - **The opening shot** pans across the junction, then flies back down the road to your car and round behind it
   for the countdown.
 - **The traffic is scripted:** the same every time, so a junction can be learned. Until you crash its drivers are
