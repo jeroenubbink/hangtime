@@ -96,8 +96,8 @@ export const LEVELS = {
     // Across both your lanes: a fast run off the lip comes down on the jam, a slower one runs into the back of it
     ramps: [{ x: 3.6, z: 150, len: 10, h: 1.0, w: 7.2 }],
     props: [
-      ...[160, 166, 172, 178, 184].flatMap(z => [['cone', -0.5, z, 0], ['cone', 7.6, z, 0]]),
-      ['barrier', -0.6, 152, Math.PI / 2], ['barrier', 7.7, 152, Math.PI / 2],
+      ...[160, 166, 172, 178, 184].flatMap(z => [['cone', 0.4, z, 0], ['cone', 7.6, z, 0]]),
+      ['barrier', 0.5, 152, Math.PI / 2], ['barrier', 7.7, 152, Math.PI / 2],
     ],
     lanes: [
       // Your way: nothing but the ramp, and a long queue back from the red light

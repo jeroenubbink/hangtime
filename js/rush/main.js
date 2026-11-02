@@ -3,7 +3,7 @@
 // busy junction. Everything that's wrecked in the pile-up that follows counts, and so does how much heat
 // you brought with you.
 import * as THREE from 'three';
-import { loadCarKits, kitScene, buildCarModel, WHEELS, HULL } from '../car.js';
+import { loadCarKits, kitScene, buildCarModel, paintOf, WHEELS, HULL } from '../car.js';
 import { Sound } from '../audio.js';
 import * as store from '../store.js';
 import { createStage, TIMES } from '../derby/stage.js';
@@ -110,7 +110,7 @@ function makeTraffic(kind) {
   const [w, l] = def.size;
   if (l > 6) v.spheres = [-1, -0.5, 0, 0.5, 1].map(k => k * (l / 2 - w / 2));
   v.gen = 0;
-  v.colour = new THREE.Color(typeof paint === 'string' && paint[0] === '#' ? paint : '#888');
+  v.colour = paintOf(paint);
   v.setLights(TIMES[settings.time].lamps);
   return v;
 }
@@ -130,15 +130,19 @@ function clearRun() {
   if (traffic) for (const v of traffic.list.slice()) traffic.remove(v);
   traffic = null;
   if (player) { player.dispose(); player = null; }
-  for (const h of halves) scene.remove(h.model);
+  for (const h of halves) dropHalf(h);
   halves = [];
   debris?.clear();
   smoke.clear(); glow.clear();
-  for (const s of scorches) scene.remove(s);
+  for (const s of scorches) dropMesh(s);
   scorches.length = 0;
-  for (const r of rings) scene.remove(r.m);
+  for (const r of rings) dropMesh(r.m);
   rings.length = 0;
 }
+// Take a one-off effect mesh out of the scene and free its geometry and material
+function dropMesh(m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
+// A torn-off half: its triangles are its own (the material is its car's, freed with the car)
+function dropHalf(h) { scene.remove(h.model); h.model.traverse(o => o.geometry?.dispose()); }
 
 // Start (or restart) a run on the current level: `pre` seconds of intro and countdown before GO
 function startRun(pre) {
@@ -155,11 +159,12 @@ function startRun(pre) {
   player = new Car(city, scene, 0, def, def.livery, { player: true, name: 'You' });
   player.gen = 0;
   player.kind = 'you';
+  player.colour = paintOf(def.livery);
   player.setLights(TIMES[settings.time].lamps);
   player.respawn({ x: L.start.x, z: L.start.z, yaw: 0 });
   for (let i = 0; i < 60; i++) player.car.step(DT, { ...NONE, brake: 1, stop: true });
   Object.assign(G, { t: 0, pre, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0,
-    boosting: false, steer: 0, yaw: 0, drift: 0, geysers: [], air: 0, nearT: 0, oncoming: 0, best: 0, ended: false, slow: 1, spike: 0 });
+    boosting: false, drifting: false, steer: 0, yaw: 0, drift: 0, geysers: [], air: 0, nearT: 0, oncoming: 0, best: 0, ended: false, slow: 1, spike: 0 });
   G.state = pre > PRE_COUNT ? 'intro' : 'count';
   G.preSteps = Math.round(PRE_ALL * 120);
   skipTo(pre);
@@ -176,6 +181,7 @@ function startRun(pre) {
 
 // ---------- Effects ----------
 const debrisCache = {};
+const PAINTED = new Set(['door', 'doorWin', 'plate', 'plateB', 'plateS', 'spoiler']);
 function debrisMesh(name, colour) {
   const file = DEBRIS[name];
   if (!debrisCache[file]) {
@@ -187,11 +193,13 @@ function debrisMesh(name, colour) {
     const c = geo.boundingBox.getCenter(new THREE.Vector3());
     geo.translate(-c.x, -c.y, -c.z);
     geo.userData.shared = true;
-    debrisCache[file] = { geo, map };
+    debrisCache[file] = { geo, mat: new THREE.MeshStandardMaterial({ map, roughness: 0.6 }), mats: {} };
   }
-  const { geo, map } = debrisCache[file];
-  const mat = new THREE.MeshStandardMaterial({ map, roughness: 0.6, color: colour || '#ffffff' });
-  const m = new THREE.Mesh(geo, mat);
+  const d = debrisCache[file];
+  // Body panels take the car's paint (one material per colour, shared by every piece)
+  let mat = d.mat;
+  if (colour && PAINTED.has(name)) mat = d.mats[colour] || (d.mats[colour] = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.45, metalness: 0.25 }));
+  const m = new THREE.Mesh(d.geo, mat);
   m.castShadow = true;
   const g = new THREE.Group();
   g.add(m);
@@ -239,7 +247,7 @@ function scorch(p, size) {
   m.position.set(p.x, city.groundHeight(p.x, p.z) + 0.03, p.z);
   scene.add(m);
   scorches.push(m);
-  if (scorches.length > 20) scene.remove(scorches.shift());
+  if (scorches.length > 20) dropMesh(scorches.shift());
 }
 const rings = [];
 function ring(p, colour, opts = {}) {
@@ -354,7 +362,7 @@ function wreck(X, split) {
   if (split && X.def.size[1] < 6) {
     halves.push(...X.split().map(h => Object.assign(h, { gen: X.gen })));
     X.halved = true;
-    while (halves.length > 10) scene.remove(halves.shift().model);
+    while (halves.length > 10) dropHalf(halves.shift());
   } else X.wreck();
   if (X.gen > 0 && G.state === 'crash') G.wrecked++;
   scoreEvent(X, 500 * X.value, split ? 'TORN IN HALF' : X.special ? X.kind.toUpperCase() + ' DOWN' : 'WRECKED', !!X.special);
@@ -452,7 +460,8 @@ function wallHit(v, w) {
   const dmg = damageFrom(w.impulse) * 0.6;
   if (v === player && G.state === 'run' && w.speed > 14) startCrash({ point: w.point, speed: w.speed, normal: w.normal }, null);
   if (w.speed > 4) { sparks(w.point, Math.min(30, 3 + dmg)); if (camera.position.distanceTo(w.point) < 40) sound.crunch(Math.min(1, dmg / 25)); }
-  if (dmg > 0.5) hurt(v, null, dmg, w.point, w.normal.clone().negate());
+  // (the city hands back the wall's normal pointing out of the wall, into the car: the way hurt() wants it)
+  if (dmg > 0.5) hurt(v, null, dmg, w.point, w.normal);
 }
 
 // ---------- The crash ----------
@@ -469,7 +478,10 @@ function startCrash(h, other) {
   G.crash.ang = Math.atan2(-f.x, -f.z) + (Math.random() < 0.5 ? 1 : -1) * (0.9 + Math.random() * 0.5);
   if (other && !other.half && !other.gen) other.gen = 1;
   G.chain = Math.max(G.chain, 1);
+  // Off the throttle and out of the drift: no more exhaust flame or tyre smoke from your wreck
   G.boosting = false;
+  player.boosting = false;
+  G.drifting = false;
   spike(0.12, 1.6);
   G.shake = 1.2;
   G.punch = 10;
@@ -546,7 +558,7 @@ function drive(dt) {
     G.yaw = c.w.y;
     return;
   }
-  if (G.air > 0.45) { callout(`AIR ${G.air.toFixed(1)}s<small>heat +${(G.air * 0.15).toFixed(1)}</small>`); G.heat += G.air * 0.15; G.rush = Math.min(1, G.rush + G.air * 0.15); }
+  if (G.air > 0.45) { callout(`AIR ${G.air.toFixed(1)}s<small>heat +${(G.air * 0.15).toFixed(1)}</small>`); G.heat = Math.min(4, G.heat + G.air * 0.15); G.rush = Math.min(1, G.rush + G.air * 0.15); }
   G.air = 0;
   const sp = Math.abs(vF);
   // Engine and brakes
@@ -1080,7 +1092,7 @@ function effects(dt, rawDt) {
     r.t += dt;
     r.m.scale.setScalar(1 + r.t * r.grow);
     r.m.material.opacity = Math.max(0, r.alpha * (1 - r.t / r.life));
-    if (r.t > r.life) { scene.remove(r.m); r.m.geometry.dispose(); rings.splice(i, 1); }
+    if (r.t > r.life) { dropMesh(r.m); rings.splice(i, 1); }
   }
 }
 
@@ -1125,11 +1137,16 @@ function updateHud(dt) {
 function showScreen(id) {
   for (const s of ['menu', 'results', 'pause', 'help']) $(s).classList.toggle('hidden', s !== id);
 }
-function pause() { G.paused = G.state; G.state = 'paused'; showScreen('pause'); }
+// The engine, skid and boost are loops: silence them whenever the game stops updating them
+function muteLoops() { sound.engine(0, 0, false); sound.skid(0); sound.boost(0); }
+function pause() { G.paused = G.state; G.state = 'paused'; showScreen('pause'); muteLoops(); }
 function resume() { if (G.state !== 'paused') return; G.state = G.paused; showScreen(null); }
 function toMenu() {
   G.state = 'menu';
   G.crash = null;
+  muteLoops();
+  G.flash = 0;
+  flashEl.style.opacity = 0;
   $('hud').classList.add('hidden');
   loadLevel(settings.level);
   startTraffic();

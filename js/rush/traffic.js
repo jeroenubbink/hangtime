@@ -196,9 +196,10 @@ export class Traffic {
     // The big ones, timed to reach the junction when a fast run does: clear room for them
     for (const sp of level.specials || []) {
       const L = this.lanes[sp.lane];
-      const s = L.jS - L.speedMid * sp.eta;
+      // (clear room where it actually goes: a long eta is held back to the start of the lane)
+      const s = Math.max(L.from + 2, L.jS - L.speedMid * sp.eta);
       for (const v of L.cars.filter(c => Math.abs(c.s - s) < 16)) this.remove(v);
-      const v = this.add(sp.kind, L, Math.max(L.from + 2, s), L.speedMid);
+      const v = this.add(sp.kind, L, s, L.speedMid);
       v.special = sp.kind;
     }
   }

@@ -86,7 +86,8 @@ export class Props {
           if (city.junctions.some(([a, b, c, d]) => x > a - 6 && x < b + 6 && z > c - 6 && z < d + 6)) continue;
           if (k % 2) this.add('tree', x, z, s * 0.7);
           else this.add('lamp', x, z, r.alongX ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : (side > 0 ? 0 : Math.PI));
-          if (k % 7 === 3) { const [bx, bz] = at(1.4); this.add(s % 2 > 1 ? 'bin' : 'hydrant', bx + 1.5 * (r.alongX ? 1 : 0), bz + 1.5 * (r.alongX ? 0 : 1)); }
+          // (every 7th post, alternating bin and hydrant)
+          if (k % 7 === 3) { const [bx, bz] = at(1.4); this.add((k - 3) % 14 === 0 ? 'bin' : 'hydrant', bx + 1.5 * (r.alongX ? 1 : 0), bz + 1.5 * (r.alongX ? 0 : 1)); }
         }
       }
     }
@@ -141,7 +142,7 @@ export class Props {
       const list = this.grid.get(Math.floor(c.pos.x / CELL) + ',' + Math.floor(c.pos.z / CELL));
       const near = [list];
       // The neighbouring cells too, for a car near a cell's edge
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) near.push(this.grid.get(Math.floor(c.pos.x / CELL + dx * 0.25) + dx + ',' + (Math.floor(c.pos.z / CELL + dz * 0.25) + dz)));
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) near.push(this.grid.get((Math.floor(c.pos.x / CELL) + dx) + ',' + (Math.floor(c.pos.z / CELL) + dz)));
       for (const L of near) {
         if (!L) continue;
         for (const p of L) {
