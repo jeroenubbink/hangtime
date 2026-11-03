@@ -482,9 +482,9 @@ export const LEVELS = {
     // glass boxes. A row knocked over falls on the next, and off the deck's far edge onto the one below. Off the
     // 40 to 50 degree ramps at full speed you come down on the top one, a couple of seconds after the top of your flight.
     blocks: [{ x: 0, z: -177.5, w: 44, d: 35, h: 40 }, { x: 0, z: -213, w: 44, d: 35, h: 26 }, { x: 0, z: -248.5, w: 44, d: 35, h: 12 }]
-      .map(b => ({ ...b, type: 'tower', bare: true, tank: false, fixed: true })),
+      .map(b => ({ ...b, type: 'tower', bare: true, tank: false, fixed: true, deck: true })),
     stacks: [
-      ...[-166, -176, -186].map(z => ({ deck: 0, x: 0, z, n: 5, high: 3, along: 'x', gap: 4 })),
+      ...[-166, -176, -186].map(z => ({ deck: 0, x: 0, z, n: 5, high: 4, along: 'x', gap: 4 })),
       ...[-203, -215].map(z => ({ deck: 1, x: 0, z, n: 5, high: 3, along: 'x', gap: 4 })),
       ...[-240, -252].map(z => ({ deck: 2, x: 0, z, n: 4, high: 2, along: 'x', gap: 4.5 })),
     ],

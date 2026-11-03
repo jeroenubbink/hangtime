@@ -12,6 +12,8 @@ export class Recorder {
     this.bodies = {};      // by id: what each one is (kind, paint, length)
     this.frames = [];
     this.events = [];
+    // (a car boxed up on Tower Dive's sky decks doesn't move till it's let go: its pose once, and when it went)
+    this.held = {};        // by id: [x, y, z, qx, qy, qz, qw, released at (null while it's still in its box)]
     this.next = 0;
   }
   // `list`: [{ id, kind, paint, len, car, flags }]; `cam`: the camera's position and a point it looks at; `on`:
@@ -23,6 +25,8 @@ export class Recorder {
     for (const v of list) {
       if (!this.bodies[v.id]) this.bodies[v.id] = { kind: v.kind, paint: v.paint, len: v.len };
       const p = v.car.pos, q = v.car.q;
+      if (v.held) { if (!this.held[v.id]) this.held[v.id] = [r2(p.x), r2(p.y), r2(p.z), r3(q.x), r3(q.y), r3(q.z), r3(q.w), null]; continue; }
+      if (this.held[v.id] && this.held[v.id][7] == null) this.held[v.id][7] = r3(t);
       b.push([v.id, r2(p.x), r2(p.y), r2(p.z), r3(q.x), r3(q.y), r3(q.z), r3(q.w), v.flags]);
     }
     this.frames.push({ t: r3(t), s: state,
@@ -30,7 +34,7 @@ export class Recorder {
       cam: [cam.x, cam.y, cam.z, look.x, look.y, look.z].map(r2), on, b });
   }
   event(t, type, data = {}) { this.events.push({ t: r3(t), type, ...data }); }
-  toJSON() { return { version: 1, ...this.meta, rate: RATE, flags: FLAGS, bodies: this.bodies, events: this.events, frames: this.frames }; }
+  toJSON() { return { version: 1, ...this.meta, rate: RATE, flags: FLAGS, bodies: this.bodies, held: this.held, events: this.events, frames: this.frames }; }
 }
 
 // Whether the server takes replays (it says so at /replays/ping), asked once

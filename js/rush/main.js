@@ -208,7 +208,7 @@ function startRun(pre) {
   for (let i = 0; i < 60; i++) player.car.step(DT, { ...NONE, brake: 1, stop: true });
   Object.assign(G, { t: 0, pre, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0,
     boosting: false, drifting: false, steer: 0, yaw: 0, drift: 0, geysers: [], air: 0, nearT: 0, oncoming: 0, best: 0, ended: false, slow: 1, spike: 0, tour: null, rec: null,
-    nitro: 0, dive: null, stacksDown: 0, tricks: null });
+    nitro: 0, dive: null, stacksDown: 0, tricks: null, arm: null });
   G.state = pre > PRE_COUNT ? 'intro' : 'count';
   G.preSteps = Math.round(PRE_ALL * 120);
   skipTo(pre);
@@ -818,8 +818,9 @@ function freed(v, by, first) {
   G.stacksDown++;
   scoreEvent(v, 1200, null, false, 'fall');
   const deck = v.stack.col.deck, left = stacks.cols.filter(c => c.deck === deck && !c.down).length;
-  if (!left) { scoreEvent(v, 8000, 'DECK CLEARED', true, 'fall'); }
-  else callout(`STACK ${G.stacksDown}/${stacks.total}`);
+  if (!left) scoreEvent(v, 8000, 'DECK CLEARED', true, 'fall');
+  // (every fifth: there are a lot of them, and they go fast)
+  else if (G.stacksDown % 5 === 0) callout(`STACKS ${G.stacksDown}/${stacks.total}`);
 }
 // A long way down: hitting the ground (or what's on it) hard hurts, and from high up it's worth something
 function fall(v, ev) {
@@ -836,8 +837,14 @@ function fly(dt) {
   // (rates in the car's own frame: pitch about its right, yaw about straight up; let go and it steadies)
   // (in the slow motion you turn as fast as ever: it's the world that's slowed)
   const k = G.dive ? 1 / DIVE_SLOW : 1;
+  // (the gas you held up the ramp doesn't tip your nose, nor the rush you were burning fire the nitro: each works in
+  // the air once you've let go of it)
+  const arm = G.arm || (G.arm = { pitch: false, boost: false });
+  if (!I.throttle && !I.brake) arm.pitch = true;
+  if (!I.boost) arm.boost = true;
+  const pitch = arm.pitch ? I.brake - I.throttle : 0;
   _r.set(1, 0, 0).applyQuaternion(c.q);
-  _v.copy(_r).multiplyScalar((I.brake - I.throttle) * PITCH * k).addScaledVector(_up, -I.steer * YAW * k);
+  _v.copy(_r).multiplyScalar(pitch * PITCH * k).addScaledVector(_up, -I.steer * YAW * k);
   c.w.lerp(_v, 1 - Math.exp(-dt * 6 * k));
   // Tricks: every full turn end over end is a flip, every full turn round a spin, each worth some heat
   const T = G.tricks || (G.tricks = { pitch: 0, yaw: 0, n: 0 });
@@ -851,7 +858,7 @@ function fly(dt) {
     callout(`${T.n > 1 ? T.n + '× ' : ''}${name}<small>heat +${heat}</small>`);
     sound.beep(true);
   }
-  const thrust = I.boost && G.nitro > 0;
+  const thrust = arm.boost && I.boost && G.nitro > 0;
   if (thrust) {
     _f.set(0, 0, -1).applyQuaternion(c.q);
     c.vel.addScaledVector(_f, THRUST * dt);
@@ -863,15 +870,14 @@ function fly(dt) {
   const high = c.pos.y - city.groundHeight(c.pos.x, c.pos.z, c.pos.y);
   if (!G.dive && G.air > 0.5 && c.vel.y < 3 && high > 10) {
     G.dive = { t: 0 };
-    callout(`SKYDIVE<small>${document.body.classList.contains('touch') ? 'steer, gas and brake fly it' : '↑↓←→ fly it'}${G.nitro > 0 ? ' · RUSH: nitro' : ''}</small>`, 'big');
+    callout(`SKYDIVE<small>let go, then ${document.body.classList.contains('touch') ? 'steer, gas and brake fly it' : '↑↓←→ fly it'}${G.nitro > 0 ? ' · rush: nitro' : ''}</small>`, 'big');
   }
 }
 // Down from a dive: hard enough, and that's your crash, right there, with a shock wave that sets off the stacks round
 // about (wider the faster you came down)
 function slam(vy, sp) {
-  G.dive = null;
   const c = player.car;
-  if (sp < SLAM || -vy < 6) return;
+  if (sp < SLAM || -vy < 6) { G.dive = null; return; }
   const p = c.pos.clone(), R = clamp(5 + -vy * 0.3, 6, 16);
   startCrash({ point: p, speed: sp }, null);
   callout(`SLAM<small>${Math.round(sp * KMH)} km/h</small>`, 'big');
@@ -890,7 +896,8 @@ function startCrash(h, other) {
   if (G.state !== 'run') return;
   // (out of a dive, how fast you were flying: the hit itself has taken most of it by now)
   const kmh = Math.round(Math.max(player.car.vel.length(), G.dive ? G.airSpeed || 0 : 0) * KMH);
-  landAir();
+  // (on Tower Dive, crashing out of the air still counts the air: on the others, as ever, only coming down does)
+  if (city.level.dive) landAir();
   G.state = 'crash';
   G.dive = null;
   const bonus = clamp((kmh - 110) / 110, 0, 1.5);
@@ -983,6 +990,7 @@ function endCrash() {
     ['Carnage', G.score.toLocaleString()],
     ['Heat', '×' + G.heat.toFixed(1) + (G.impact?.bonus ? ` <small>(impact ${G.impact.kmh} km/h)</small>` : '')],
     ['Wrecked', G.wrecked],
+    ...(stacks ? [['Stacks down', `${G.stacksDown} of ${stacks.total}`]] : []),
     ['Longest chain', G.chain],
     ['<b>Total</b>', `<b>${total.toLocaleString()}</b>`],
   ].map(([a, b]) => `<tr><td>${a}</td><td class="num">${b}</td></tr>`).join('');
@@ -1006,7 +1014,7 @@ function record() {
   const list = [];
   const flags = v => (v.wrecked ? FLAGS.wrecked : 0) | (v.alive === false ? FLAGS.dead : 0) | (v.blown ? FLAGS.blown : 0) | (v.halved ? FLAGS.halved : 0) | (v.asleep ? FLAGS.asleep : 0);
   list.push({ id: 'you', kind: settings.car, paint: player.paint, len: player.len, car: player.car, flags: flags(player) });
-  for (const v of traffic.list) list.push({ id: v.id, kind: v.kind, paint: v.paint, len: v.len, car: v.car, flags: flags(v) });
+  for (const v of traffic.list) list.push({ id: v.id, kind: v.kind, paint: v.paint, len: v.len, car: v.car, flags: flags(v), held: v.held });
   for (const h of halves) list.push({ id: h.id, kind: 'half', paint: h.owner.paint, len: 2.3, car: h.car, flags: 0 });
   camera.getWorldDirection(_rl).multiplyScalar(10).add(camera.position);
   G.rec.frame(G.t, G.state, playerInput, list, camera.position, _rl, G.crash?.on);
@@ -1031,6 +1039,7 @@ function landAir() {
   if (G.air > 0.45) { callout(`AIR ${G.air.toFixed(1)}s<small>heat +${(G.air * 0.15).toFixed(1)}</small>`); G.heat = Math.min(4, G.heat + G.air * 0.15); G.rush = Math.min(1, G.rush + G.air * 0.15); }
   G.air = 0;
   G.tricks = null;
+  G.arm = null;
 }
 function drive(dt) {
   const v = player, c = v.car, def = v.def, I = playerInput;
@@ -1121,8 +1130,8 @@ function nearMisses() {
   _r.set(-_f.z, 0, _f.x);
   for (const v of traffic.list) {
     // (a stack's cars stand still in their boxes: no shaves off them)
-    // (nor off anything well below you, flying over it)
-    if (v.asleep || v.stack || Math.abs(v.car.pos.y - c.pos.y) > 3) continue;
+    // (nor, on Tower Dive, off anything far below you as you fly over it)
+    if (v.asleep || v.stack || (city.level.dive && Math.abs(v.car.pos.y - c.pos.y) > 3)) continue;
     const dx = v.car.pos.x - c.pos.x, dz = v.car.pos.z - c.pos.z;
     const along = dx * _f.x + dz * _f.z, lat = dx * _r.x + dz * _r.z;
     const prev = v.nm;
@@ -2506,6 +2515,15 @@ function replay(R) {
         v.car.q.set(e[4], e[5], e[6], e[7]).normalize().slerp(_q.set(f[4], f[5], f[6], f[7]).normalize(), k);
         v.pose();
         v.model.visible = !(e[8] & 8);
+      }
+      // (Tower Dive's boxed cars: where they stood, till they were let go)
+      for (const [id, h] of Object.entries(R.held || {})) {
+        if (h[7] != null && a.t >= h[7]) continue;
+        const v = cars[id];
+        v.car.pos.set(h[0], h[1], h[2]);
+        v.car.q.set(h[3], h[4], h[5], h[6]);
+        v.pose();
+        v.model.visible = true;
       }
       const c = view || a.cam.map((n, i) => n + (b.cam[i] - n) * k);
       camera.position.set(c[0], c[1], c[2]);

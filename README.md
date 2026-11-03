@@ -102,14 +102,29 @@ through them. Things to know:
   sunset-and-flaming-palm logo on its roof. Anything that hits it hard enough sets it off: your car under the canopy at speed or through a pump or pillar, or, once
   you've crashed, the traffic you've thrown at it, or a blast beside it. Then the pumps go, the canopy and its logo
   fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction.
-- **Seven rough ones, for ideas** (not shown to players yet: open `rush.html?drafts`): **Tanker Row** (tankers parked nose to tail along the far kerb: light one and
+- **Eight rough ones, for ideas** (not shown to players yet: open `rush.html?drafts`): **Tanker Row** (tankers parked nose to tail along the far kerb: light one and
   the blasts run down the row both ways into two junctions); **Pick Your Poison** (one ramp: hold back for the
   queue at the lights, or rush all the way to Fuel's Paradise); **Bank Shot** (your road comes in at 45° and stops
   at the avenue: bounce the wreckage off the shops and down to the big junction); **High Octane** (Fuel's Paradise
   out on a bridge deck: its forecourt goes over the edge onto the road below); **Mind the Gap** (the road stops at a
   canal, the ramp doesn't: short and you're swimming, long and you land on the queue past the quay road);
   **Rendezvous** (three tankers and a bus cross the park nose to tail: flat out you're early, so ease off and meet
-  them); and **Double Decker** (a jam on a bridge with a wall down one side and a junction down below the other).
+  them); **Double Decker** (a jam on a bridge with a wall down one side and a junction down below the other); and
+  **Tower Dive** (see below).
+- **Tower Dive** (a draft): the biggest ramp in town, five ramps side by side, 30° to 50° at the lip (white fins
+  between them keep you in yours), with a nitro crate in front of each. Off the 35° to 45° ones at full speed you
+  come down on the first of three **sky decks**, tower roofs 40, 26 and 12 m up stepping down away from you, with
+  rows of cars stacked in glass boxes, three or four high. A boxed car doesn't move till something loose touches it;
+  then its glass goes and it falls the way it was pushed, the one over it a moment later, so a row topples into the
+  next, and off the deck's far edge onto the one below. Past the top of your flight comes the **skydive**: time
+  slows right down and you fly the car like a rocket, as fast as ever in the slow motion. ↑ and ↓ tip the nose
+  down and up, ← and → turn it, and the rush key fires the nitro the way the nose points (the gas and rush you were
+  holding up the ramp only count in the air once you've let go of them). A ring and a dotted line show where you'll
+  come down if you do nothing more: orange into a stack, yellow on a deck, white in the street. Every full flip end
+  over end and every full spin is heat. Come down hard and that's the crash, where you land, with a shock wave that
+  sets off the stacks round about; then you aim your wreck as anywhere else. Too shallow (30°) and you hit the top
+  tower's wall; rush and you fly clean over the lot. Gold takes the dive: nitro, flips, or both, and most of the
+  stacks.
 - **Guide lines** (for testing only, not shown to players: open `rush.html?guides`): up to three coloured routes painted on the road
   per junction, each the best of a different idea that route bots found (20 runs per junction: either lane, a late
   swerve either way, rush or not, easing off), ending in a ring where the car first hit, labelled with what to do
@@ -299,6 +314,7 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
   - `traffic.js`: lanes and drivers (following, stopping at red, reacting late, swerving); far traffic glides along
     its lane without physics
   - `props.js`: lamp posts, trees, traffic lights, bins, hydrants, bollards and crash barriers that get knocked flying
+  - `stacks.js`: Tower Dive's stacks of cars in glass boxes, and how they come down
   - `replay.js`: records each run for the Send replay button (see Run)
   - `guides.js`, `routes.js`: the guide lines, and the bots' routes they draw (generated)
   - `roster.js`: your cars and the traffic

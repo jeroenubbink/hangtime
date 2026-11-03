@@ -516,6 +516,7 @@ export class City {
     pave.receiveShadow = true;
     this.group.add(pave);
     this.group.add(buildingMesh(this.blocks, rand, L.palette));
+    for (const b of this.blocks) if (b.deck) this.group.add(deckMesh(b));
   }
 
   // The ground between buildings and around the edges: pavement height, lowered under the roads
@@ -648,6 +649,32 @@ function arcMesh(r, y) {
   m.castShadow = m.receiveShadow = w.castShadow = w.receiveShadow = true;
   grp.add(m, w);
   return grp;
+}
+// A sky deck's roof: dark decking, a hazard stripe round the edge and its height painted big at the front
+function deckMesh(b) {
+  const W = 512, H = Math.round(512 * b.d / b.w);
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#3c4650'; g.fillRect(0, 0, W, H);
+  g.strokeStyle = 'rgba(255,255,255,0.07)'; g.lineWidth = 2;
+  for (let x = 0; x < W; x += 32) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+  const s = 18;
+  g.save();
+  g.beginPath(); g.rect(0, 0, W, H); g.rect(s, s, W - 2 * s, H - 2 * s); g.clip('evenodd');
+  g.fillStyle = '#ffcf2e'; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#1e2228';
+  for (let i = -H; i < W + H; i += 36) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 18, 0); g.lineTo(i + 18 + H, H); g.lineTo(i + H, H); g.fill(); }
+  g.restore();
+  g.fillStyle = 'rgba(255,255,255,0.85)'; g.font = 'bold 54px sans-serif'; g.textAlign = 'center';
+  g.fillText(`SKY DECK ${Math.round(b.h)} m`, W / 2, H - 40);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(b.w - 0.4, b.d - 0.4).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: t, polygonOffset: true, polygonOffsetFactor: -2 }));
+  m.position.set(b.x, b.top + (ROOF[b.type] ?? 0.7) + 0.02, b.z);
+  m.receiveShadow = true;
+  return m;
 }
 // The fins between the big ramps: concrete, a metre over the higher of the two all the way up
 const FIN = 0.25;
