@@ -12,6 +12,8 @@ import { Vehicle, contact, damageFrom, subdivide } from '../derby/vehicle.js';
 import { loadSceneryKit } from '../scenery.js';
 import { City, rng, EDGE } from './city.js';
 import { LEVELS as ALL_LEVELS } from './levels.js';
+import { Stacks } from './stacks.js';
+import { ITEMS, drawIcon } from '../derby/pickups.js';
 import { Traffic } from './traffic.js';
 import { Props } from './props.js';
 import { buildStation as stationModel, DEBRIS_COLOURS } from './station.js';
@@ -44,6 +46,12 @@ const INCOMING = 2.5;
 // tagging traffic to fill the meter; then it blows, full or not (or sooner, when you set it off with a full meter).
 // AIM_TURN: how fast you turn the way it's going (rad/s of simulation), AIM_PUSH: up pushes it on (m/s²), to AIM_TOP m/s.
 const AIM = 20, AIM_SLOW = 0.3, AIM_TURN = 3.5, AIM_PUSH = 14, AIM_TOP = 24;
+// Tower Dive: off the big ramp, past the top of your flight, time slows to DIVE_SLOW while you're well up, and you
+// fly it like a rocket: ↑ and ↓ tip the nose down and up, ← → turn it (rad/s), and nitro (from the crates in front of the
+// ramp, NITRO seconds of it) pushes you the way the nose points (m/s²). Gravity in the air is AIR_G times as strong,
+// so a flight off a 50° lip at full speed stays over the town. Come down hard (SLAM m/s and up) and it's a crash
+// where you land, with a shock wave that sets off the stacks round about.
+const DIVE_SLOW = 0.32, PITCH = 2.6, YAW = 2.2, NITRO = 2.5, THRUST = 26, AIR_G = 1.8, SLAM = 16;
 const BLOWN = 1.5;   // seconds watching your car blow, from behind where you aimed it, before the crash cam takes over
 
 // ---------- Stage ----------
@@ -72,7 +80,8 @@ const GUIDES = new URLSearchParams(location.search).has('guides');
 const saveSettings = () => store.save('rush.settings', settings);
 
 // ---------- World ----------
-let city = null, props = null, traffic = null, debris = null, player = null, guides = null;
+let city = null, props = null, traffic = null, debris = null, player = null, guides = null, stacks = null;
+const crates = [];
 let halves = [];
 const G = { state: 'menu', t: 0, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0 };
 window.rush = G;
@@ -154,6 +163,10 @@ function loadLevel(key) {
 function clearRun() {
   if (traffic) for (const v of traffic.list.slice()) traffic.remove(v);
   traffic = null;
+  stacks?.dispose();
+  stacks = null;
+  for (const k of crates) dropMesh(k.m);
+  crates.length = 0;
   if (player) { player.dispose(); player = null; }
   for (const h of halves) dropHalf(h);
   halves = [];
@@ -179,6 +192,12 @@ function startRun(pre) {
   G.rand = rng(L.seed * 7919 + 17);
   traffic = new Traffic(city, L, kind => makeTraffic(kind), G.rand);
   traffic.populate({ ...L, specials: (L.specials || []).map(s => ({ ...s, eta: s.eta + PRE_ALL })) });
+  if (L.stacks) {
+    stacks = new Stacks(scene, L.stacks, (x, z) => city.groundHeight(x, z, 1e4), kind => makeTraffic(kind), G.rand);
+    traffic.list.push(...stacks.list);
+  }
+  for (const [x, z] of L.crates || []) crates.push(crate(x, z));
+  mark.at.set(0, 0, 0);
   const def = RIDES[settings.car];
   player = new Car(city, scene, 0, def, def.livery, { player: true, name: 'You' });
   player.gen = 0;
@@ -188,7 +207,8 @@ function startRun(pre) {
   player.respawn({ x: L.start.x, z: L.start.z, yaw: L.start.yaw || 0 });
   for (let i = 0; i < 60; i++) player.car.step(DT, { ...NONE, brake: 1, stop: true });
   Object.assign(G, { t: 0, pre, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0,
-    boosting: false, drifting: false, steer: 0, yaw: 0, drift: 0, geysers: [], air: 0, nearT: 0, oncoming: 0, best: 0, ended: false, slow: 1, spike: 0, tour: null, rec: null });
+    boosting: false, drifting: false, steer: 0, yaw: 0, drift: 0, geysers: [], air: 0, nearT: 0, oncoming: 0, best: 0, ended: false, slow: 1, spike: 0, tour: null, rec: null,
+    nitro: 0, dive: null, stacksDown: 0, tricks: null });
   G.state = pre > PRE_COUNT ? 'intro' : 'count';
   G.preSteps = Math.round(PRE_ALL * 120);
   skipTo(pre);
@@ -202,6 +222,40 @@ function startRun(pre) {
   showScreen(null);
   sound.init();
   if (G.state === 'intro') showMsg(L.name.toUpperCase(), L.blurb, PRE_INTRO);
+}
+
+// A nitro crate, as in the derby: blue, floating and turning over its spot
+let crateTex = null;
+function crate(x, z) {
+  if (!crateTex) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = ITEMS.nitro.colour; g.fillRect(0, 0, 128, 128);
+    g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, 0, 128, 10); g.fillRect(0, 118, 128, 10); g.fillRect(0, 0, 10, 128); g.fillRect(118, 0, 10, 128);
+    drawIcon(g, 'nitro', 64, 64, 96);
+    crateTex = new THREE.CanvasTexture(c);
+    crateTex.colorSpace = THREE.SRGBColorSpace;
+  }
+  const m = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.4, 1.4), new THREE.MeshLambertMaterial({ map: crateTex, emissive: '#1a4a80' }));
+  const y = city.groundHeight(x, z) + 1.5;
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  scene.add(m);
+  return { m, x, y, z, taken: false };
+}
+// Driving through one fills the tank
+function pickCrates() {
+  const p = player.car.pos;
+  for (const k of crates) {
+    if (k.taken || Math.abs(p.x - k.x) > 2.4 || Math.abs(p.z - k.z) > 2.8 || Math.abs(p.y - k.y) > 2.6) continue;
+    k.taken = true;
+    k.m.visible = false;
+    G.nitro = 1;
+    sound.beep(true);
+    callout('NITRO<small>for the air: hold Shift</small>');
+    for (let i = 0; i < 30; i++) glow.emit(k.x, k.y, k.z, (Math.random() - 0.5) * 8, Math.random() * 6, (Math.random() - 0.5) * 8, { life: 0.5, size: 0.4, gravity: 6, colour: '#7fd0ff', alpha: 0.9 });
+  }
 }
 
 // ---------- Effects ----------
@@ -327,6 +381,7 @@ function scoreEvent(v, pts, label, big = false, type = 'dent') {
 // pops up its total above the spot (small and yellow for a dent, big and red for well above the average).
 // Each vehicle keeps a ledger by damage type, for the wreck report.
 const DAMAGE = {
+  fall: ['Sky falls', '#7fe0ff'],
   dent: ['Dents', '#ffd23a'], wreck: ['Wrecked', '#ff8a1e'], split: ['Torn in half', '#ff3d7a'],
   blast: ['Blast', '#ff2a2a'], splash: ['Splashdown', '#2ee6ff'], prop: ['Street furniture', '#9be36b'],
 };
@@ -505,6 +560,8 @@ function blast(X, p, R, big) {
     if (d > R) continue;
     const k = 1 - d / R;
     const dir = B.car.pos.clone().sub(p).setY(0).normalize();
+    // (a boxed car's glass goes, and it's off)
+    if (B.held) stacks.release(B, dir, X, G.t, freed);
     // (the forecourt's cars make their own way up, see launch(): no kicks on top until they're back down)
     if (!B.launch || (B.launchT != null && G.t - B.launchT > 3.5)) B.car.vel.addScaledVector(dir, 14 * k * big).add(_kick.set(0, 5 + 6 * k * big, 0));
     B.car.w.add(_kick.set(G.rand() - 0.5, G.rand() - 0.5, G.rand() - 0.5).multiplyScalar(5 * k));
@@ -531,6 +588,13 @@ function inZone(p) {
 
 // Two bodies met (normal from B to A)
 function collided(A, B, h) {
+  // A boxed car touched: its glass goes and it's off, the way it was pushed
+  if (A.held || B.held) {
+    const [X, by] = A.held ? [A, B] : [B, A];
+    const d = _kick.set(by.car.vel.x, 0, by.car.vel.z);
+    if (d.lengthSq() < 1) d.set(X.car.pos.x - by.car.pos.x, 0, X.car.pos.z - by.car.pos.z);
+    stacks.release(X, d.normalize(), by, G.t, freed);
+  }
   const base = damageFrom(h.j);
   if (h.speed > 2.5 && (base > 0 || h.speed > 5)) {
     sparks(h.point, Math.min(70, 6 + Math.round(base * 2)), 9 + Math.min(10, base * 0.3));
@@ -742,11 +806,93 @@ function scatter(k) {
   debris.add(pc.mesh, pc.pos, k.vel, { radius: pc.radius, spin: 7, life: 14 });
 }
 
+// ---------- Tower Dive ----------
+// A boxed car's let go (by `by`): it's part of your crash, one link on from what set it off; the first out of a
+// column topples it, and that's a stack down; a deck's last stack down clears it
+const DOWN = new THREE.Vector3(0, -1, 0);
+function freed(v, by, first) {
+  if (!v.gen) v.gen = (by === player ? 0 : by?.gen || 0) + 1;
+  glassBurst(v.car.pos, 12);
+  if (camera.position.distanceTo(v.car.pos) < 60) sound.glass();
+  if (!first) return;
+  G.stacksDown++;
+  scoreEvent(v, 1200, null, false, 'fall');
+  const deck = v.stack.col.deck, left = stacks.cols.filter(c => c.deck === deck && !c.down).length;
+  if (!left) { scoreEvent(v, 8000, 'DECK CLEARED', true, 'fall'); }
+  else callout(`STACK ${G.stacksDown}/${stacks.total}`);
+}
+// A long way down: hitting the ground (or what's on it) hard hurts, and from high up it's worth something
+function fall(v, ev) {
+  if (!G.crash || !v.gen || !ev) return;
+  const hit = Math.max(ev.under || 0, ev.impact || 0);
+  if (hit < 12) return;
+  hurt(v, null, (hit - 10) * 2, v.car.pos.clone(), DOWN);
+  if (hit > 20) scoreEvent(v, Math.round((hit - 18) * 60 * v.value), hit > 28 ? 'SKYFALL' : null, false, 'fall');
+}
+// In the air off the big ramp: see DIVE_SLOW
+function fly(dt) {
+  const c = player.car, I = playerInput;
+  c.vel.y -= 9.81 * (AIR_G - 1) * dt;
+  // (rates in the car's own frame: pitch about its right, yaw about straight up; let go and it steadies)
+  // (in the slow motion you turn as fast as ever: it's the world that's slowed)
+  const k = G.dive ? 1 / DIVE_SLOW : 1;
+  _r.set(1, 0, 0).applyQuaternion(c.q);
+  _v.copy(_r).multiplyScalar((I.brake - I.throttle) * PITCH * k).addScaledVector(_up, -I.steer * YAW * k);
+  c.w.lerp(_v, 1 - Math.exp(-dt * 6 * k));
+  // Tricks: every full turn end over end is a flip, every full turn round a spin, each worth some heat
+  const T = G.tricks || (G.tricks = { pitch: 0, yaw: 0, n: 0 });
+  T.pitch += c.w.dot(_r) * dt;
+  T.yaw += c.w.dot(_up) * dt;
+  for (const [key, name, heat] of [['pitch', 'FLIP', 0.2], ['yaw', 'SPIN 360', 0.15]]) {
+    if (Math.abs(T[key]) < Math.PI * 2 * 0.9) continue;
+    T[key] -= Math.sign(T[key]) * Math.PI * 2;
+    T.n++;
+    G.heat = Math.min(4, Math.round((G.heat + heat) * 10) / 10);
+    callout(`${T.n > 1 ? T.n + '× ' : ''}${name}<small>heat +${heat}</small>`);
+    sound.beep(true);
+  }
+  const thrust = I.boost && G.nitro > 0;
+  if (thrust) {
+    _f.set(0, 0, -1).applyQuaternion(c.q);
+    c.vel.addScaledVector(_f, THRUST * dt);
+    G.nitro = Math.max(0, G.nitro - dt / NITRO);
+  }
+  G.boosting = player.boosting = thrust;
+  G.airSpeed = c.vel.length();
+  // Past the top of the flight and well up: the dive, in slow motion
+  const high = c.pos.y - city.groundHeight(c.pos.x, c.pos.z, c.pos.y);
+  if (!G.dive && G.air > 0.5 && c.vel.y < 3 && high > 10) {
+    G.dive = { t: 0 };
+    callout(`SKYDIVE<small>${document.body.classList.contains('touch') ? 'steer, gas and brake fly it' : '↑↓←→ fly it'}${G.nitro > 0 ? ' · RUSH: nitro' : ''}</small>`, 'big');
+  }
+}
+// Down from a dive: hard enough, and that's your crash, right there, with a shock wave that sets off the stacks round
+// about (wider the faster you came down)
+function slam(vy, sp) {
+  G.dive = null;
+  const c = player.car;
+  if (sp < SLAM || -vy < 6) return;
+  const p = c.pos.clone(), R = clamp(5 + -vy * 0.3, 6, 16);
+  startCrash({ point: p, speed: sp }, null);
+  callout(`SLAM<small>${Math.round(sp * KMH)} km/h</small>`, 'big');
+  wave(p, R);
+  for (let i = 0; i < 40; i++) puff(p, '#c9c6bf', 2 + Math.random() * 2, 2, 3 + Math.random() * 3, 0.6, 2);
+  for (const v of stacks?.near(p, R, 8) || []) {
+    const d = _kick.set(v.car.pos.x - p.x, 0, v.car.pos.z - p.z);
+    if (d.lengthSq() < 0.01) d.set(1, 0, 0);
+    stacks.release(v, d.normalize(), player, G.t, freed);
+    v.car.vel.addScaledVector(d, 4 * (1 - v.car.pos.distanceTo(p) / R));
+  }
+}
+
 // ---------- The crash ----------
 function startCrash(h, other) {
   if (G.state !== 'run') return;
-  const kmh = Math.round(player.car.vel.length() * KMH);
+  // (out of a dive, how fast you were flying: the hit itself has taken most of it by now)
+  const kmh = Math.round(Math.max(player.car.vel.length(), G.dive ? G.airSpeed || 0 : 0) * KMH);
+  landAir();
   G.state = 'crash';
+  G.dive = null;
   const bonus = clamp((kmh - 110) / 110, 0, 1.5);
   G.impact = { kmh, bonus };
   G.heat = Math.round((G.heat + bonus) * 10) / 10;
@@ -880,8 +1026,15 @@ function bodies() {
 // at a rate you set with the stick, keeps grip (or slides, in a drift), and accelerates and brakes like an
 // arcade car, so it goes exactly where you point it, even at 280 km/h.
 const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _v = new THREE.Vector3();
+// Down from the air (on the ground, or into something): long enough up there, and it's worth heat and rush
+function landAir() {
+  if (G.air > 0.45) { callout(`AIR ${G.air.toFixed(1)}s<small>heat +${(G.air * 0.15).toFixed(1)}</small>`); G.heat = Math.min(4, G.heat + G.air * 0.15); G.rush = Math.min(1, G.rush + G.air * 0.15); }
+  G.air = 0;
+  G.tricks = null;
+}
 function drive(dt) {
   const v = player, c = v.car, def = v.def, I = playerInput;
+  const vy0 = c.vel.y, sp0 = c.vel.length();
   // Steering: quick to turn in, quicker to let go, so taps make small corrections
   const want = I.steer;
   const rate = Math.abs(want) > Math.abs(G.steer) && Math.sign(want) === Math.sign(G.steer || want) ? 7 : 12;
@@ -902,14 +1055,15 @@ function drive(dt) {
   c.steer = G.steer * (0.5 - 0.35 * Math.min(1, Math.abs(vF) / 50));    // the front wheels, for show
   if (c.wallHit) return;               // hit a building: the physics has it this step
   if (c.grounded < 2) {
-    // In the air: a little yaw from the stick, nothing else
     G.air += dt;
+    if (city.level.dive) { fly(dt); return; }
+    // In the air: a little yaw from the stick, nothing else
     c.w.y += (-G.steer * 1.1 - c.w.y) * Math.min(1, dt * 2);
     G.yaw = c.w.y;
     return;
   }
-  if (G.air > 0.45) { callout(`AIR ${G.air.toFixed(1)}s<small>heat +${(G.air * 0.15).toFixed(1)}</small>`); G.heat = Math.min(4, G.heat + G.air * 0.15); G.rush = Math.min(1, G.rush + G.air * 0.15); }
-  G.air = 0;
+  landAir();
+  if (G.dive) { slam(vy0, sp0); if (G.state !== 'run') return; }
   const sp = Math.abs(vF);
   // Engine and brakes
   const top = boosting ? def.rushTop : def.top;
@@ -966,7 +1120,9 @@ function nearMisses() {
   _f.set(0, 0, -1).applyQuaternion(c.q).setY(0).normalize();
   _r.set(-_f.z, 0, _f.x);
   for (const v of traffic.list) {
-    if (v.asleep) continue;
+    // (a stack's cars stand still in their boxes: no shaves off them)
+    // (nor off anything well below you, flying over it)
+    if (v.asleep || v.stack || Math.abs(v.car.pos.y - c.pos.y) > 3) continue;
     const dx = v.car.pos.x - c.pos.x, dz = v.car.pos.z - c.pos.z;
     const along = dx * _f.x + dz * _f.z, lat = dx * _r.x + dz * _r.z;
     const prev = v.nm;
@@ -1030,16 +1186,17 @@ function step() {
   const hot = G.crash ? B.filter(b => b.gen > 0 || b === player).map(b => b.car.pos) : null;
   // (and no more of it coming once a crash is CRASH_FEED seconds in: what's on its way still gets there, and then it's done)
   traffic.update(DT, focus, [...B, ...traffic.list.filter(v => v.asleep)], !G.crash || G.crash.t < CRASH_FEED, G.crash ? G.crash.t : null, hot);
-  if (G.state === 'run') drive(DT);
+  if (G.state === 'run') { drive(DT); pickCrates(); }
   else if (running) {
     if (G.crash?.aim && !G.crash.aim.done) aim(G.crash.aim, c);
     c.step(DT, NONE);
   }
   {
     for (const v of traffic.list) {
-      if (v.asleep || v.halved) continue;
+      if (v.asleep || v.halved || v.held) continue;
       v.car.wallHit = null;
-      v.car.step(DT, v.wrecked || !v.alive ? NONE : v.input || NONE);
+      const ev = v.car.step(DT, v.wrecked || !v.alive ? NONE : v.input || NONE);
+      if (stacks) fall(v, ev);
       if (v.car.wallHit) wallHit(v, v.car.wallHit);
       water(v);
       if (v.boomT != null && (v.boomT -= DT) <= 0) blowUp(v);
@@ -1049,7 +1206,10 @@ function step() {
     for (const h of halves) { h.car.step(DT, NONE); water(h); }
     const all = bodies();
     fence(all);
+    stacks?.update(G.t, freed);
     for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+      // (boxed cars don't touch each other: they stand still till something loose does)
+      if (all[i].held && all[j].held) continue;
       // Until you crash the traffic is scripted: it doesn't crash into itself (unless you've had a go at it)
       if (!G.crash && !all[i].player && !all[j].player && !all[i].gen && !all[j].gen) continue;
       const h = contact(all[i], all[j]);
@@ -1068,7 +1228,8 @@ function step() {
     if (G.state === 'run') {
       G.oncoming = oncoming();
       nearMisses();
-      if (new THREE.Vector3(0, 1, 0).applyQuaternion(c.q).y < 0.2) startCrash({ point: c.pos.clone(), speed: c.vel.length() }, null);
+      // (upside down: a crash; not in a dive, where you fly it any way up you like)
+      if (!G.dive && new THREE.Vector3(0, 1, 0).applyQuaternion(c.q).y < 0.2) startCrash({ point: c.pos.clone(), speed: c.vel.length() }, null);
     }
   }
   if (G.rec && !G.ended) record();
@@ -1272,7 +1433,7 @@ function intro() {
   let w = new THREE.Vector3(-u.z, 0, u.x);
   if (r) { const [, v] = r.local(s.x, s.z), mid = (r.vLo + r.vHi) / 2; w.set(r.rv[0], 0, r.rv[1]).multiplyScalar(v > mid ? -1 : 1); }
   // and how far the pan across it can swing (up to 0.35 rad) and still be over the road, not over a roof beside a narrow one
-  const J = new THREE.Vector3(jx, city.groundHeight(jx, jz) + 1.5, jz);
+  const J = new THREE.Vector3(jx, city.groundHeight(jx, jz, 1e4) + 1.5, jz);
   let swing = 0;
   while (swing < 0.35 && [1, -1].every(sg => { const a = sg * (swing + 0.01), c = Math.cos(a), sn = Math.sin(a);
     return city.isRoad(J.x - (u.x * c - w.x * sn) * 26, J.z - (u.z * c - w.z * sn) * 26); })) swing += 0.01;
@@ -1623,6 +1784,46 @@ function roofsBetween(a, b) {
   }
   return top;
 }
+// In a dive: where you'll come down if you do nothing more (a ring there, and dots along the way), orange on a
+// deck, white anywhere else
+const mark = (() => {
+  // (seen through whatever's in the way: a stack, your own car)
+  const ring = new THREE.Mesh(new THREE.RingGeometry(2, 2.8, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, depthWrite: false, depthTest: false, fog: false }));
+  const N = 60, dots = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(N * 3), 3)),
+    new THREE.PointsMaterial({ color: '#ffffff', size: 4, sizeAttenuation: false, transparent: true, opacity: 0.7, depthWrite: false, depthTest: false, fog: false }));
+  ring.renderOrder = dots.renderOrder = 50;
+  ring.visible = dots.visible = false;
+  scene.add(ring, dots);
+  const p = new THREE.Vector3(), v = new THREE.Vector3(), at = new THREE.Vector3();
+  return {
+    at,
+    update() {
+      const on = !!G.dive && G.state === 'run';
+      ring.visible = dots.visible = on;
+      if (!on) return;
+      p.copy(player.car.pos); v.copy(player.car.vel);
+      const pos = dots.geometry.attributes.position, h = 0.05;
+      let k = 0, g = 0, hit = null;
+      const boxes = stacks ? stacks.list.filter(b => b.held) : [];
+      for (let i = 0; i < 400 && !hit; i++) {
+        v.y -= 9.81 * AIR_G * h;
+        p.addScaledVector(v, h);
+        g = city.groundHeight(p.x, p.z, p.y);
+        if (p.y <= g + 0.3) break;
+        // (or into a stack)
+        for (const b of boxes) { const q = b.car.pos; if (Math.abs(q.y - p.y) < 1.6 && Math.abs(q.x - p.x) < 2.2 && Math.abs(q.z - p.z) < 3.4) { hit = b; break; } }
+        if (i % 3 === 2 && k < N) pos.setXYZ(k++, p.x, p.y, p.z);
+      }
+      if (hit) g = p.y - 0.15;
+      for (let i = k; i < N; i++) pos.setXYZ(i, p.x, g + 0.3, p.z);
+      pos.needsUpdate = true;
+      ring.position.set(p.x, g + 0.15, p.z);
+      at.copy(ring.position);
+      ring.material.color.set(hit ? '#ff5a1f' : g > 12 ? '#ffd23a' : '#ffffff');
+      ring.scale.setScalar(1 + 0.15 * Math.sin(G.t * 12));
+    },
+  };
+})();
 function updateCamera(dt, rawDt) {
   const c = player.car;
   let fov = 66;
@@ -1823,7 +2024,12 @@ function updateCamera(dt, rawDt) {
     if (f.lengthSq() > 0.01) f.normalize(); else f.copy(cam.dir);
     // Follow your heading (not your slide), firmly, so the car stays centred as you weave
     cam.dir.lerp(f, 1 - Math.exp(-rawDt * 9)).normalize();
-    const dist = 6.3 + speed * 0.012 - rushK * 0.9, ht = 2.05 + speed * 0.004 - rushK * 0.3;
+    // (in a dive: behind the way you're flying, not the way the nose points, which could be anywhere, further back and
+    // up, looking down along it)
+    const diving = !!G.dive;
+    cam.diveK = (cam.diveK || 0) + ((diving ? 1 : 0) - (cam.diveK || 0)) * Math.min(1, rawDt * 3);
+    if (cam.diveK > 0.01) { _v.copy(c.vel).setY(0); if (_v.lengthSq() > 1) cam.dir.lerp(_v.normalize(), cam.diveK).normalize(); }
+    const dist = 6.3 + speed * 0.012 - rushK * 0.9 + cam.diveK * 10, ht = 2.05 + speed * 0.004 - rushK * 0.3 + cam.diveK * 13;
     _c.copy(c.pos).addScaledVector(cam.dir, -dist);
     _c.y = c.pos.y + ht;
     clear(c.pos, _c);
@@ -1834,6 +2040,8 @@ function updateCamera(dt, rawDt) {
     camera.position.x += (Math.sin(t * 1.3) + Math.sin(t * 2.9)) * tr;
     camera.position.y += (Math.sin(t * 1.7) + Math.sin(t * 3.7)) * tr;
     _l.copy(c.pos).addScaledVector(cam.dir, 7).setY(c.pos.y + 1.0);
+    // (in a dive, toward where you'll come down, past your car)
+    if (cam.diveK > 0.01 && mark.at.lengthSq()) _l.lerp(_v.lerpVectors(c.pos, mark.at, 0.55), cam.diveK);
     camera.lookAt(_l);
     // Lean into the turns a little
     cam.roll += ((-G.steer * Math.min(1, speed / 40) * 0.035) - cam.roll) * Math.min(1, rawDt * 5);
@@ -2011,7 +2219,11 @@ function updateHud(dt) {
   setText('speed', G.crash ? '' : String(kmh));
   $('speedo').classList.toggle('hidden', !!G.crash);
   $('hud').classList.toggle('crashing', !!G.crash);
-  $('rush-fill').style.width = (G.rush * 100).toFixed(1) + '%';
+  // (on Tower Dive, once you've a tank of nitro, the bar's that)
+  const nitro = G.nitro > 0 && !!city.level.dive;
+  $('rush-fill').style.width = ((nitro ? G.nitro : G.rush) * 100).toFixed(1) + '%';
+  $('rush').classList.toggle('nitro', nitro);
+  $('rush').firstElementChild.firstChild.textContent = nitro ? 'NITRO ' : 'RUSH ';
   $('rush').classList.toggle('on', !!G.boosting);
   $('rush').classList.toggle('full', G.rush > 0.98);
   setText('heat', '×' + G.heat.toFixed(1));
@@ -2168,9 +2380,11 @@ function tick(raw, draw = true) {
       for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) contact(B[i], B[j]);
     }
     for (const v of traffic.list) v.pose();
-    camera.position.set(jx + Math.sin(cam.menuA) * 46, city.groundHeight(jx, jz) + 24, jz + Math.cos(cam.menuA) * 46);
+    // (from over the roofs: Tower Dive's junction is a sky deck)
+    const gy = city.groundHeight(jx, jz, 1e4);
+    camera.position.set(jx + Math.sin(cam.menuA) * 46, gy + 24, jz + Math.cos(cam.menuA) * 46);
     camera.up.set(0, 1, 0);
-    camera.lookAt(jx, city.groundHeight(jx, jz), jz);
+    camera.lookAt(jx, gy, jz);
     camera.fov = stage.fitFov(55);
     camera.updateProjectionMatrix();
     stage.focusSun(new THREE.Vector3(jx, 0, jz), 60);
@@ -2197,6 +2411,9 @@ function tick(raw, draw = true) {
     if (G.spike > 0) { G.spike -= raw; scale = Math.min(scale, G.spikeK); }
     // (and once it's over, everything stops dead for the tour of the wreckage)
     if (G.ended) scale = 0;
+  } else if (G.dive) {
+    G.dive.t += raw;
+    scale = Math.max(DIVE_SLOW, 1 - G.dive.t * 2.5);
   }
   // The countdown runs on the simulation's own clock (see go())
   if (G.state === 'intro' || G.state === 'count') {
@@ -2227,6 +2444,8 @@ function tick(raw, draw = true) {
   post.mat.uniforms.tint.value = G.rushK * 0.35;
   updateLines(fast * 0.6 + G.rushK * 0.6);
   updateCamera(dt, raw);
+  mark.update();
+  stacks?.lod(camera.position);
   // (the labels that sit over things go where the camera is now, not where it was last frame: else they trail it, and
   // shake as it pans)
   camera.updateMatrixWorld();
@@ -2300,7 +2519,7 @@ function replay(R) {
     },
   };
 }
-G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay };
+G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay, renderer };
 toMenu();
 if (!store.load('rush.seenHelp', false)) showScreen('help');
 requestAnimationFrame(frame);

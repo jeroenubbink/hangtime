@@ -101,7 +101,12 @@ export class City {
     this.trees = [];
     this.roads = level.roads.map(road);
     this.base = level.height || (() => 0);
-    this.ramps = level.ramps || [];
+    this.ramps = (level.ramps || []).map(arc);
+    // Where two big ramps meet side by side, a fin between them (see contain): { x, z0, z1, a, b }
+    this.fins = [];
+    for (const a of this.ramps) for (const b of this.ramps) {
+      if (a.R && b.R && a !== b && Math.abs(a.x + a.w / 2 - (b.x - b.w / 2)) < 0.01) this.fins.push({ x: a.x + a.w / 2, a, b });
+    }
     // (a jetty, `jetties`: [[x0, x1, z0, z1]], out into the water is dry ground at the quay's height, on a concrete block)
     const W = level.water, J = W?.jetties || [], onJetty = (x, z) => J.some(([a, b, c, d]) => x > a && x < b && z > c && z < d);
     const below = (x, z) => W.below(x, z) && !onJetty(x, z);
@@ -116,7 +121,8 @@ export class City {
     this.buildBlocks();
     this.buildGround();
     if (this.water) this.buildWater();
-    for (const r of this.ramps) this.group.add(rampMesh(r, this.base(r.x, r.z)));
+    for (const r of this.ramps) this.group.add(r.angle ? arcMesh(r, this.base(r.x, r.z)) : rampMesh(r, this.base(r.x, r.z)));
+    if (this.fins.length) this.group.add(finMesh(this.fins, (x, z) => this.base(x, z)));
     if (this.deck) this.buildDeck();
     scene.add(this.group);
   }
@@ -201,7 +207,11 @@ export class City {
     for (const r of this.ramps) {
       if (Math.abs(x - r.x) > r.w / 2) continue;
       const t = (r.z - z) / r.len;   // 0 at the foot, 1 at the lip (ramps face -z)
-      if (t > 0 && t < 1) h = Math.max(h, this.base(x, z) + r.h * t);
+      if (t <= 0 || t >= 1) continue;
+      const rise = this.base(x, z) + rampRise(r, t);
+      // (a big one's sides are walls: it's under the point only if that came down onto it, not in from beside it, off
+      // the next one along)
+      if (!r.R || rampOn(rise - py, r.w / 2 - Math.abs(x - r.x))) h = Math.max(h, rise);
     }
     // (a flat roof holds what comes down on it from above; a tower's tiers don't, and it slides off into the street)
     if (y < Infinity) for (const b of this.near(x, z)) {
@@ -268,6 +278,46 @@ export class City {
     }
     const s = car.spec.size || [1.9, 4.4];
     const hw = s[0] / 2, hl = s[1] / 2;
+    // A fin between two big ramps: a car across it is put back on the side its middle's on
+    for (const F of this.fins) {
+      if (Math.abs(car.pos.x - F.x) > 4) continue;
+      const side = Math.sign(car.pos.x - F.x) || 1;
+      for (const [x, z] of CORNERS) {
+        _p.set(x * hw, 0, z * hl).applyQuaternion(car.q).add(car.pos);
+        const over = (F.x - _p.x) * side + FIN;
+        if (over <= 0 || _p.z > F.a.z || _p.z < Math.min(F.a.z - F.a.len, F.b.z - F.b.len)) continue;
+        _n.set(side, 0, 0);
+        _r.subVectors(_p, car.pos);
+        _pv.crossVectors(car.w, _r).add(car.vel);
+        const vn = _pv.dot(_n);
+        car.pos.x += side * over;
+        if (vn >= 0) continue;
+        const k = 1 / car.mass + _n.dot(_t2.crossVectors(car.invInertia(_t1.crossVectors(_r, _n), _J), _r));
+        _J.copy(_n).multiplyScalar(-1.2 * vn / k);
+        car.applyImpulse(_r, _J);
+      }
+    }
+    // The big ramps' sides: off the one beside, you're bounced back, not lifted on
+    for (const r of this.ramps) {
+      if (!r.R || Math.abs(car.pos.x - r.x) > r.w / 2 + 4 || car.pos.z > r.z + 4 || car.pos.z < r.z - r.len - 4) continue;
+      for (const [x, z] of CORNERS) {
+        _p.set(x * hw, 0, z * hl).applyQuaternion(car.q).add(car.pos);
+        const t = (r.z - _p.z) / r.len, inside = r.w / 2 - Math.abs(_p.x - r.x);
+        if (t <= 0 || t >= 1 || inside <= 0) continue;
+        const deep = this.base(_p.x, _p.z) + rampRise(r, t) - _p.y;
+        if (deep <= 0 || rampOn(deep, inside)) continue;
+        _n.set(Math.sign(_p.x - r.x) || 1, 0, 0);
+        _r.subVectors(_p, car.pos);
+        _pv.crossVectors(car.w, _r).add(car.vel);
+        const vn = _pv.dot(_n);
+        car.pos.addScaledVector(_n, inside * 0.9);
+        if (vn >= 0) continue;
+        const k = 1 / car.mass + _n.dot(_t2.crossVectors(car.invInertia(_t1.crossVectors(_r, _n), _J), _r));
+        _J.copy(_n).multiplyScalar(-1.3 * vn / k);
+        car.applyImpulse(_r, _J);
+        if (-vn > worst) { worst = -vn; car.wallHit = { point: _p.clone(), normal: _n.clone(), speed: -vn, impulse: _J.length() }; }
+      }
+    }
     const list = this.near(car.pos.x, car.pos.z);
     // (still the deck's bump, if it gave one: a bridge in the open has no buildings near it)
     if (!list.length) return worst;
@@ -542,6 +592,80 @@ export class City {
 }
 const EMPTY = [];
 
+// A ramp's rise `t` of the way from its foot to its lip: a plank kicker's straight; a big one (`angle`: degrees at
+// its lip) is an arc, flat at the foot and turning up evenly to that, so it lifts a car at speed without slamming it
+// (radius R, as tall as that makes it: `h`)
+function arc(r) {
+  if (!r.angle) return r;
+  const a = r.angle * Math.PI / 180, R = r.len / Math.sin(a);
+  return { ...r, R, h: R * (1 - Math.cos(a)) };
+}
+const rampRise = (r, t) => (r.R ? r.R - Math.sqrt(r.R * r.R - (t * r.len) ** 2) : r.h * t);
+// On a big ramp (`deep` under its surface, `inside` in from its nearer side) rather than beside it
+const rampOn = (deep, inside) => deep < Math.max(0.3, inside);
+// The big ramps: a deck in its own colour, chevrons up it and its angle painted at the foot, on a concrete wall
+// each side, open underneath only to the lip's face
+function arcMesh(r, y) {
+  const N = 40, x0 = r.x - r.w / 2, x1 = r.x + r.w / 2, P = [], U = [], I = [], S = [], SI = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N, z = r.z - t * r.len, h = y + rampRise(r, t) + 0.02;
+    P.push(x0, h, z, x1, h, z);
+    U.push(0, t, 1, t);
+    if (i < N) I.push(2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 1, 2 * i + 3, 2 * i + 2);
+    // the walls, down to the ground
+    S.push(x0, y, z, x0, h, z, x1, y, z, x1, h, z);
+    if (i < N) { const k = 4 * i; SI.push(k, k + 4, k + 1, k + 1, k + 4, k + 5, k + 2, k + 3, k + 6, k + 3, k + 7, k + 6); }
+  }
+  // and the lip's face
+  const k = S.length / 3, zl = r.z - r.len, hl = y + r.h;
+  S.push(x0, y, zl, x1, y, zl, x0, hl, zl, x1, hl, zl);
+  SI.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+  const top = new THREE.BufferGeometry();
+  top.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  top.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  top.setIndex(I);
+  top.computeVertexNormals();
+  const sides = new THREE.BufferGeometry();
+  sides.setAttribute('position', new THREE.Float32BufferAttribute(S, 3));
+  sides.setIndex(SI);
+  const walls = sides.toNonIndexed();
+  walls.computeVertexNormals();
+  const cv = document.createElement('canvas');
+  cv.width = 128; cv.height = 1024;
+  const g = cv.getContext('2d');
+  g.fillStyle = r.colour || '#ff8a1e'; g.fillRect(0, 0, 128, 1024);
+  g.fillStyle = 'rgba(255,255,255,0.85)';
+  for (let v = 120; v < 1000; v += 64) { g.beginPath(); g.moveTo(24, 1024 - v); g.lineTo(64, 1024 - v - 26); g.lineTo(104, 1024 - v); g.lineTo(104, 1024 - v + 12); g.lineTo(64, 1024 - v - 14); g.lineTo(24, 1024 - v + 12); g.fill(); }
+  g.fillStyle = '#ffffff'; g.font = 'bold 44px sans-serif'; g.textAlign = 'center';
+  g.fillText(r.angle + '\u00b0', 64, 1000);
+  g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, 0, 5, 1024); g.fillRect(123, 0, 5, 1024);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  const grp = new THREE.Group();
+  const m = new THREE.Mesh(top, new THREE.MeshLambertMaterial({ map: t, side: THREE.DoubleSide }));
+  const w = new THREE.Mesh(walls, new THREE.MeshLambertMaterial({ color: '#8d9497', side: THREE.DoubleSide }));
+  m.castShadow = m.receiveShadow = w.castShadow = w.receiveShadow = true;
+  grp.add(m, w);
+  return grp;
+}
+// The fins between the big ramps: concrete, a metre over the higher of the two all the way up
+const FIN = 0.25;
+function finMesh(fins, base) {
+  const parts = [];
+  for (const F of fins) {
+    const N = 70, z0 = F.a.z, len = Math.max(F.a.len, F.b.len);
+    for (let i = 0; i < N; i++) {
+      const za = z0 - len * i / N, zb = z0 - len * (i + 1) / N;
+      const rise = r => { const t = (r.z - zb) / r.len; return t > 0 && t < 1 ? rampRise(r, t) : t >= 1 ? r.h : 0; };
+      const y0 = base(F.x, za), top = y0 + Math.max(rise(F.a), rise(F.b)) + 1;
+      parts.push([new THREE.BoxGeometry(FIN * 2, top - y0, za - zb + 0.02).translate(F.x, (y0 + top) / 2, (za + zb) / 2), '#e8ecec']);
+    }
+  }
+  const m = new THREE.Mesh(merge(parts.map(([g, c]) => [g.toNonIndexed(), c])), new THREE.MeshLambertMaterial({ vertexColors: true }));
+  m.castShadow = m.receiveShadow = true;
+  return m;
+}
 // A plank kicker in yellow and black, its lip toward -z
 function rampMesh(r, y) {
   const s = new THREE.Shape();
@@ -789,7 +913,7 @@ function buildingMesh(blocks, rand, palette = TOWER) {
       roofY = y; rw = w; rd = d;
     }
     // On the roof: a water tank on stilts, or plant
-    if (b.tank || rand() < 0.35) {
+    if (!b.bare && (b.tank || rand() < 0.35)) {
       const lx = (rand() - 0.5) * Math.max(0, rw - 5), lz = (rand() - 0.5) * Math.max(0, rd - 5);
       const [x, z] = W(lx, lz);
       if (b.tank) {

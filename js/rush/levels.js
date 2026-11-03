@@ -458,6 +458,53 @@ export const LEVELS = {
     specials: [{ lane: 4, kind: 'tanker', eta: 6.9 }, { lane: 5, kind: 'bus', eta: 7.6 }],
     medals: [40000, 120000, 300000],
   },
+  tower: {
+    draft: true,
+    name: 'Tower Dive', blurb: 'The biggest ramp in town, five angles wide. Up, over the avenue, and down onto the sky decks, where the cars are stacked in glass.',
+    seed: 83,
+    bounds: [-440, 440, -440, 470],
+    start: { x: 1.8, z: 400, speed: 28 },
+    junction: [0, -177],
+    roads: [
+      // Your way, four lanes wide all the way to the ramp
+      { name: 'main', x0: 0, z0: 440, x1: 0, z1: -6, right: 4, left: 4 },
+      { name: 'first', x0: -430, z0: 180, x1: 430, z1: 180, right: 2, left: 2 },
+      // The avenue under your flight, past the ramp
+      { name: 'avenue', x0: -430, z0: -40, x1: 430, z1: -40, right: 2, left: 2 },
+      // and the street in front of the sky decks: come down short and that's where you land
+      { name: 'skyway', x0: -430, z0: -130, x1: 430, z1: -130, right: 2, left: 2 },
+    ],
+    // The ramp: five side by side, 30 to 50 degrees at the lip, their lips in a line 6 m past the end of the road
+    ramps: [30, 35, 40, 45, 50].map((angle, i) => ({ x: -12 + i * 6, z: 64, len: 70, w: 6, angle, colour: ['#2fb3a8', '#3a8fd0', '#ff8a1e', '#ff5a3a', '#e8336a'][i] })),
+    lots: [{ rect: [-160, 160, -400, -52], colour: '#b8bcb8' }],
+    park: [-160, 160, -122, -52],
+    // The sky decks: three towers stepping down away from you, 40, 26 and 12 m up, each with its rows of stacked
+    // glass boxes. A row knocked over falls on the next, and off the deck's far edge onto the one below. Off the
+    // 40 to 50 degree ramps at full speed you come down on the top one, a couple of seconds after the top of your flight.
+    blocks: [{ x: 0, z: -177.5, w: 44, d: 35, h: 40 }, { x: 0, z: -213, w: 44, d: 35, h: 26 }, { x: 0, z: -248.5, w: 44, d: 35, h: 12 }]
+      .map(b => ({ ...b, type: 'tower', bare: true, tank: false, fixed: true })),
+    stacks: [
+      ...[-166, -176, -186].map(z => ({ deck: 0, x: 0, z, n: 5, high: 3, along: 'x', gap: 4 })),
+      ...[-203, -215].map(z => ({ deck: 1, x: 0, z, n: 5, high: 3, along: 'x', gap: 4 })),
+      ...[-240, -252].map(z => ({ deck: 2, x: 0, z, n: 4, high: 2, along: 'x', gap: 4.5 })),
+    ],
+    // Fly it: slow motion on the way down, nitro in the air (a crate in front of each ramp)
+    dive: true,
+    crates: [-12, -6, 0, 6, 12].map(x => [x, 100]),
+    lanes: [
+      // Your way, as far as the crossing: they turn off there
+      { road: 'main', side: 1, i: 0, speed: [18, 22], fill: [90, 230], gap: [60, 110], then: { road: 'first', side: 1, i: 0 } },
+      { road: 'main', side: 1, i: 1, speed: [20, 24], fill: [110, 230], gap: [70, 120], then: { road: 'first', side: -1, i: 0 } },
+      // and toward you, out of the crossing
+      { road: 'first', side: -1, i: 1, speed: [16, 20], gap: [3, 6], spawn: true, then: { road: 'main', side: -1, i: 0 } },
+      ...busy('first').filter(l => !(l.side === -1 && l.i === 1)),
+      // (one lane each way under your flight: busy, but not so many cars on top of all the stacked ones)
+      ...busy('avenue').filter(l => l.i === 0),
+      ...busy('skyway', [2.2, 4]).filter(l => l.i === 0),
+    ],
+    // (from bot runs: a good landing hands-off is silver; gold takes the dive, nitro or flips, and most of the stacks)
+    medals: [80000, 220000, 500000],
+  },
   gas: {
     name: 'Last Chance Gas', blurb: 'A T-junction, and Fuel\'s Paradise straight across it. Thread the gap and light it up.',
     seed: 47,

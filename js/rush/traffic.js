@@ -357,6 +357,8 @@ export class Traffic {
     // Wake up near the action; leave at the end of the lane (or once far behind the player, before a crash)
     for (let i = this.list.length - 1; i >= 0; i--) {
       const v = this.list[i], p = v.car.pos;
+      // (a car from a stack on a sky deck has no lane: it stands in its box till it's let go, then it's loose)
+      if (v.stack) continue;
       const d = Math.hypot(p.x - focus.x, p.z - focus.z);
       // (near the action: looked for once, as the crash's list of what it's thrown about only grows)
       const near = d < WAKE || !!hot?.some(h => Math.abs(h.x - p.x) < 40 && Math.abs(h.z - p.z) < 40);

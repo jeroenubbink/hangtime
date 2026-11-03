@@ -191,3 +191,5 @@ body.touch #speedo { bottom: 120px; }
   #carnage { font-size: 40px; }
   #msg-main { font-size: 44px; }
 }
+/* Tower Dive: the bar's your nitro once you've picked some up */
+#rush.nitro #rush-fill { background: linear-gradient(90deg, #3aa8ff, #9fe4ff); }
