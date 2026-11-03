@@ -387,7 +387,7 @@ export class City {
     });
     // Junctions: plain asphalt where roads meet (no lane lines); where two cross square-on, zebra crossings and
     // stop lines on the way in
-    const plain = new THREE.MeshLambertMaterial({ color: '#4a4c55', polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
+    const plain = new THREE.MeshLambertMaterial({ color: '#454c55', polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
     this.junctions = [];
     for (let i = 0; i < this.roads.length; i++) for (let j = i + 1; j < this.roads.length; j++) {
       const A = this.roads[i], B = this.roads[j];
@@ -511,10 +511,10 @@ export class City {
       b.top += b.lift * 0.17;
     }
     // Meshes: pavements (with a curb face) and lots, then the buildings
-    const paveParts = walk.map(g => [g, '#c9c2b4']);
+    const paveParts = walk.map(g => [g, '#c0c4c0']);
     for (const lot of L.lots || []) {
       const [a, b, c, d] = lot.rect;
-      paveParts.push([this.patch([[a, c], [b, c], [b, d], [a, d]], CURB + 0.04, (x, z) => this.top(x, z)), lot.colour || '#bdb8ae']);
+      paveParts.push([this.patch([[a, c], [b, c], [b, d], [a, d]], CURB + 0.04, (x, z) => this.top(x, z)), lot.colour || '#b6bab6']);
     }
     for (const [r, e, p, q] of curb) {
       const P = [];
@@ -527,7 +527,7 @@ export class City {
       }
       const g = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
       g.computeVertexNormals();
-      paveParts.push([g, '#9d978c']);
+      paveParts.push([g, '#979c9a']);
     }
     for (const part of paveParts) if (!part[0].attributes.normal) part[0].computeVertexNormals();
     const pave = new THREE.Mesh(merge(paveParts.map(([g, c]) => [g.index ? g.toNonIndexed() : g, c])),
@@ -555,7 +555,7 @@ export class City {
       pos.setY(i, wet ? this.water.floor : this.base(x, z) + (under ? -0.4 : CURB - 0.03));
       // (grass in the open ground and down the banks)
       const park = this.inPark(x, z) || this.base(x, z) < -0.2;
-      c.set(wet ? '#3a5a5a' : park ? '#86ad5c' : this.level.groundColour || '#b9b2a2');
+      c.set(wet ? '#3a5a5a' : park ? '#7ea486' : this.level.groundColour || '#a9b2b0');
       col.push(c.r, c.g, c.b);
     }
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -593,7 +593,7 @@ export class City {
     const W = this.water;
     const [x0, x1, z0, z1] = W.rect;
     const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, W.y, (z0 + z1) / 2);
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: '#2f7fa8', transparent: true, opacity: 0.85 }));
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: '#2a8f9c', transparent: true, opacity: 0.85 }));
     this.group.add(m);
     // The quay wall (or walls, either side of a canal: [z0, z1] each)
     for (const [z0, z1] of W.walls || [[W.edge - 1, W.edge]]) {
@@ -741,7 +741,7 @@ function markingTexture(r) {
   const cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   const g = cv.getContext('2d');
-  g.fillStyle = '#4c4e57';
+  g.fillStyle = '#475058';
   g.fillRect(0, 0, W, H);
   // Texture u runs across the road from its left edge to its right; `off` is measured from the divider toward
   // the right of travel
@@ -799,9 +799,10 @@ function faceUp(P, U, I) {
 // often a water tank. Towers, in the spirit of a toy-town Manhattan: a stone shop floor, a ledge, a shaft of
 // big windows between piers, a heavy cornice, and the tallest stepping back in tiers to a crown.
 const FLOOR = 3.3, SHOP = 4.4, BAY = 4;
-const TOWER = ['#efe3cf', '#e3d3b2', '#d4d8dc', '#e8bf98', '#c2d0dc', '#f2e6c8', '#d9b48c', '#b8c8b0', '#e6c8c0'];
-const STONE = ['#f2ece0', '#ddd6c8', '#c9c2b4'];
-const SHOPS = ['#d94a3a', '#2f7f6f', '#3a5fa8', '#e0a030', '#7a4a8a', '#2f6f9f', '#c2603a'];
+// (cool and quiet, teal-grey with a little warm stone: the town steps back so the cars stand out)
+const TOWER = ['#d6dcdc', '#c4cfd1', '#b8c4c8', '#d9d2c6', '#a9bcc0', '#e2ddd4', '#c9bba9', '#9fb3b4', '#d0c8c0'];
+const STONE = ['#e2e2dc', '#cfd2ce', '#bcc1be'];
+const SHOPS = ['#b8644e', '#2f7477', '#3d5a74', '#c99a52', '#5a6a7a', '#2f6a80', '#a86a4e'];
 // Round the junction (LOW m of it) only walk-ups, and none over three floors: the opening shot looks down on the junction
 // over low roofs, not into a canyon of towers. (The same draws from `rand` either way: the rest of the town's the same.)
 const LOW = 60;
@@ -848,7 +849,7 @@ function tiles() {
     g.fillStyle = '#ffffff'; g.fillRect(16, 96, 96, 5);
   });
   // Brick, two tall windows with white frames, stone lintels and sills (its own colours: not tinted)
-  for (const [name, brick, dark] of [['brickA', '#b5523b', '#8e3e2c'], ['brickB', '#8d5a43', '#6a4130']]) {
+  for (const [name, brick, dark] of [['brickA', '#8c5f56', '#6a4840'], ['brickB', '#6a625e', '#4e4744']]) {
     TILES[name] = tile(g => {
       g.fillStyle = brick; g.fillRect(0, 0, 128, 128);
       g.fillStyle = dark;

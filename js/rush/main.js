@@ -97,6 +97,13 @@ let time = 'day';
 // The guide lines are for testing only: rush.html?guides
 const GUIDES = new URLSearchParams(location.search).has('guides');
 const saveSettings = () => store.save('rush.settings', settings);
+// Rushtime's own day and sunset: teal and orange, a cool sky and shade with a warm sun on the cars (and `grade`, how
+// far the picture's split, teal in the shadows and orange in the light)
+const LOOKS = {
+  day: { ...TIMES.day, sky: ['#1d7fa6', '#6cc2cc', '#f0dcc0'], fog: ['#c2dcd8', 160, 700], hemi: ['#a6d6dc', '#7a5a3c', 1.5],
+    sun: ['#fff0dc', 2.3, [60, 110, 40]], orb: '#fff2d8', grade: 1 },
+  sunset: { ...TIMES.sunset, sky: ['#1f3460', '#b8678e', '#ffae66'], hemi: ['#ffc4a8', '#2f3c50', 1.1], grade: 0.5 },
+};
 
 // ---------- World ----------
 let city = null, props = null, traffic = null, debris = null, player = null, guides = null, stacks = null, standIns = null;
@@ -139,7 +146,12 @@ class Car extends Vehicle {
   // A wreck keeps its colours, scorched darker (not the derby's charcoal: a pile-up should stay colourful)
   wreck() {
     super.wreck();
-    this.model.userData.paint.color.set('#7a7470');
+    if (!this.burnt) this.model.userData.paint.color.set('#7a7470');
+  }
+  // Blown up: burnt out, black all over (the livery's still there under the soot, just)
+  burn() {
+    this.burnt = true;
+    this.model.traverse(o => { if (o.isMesh && o.material?.isMeshStandardMaterial) { o.material.color.set('#1b1816'); o.material.roughness = 1; o.material.metalness = 0; } });
   }
   dispose() {
     this.scene.remove(this.model);
@@ -172,7 +184,7 @@ function makeTraffic(kind, R = G.rand) {
   if (l > 6) v.spheres = [-1, -0.5, 0, 0.5, 1].map(k => k * (l / 2 - w / 2));
   v.gen = 0;
   v.colour = paintOf(paint);
-  v.setLights(TIMES[time].lamps);
+  v.setLights(LOOKS[time].lamps);
   return v;
 }
 
@@ -189,7 +201,7 @@ function loadLevel(key) {
   // lower than the quay's edge takes for gone over it, see groundHeight, and would drop through the stone)
   debris = new Debris(scene, (x, z, y) => city.groundHeight(x, z, y + 0.5));
   time = timeFor(key);
-  stage.setTime(time);
+  setLook(time);
 }
 
 function clearRun() {
@@ -242,7 +254,7 @@ function startRun(pre) {
   player.gen = 0;
   player.kind = 'you';
   player.colour = paintOf(def.livery);
-  player.setLights(TIMES[time].lamps);
+  player.setLights(LOOKS[time].lamps);
   player.respawn({ x: L.start.x, z: L.start.z, yaw: L.start.yaw || 0 });
   for (let i = 0; i < 60; i++) player.car.step(DT, { ...NONE, brake: 1, stop: true });
   Object.assign(G, { t: 0, pre, heat: 1, rush: 0.4, crash: null, unpaid: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0,
@@ -392,6 +404,12 @@ function explosion(p, big = 1) {
       { life: 0.7 + Math.random() * 0.6, size: 2 + Math.random() * 2 * big, grow: -0.6, drag: 2.5, colour: i % 2 ? '#ff7a1a' : '#ffd27a', alpha: 0.9 });
   }
   glow.emit(p.x, p.y + 1.5, p.z, 0, 0, 0, { life: 0.2, size: 11 * big, grow: 1.5, colour: '#ffe0a0', alpha: 0.85 });
+  // and a fireball that rolls up out of it and hangs there a moment
+  for (let i = 0; i < 36 * big; i++) {
+    const a = Math.random() * Math.PI * 2, u = Math.random() * 3 * big;
+    glow.emit(p.x + Math.cos(a) * u, p.y + 1 + Math.random() * 2, p.z + Math.sin(a) * u, Math.cos(a) * u * 0.6, 4 + Math.random() * 6, Math.sin(a) * u * 0.6,
+      { life: 1.2 + Math.random() * 1.2, size: 2.5 + Math.random() * 2.5 * big, grow: 0.4, drag: 2.2, gravity: -1.5, colour: ['#ff6a1a', '#ff9a2e', '#ffc44a', '#e8401a'][i % 4], alpha: 0.85 });
+  }
   ring(p.clone().setY(p.y + 0.3), '#ffb02e');
   scorch(p, 5 + 3 * big);
 }
@@ -578,6 +596,8 @@ function wreck(X, split) {
 function blowUp(X) {
   X.boomT = null;
   X.blown = true;
+  X.blownAt = G.t;
+  X.burn();
   G.rec?.event(G.t, 'boom', { id: X.id, kind: X.kind });
   // (a forecourt car: thrown up and out, and wrecked by it)
   if (X.launch) { launch(X); X.launchT = G.t; if (!X.wrecked && !X.halved) wreck(X, false); }
@@ -1048,6 +1068,9 @@ function detonate(full) {
   A.endT = G.crash.rt;
   const c = player.car, p = c.pos.clone(), big = full ? 2 : 0.6 + 1.4 * A.meter, R = 8 * big;
   G.rec?.event(G.t, 'boom', { id: 'you', kind: settings.car });
+  player.blown = true;
+  player.blownAt = G.t;
+  player.burn();
   // (a fat one: the fireball and two more bursting round it, a second shock wave, and a white-out)
   explosion(p, big);
   for (const s of [-1, 1]) explosion(new THREE.Vector3(G.rand() - 0.5, 0, G.rand() - 0.5).normalize().multiplyScalar(2.5 * s).add(p), big * 0.5);
@@ -2281,15 +2304,17 @@ function updateLines(k) {
   lines.g.attributes.color.needsUpdate = true;
 }
 
-// ---------- Post: radial speed blur and a vignette ----------
+const setLook = key => { stage.setTime(key, LOOKS[key]); post.mat.uniforms.grade.value = LOOKS[key].grade; };
+
+// ---------- Post: radial speed blur, a vignette and the teal-and-orange grade ----------
 const post = (() => {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const rt = new THREE.WebGLRenderTarget(size.x, size.y, { samples: 4, type: THREE.HalfFloatType });
   const mat = new THREE.ShaderMaterial({
-    uniforms: { tDiffuse: { value: rt.texture }, amount: { value: 0 }, vig: { value: 0.25 }, tint: { value: 0 } },
+    uniforms: { tDiffuse: { value: rt.texture }, amount: { value: 0 }, vig: { value: 0.25 }, tint: { value: 0 }, grade: { value: 1 } },
     vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
     fragmentShader: `
-      uniform sampler2D tDiffuse; uniform float amount; uniform float vig; uniform float tint; varying vec2 vUv;
+      uniform sampler2D tDiffuse; uniform float amount; uniform float vig; uniform float tint; uniform float grade; varying vec2 vUv;
       void main() {
         vec2 d = vUv - vec2(0.5, 0.52);
         float r = length(d);
@@ -2297,6 +2322,8 @@ const post = (() => {
         vec4 c = vec4(0.0);
         for (int i = 0; i < 12; i++) c += texture2D(tDiffuse, vUv - d * k * 0.16 * float(i) / 11.0);
         c /= 12.0;
+        float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+        c.rgb *= mix(vec3(1.0), mix(vec3(0.82, 0.98, 1.1), vec3(1.04, 1.0, 0.95), smoothstep(0.03, 0.7, l)), grade);
         c.rgb *= 1.0 - vig * smoothstep(0.35, 0.95, r * 1.25);
         c.rgb = mix(c.rgb, c.rgb * vec3(1.15, 0.92, 0.82), tint);
         gl_FragColor = c;
@@ -2335,6 +2362,11 @@ function effects(dt, rawDt) {
       pm.emissive?.setRGB(1, 0.9, 0.8).multiplyScalar(v.flashOn ? Math.min(1, v.flashT * 9) * 0.6 : 0);
     }
     const engine = _pv.set(0, 0.5, -v.len / 2 + 0.7).applyQuaternion(c.q).add(c.pos);
+    // A blown one burns end to end, roaring at first and dying down to flickers
+    if (v.blown) {
+      const roar = G.t - v.blownAt < 8;
+      if (Math.random() < dt * (roar ? 70 : 25)) flame(_w.set((Math.random() - 0.5) * 1.6, 0.6, (Math.random() - 0.5) * v.len * 0.9).applyQuaternion(c.q).add(c.pos), roar ? 2 : 1.2);
+    }
     if (!v.alive) {
       const age = G.t - v.diedAt;
       if (Math.random() < dt * (age < 10 ? 11 : 5)) puff(engine, age < 10 ? '#3a3632' : '#6a655e', 1.2, 2.6, 3, 0.42);
@@ -2508,8 +2540,8 @@ function renderMenu() {
   for (const k of ['day', 'sunset']) {
     const b = document.createElement('button');
     b.className = k === time ? 'active' : '';
-    b.textContent = t(TIMES[k].label);
-    b.onclick = () => { settings.times[city.key] = time = k; saveSettings(); stage.setTime(k); for (const v of traffic.list) v.setLights(TIMES[k].lamps); renderMenu(); };
+    b.textContent = t(LOOKS[k].label);
+    b.onclick = () => { settings.times[city.key] = time = k; saveSettings(); setLook(k); for (const v of traffic.list) v.setLights(LOOKS[k].lamps); renderMenu(); };
     tod.appendChild(b);
   }
 }
@@ -2696,7 +2728,7 @@ function replay(R) {
   Object.assign(settings, { level: R.level, car: R.car });
   loadLevel(R.level);
   time = R.time;
-  stage.setTime(time);
+  setLook(time);
   startRun(0);
   for (const v of traffic.list.slice()) traffic.remove(v);
   standIns?.dispose();
@@ -2753,7 +2785,7 @@ function replay(R) {
     },
   };
 }
-G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, get standIns() { return standIns; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay, renderer };
+G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, get standIns() { return standIns; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay, renderer, blowUp };
 toMenu();
 if (!store.load('rush.seenHelp', false)) showScreen('help');
 requestAnimationFrame(frame);

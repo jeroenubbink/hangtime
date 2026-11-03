@@ -460,7 +460,25 @@ export const HOUSE = {
   taxi: { name: 'Taxi', c: ['#ffd23a', '#2a2f3a', '#ffffff', '#2a2f3a', '#ffffff'] },
   council: { name: 'Council', c: ['#3cbf4a', '#ff8a1e', '#ffe14a', '#2b4a2f', '#ffffff'] },
 };
-export const liveryOf = k => (Object.hasOwn(LIVERIES, k) ? LIVERIES[k] : Object.hasOwn(HOUSE, k) ? HOUSE[k] : undefined);
+// Rushtime's colours, teal and orange like the rest of its town: a family of six for the traffic, toned down a little so
+// your car, in one of the three hot ones no traffic has, is always the brightest thing there. Not on Hangtime's menu
+export const RUSH = {
+  coral: { name: 'Coral', c: ['#e8745a', '#1f3a4a', '#ffd88a', '#1a2a36', '#f2ece2'] },
+  amber: { name: 'Amber', c: ['#eaa443', '#174f58', '#fff1d6', '#1a2a36', '#f2ece2'] },
+  cream: { name: 'Cream', c: ['#ece3d2', '#1f878c', '#f07a42', '#24343e', '#1f878c'] },
+  slate: { name: 'Slate', c: ['#46606f', '#f09a48', '#e6efed', '#1a2630', '#f09a48'] },
+  teal: { name: 'Teal', c: ['#239ea2', '#efe6d4', '#f07a42', '#123a40', '#efe6d4'] },
+  navy: { name: 'Navy', c: ['#22394f', '#46c2c0', '#f2ae48', '#0f1c2a', '#46c2c0'] },
+  'rush-police': { name: 'Police', c: ['#eef2f0', '#22394f', '#ff4a3a', '#14202c', '#ffffff'] },
+  'rush-taxi': { name: 'Taxi', c: ['#f6be3a', '#1f2a33', '#ffffff', '#1f2a33', '#ffffff'] },
+  'rush-council': { name: 'Council', c: ['#2f9a86', '#f08a3a', '#fff1d6', '#173f38', '#ffffff'] },
+  'rush-bus': { name: 'Bus', c: ['#efe3c8', '#e8743a', '#239ea2', '#24343e', '#ffffff'] },
+  // yours
+  blaze: { name: 'Blaze', c: ['#ff2e1a', '#ffe11a', '#22e6ff', '#1c1630', '#ffe11a'] },
+  volt: { name: 'Volt', c: ['#ff2a8e', '#1ee8ff', '#ffe11a', '#1c1630', '#1ee8ff'] },
+  sun: { name: 'Sunburst', c: ['#ffd60a', '#ff3a1f', '#1c1630', '#1c1630', '#ff3a1f'] },
+};
+export const liveryOf = k => (Object.hasOwn(LIVERIES, k) ? LIVERIES[k] : Object.hasOwn(HOUSE, k) ? HOUSE[k] : Object.hasOwn(RUSH, k) ? RUSH[k] : undefined);
 // The palette cells (32×128 px, column and row) the toy models paint each livery colour from
 const LIVERY_CELLS = [[4, 3], [6, 3], [12, 2], [12, 3], [1, 3]];
 // A livery key or a plain colour, as one colour (for sparks, map dots and the like)

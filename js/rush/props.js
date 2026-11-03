@@ -10,6 +10,20 @@ const CELL = 20;
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 
 function shared(g) { g.userData.shared = true; return g; }
+// The kit's leaves are a bright toy green: cooled toward teal and quietened, like the rest of the town (a copy: the
+// kit's own is shared)
+const _hsl = {};
+function leafy(g) {
+  if (!g?.attributes.color) return g;
+  g = g.clone();
+  const c = g.attributes.color, col = new THREE.Color();
+  for (let i = 0; i < c.count; i++) {
+    col.fromBufferAttribute(c, i).getHSL(_hsl);
+    if (_hsl.h > 0.15 && _hsl.h < 0.45 && _hsl.s > 0.2) col.setHSL(_hsl.h + (0.42 - _hsl.h) * 0.5, _hsl.s * 0.6, _hsl.l * 0.9);
+    c.setXYZ(i, col.r, col.g, col.b);
+  }
+  return g;
+}
 const MODELS = {
   lamp: () => merge([
     [new THREE.CylinderGeometry(0.09, 0.13, 6.2, 8).translate(0, 3.1, 0), '#5d6470'],
@@ -24,7 +38,7 @@ const MODELS = {
     [new THREE.SphereGeometry(0.13, 8, 6).translate(0, 4.3, -0.2), '#4a3a12'],
     [new THREE.SphereGeometry(0.13, 8, 6).translate(0, 3.9, -0.2), '#163a1c'],
   ]),
-  tree: () => sceneryGeo('round') || merge([
+  tree: () => leafy(sceneryGeo('round')) || merge([
     [new THREE.CylinderGeometry(0.2, 0.3, 2.4, 6).translate(0, 1.2, 0), '#7a5534'],
     [new THREE.IcosahedronGeometry(1.7, 1).translate(0, 3.4, 0), '#4f9a3c'],
   ]),
@@ -48,9 +62,9 @@ const MODELS = {
     ...[0.6, 0.78].map(y => [new THREE.BoxGeometry(1.8, 0.14, 0.05).translate(0, y, 0.33), '#a8743f']),
     ...[-0.75, 0.75].map(x => [new THREE.BoxGeometry(0.08, 0.45, 0.5).translate(x, 0.22, 0.02), '#3c414a']),
   ]),
-  bush: () => sceneryGeo('bush') || new THREE.IcosahedronGeometry(0.9, 1).scale(1, 0.7, 1).translate(0, 0.45, 0),
+  bush: () => leafy(sceneryGeo('bush')) || new THREE.IcosahedronGeometry(0.9, 1).scale(1, 0.7, 1).translate(0, 0.45, 0),
   // Hotel California's palms, and the fountain in the square behind it (from the hotel kit; plain stand-ins without it)
-  palm: () => sceneryGeo('palm') || merge([
+  palm: () => leafy(sceneryGeo('palm')) || merge([
     [new THREE.CylinderGeometry(0.2, 0.32, 8, 7).translate(0, 4, 0), '#a9875e'],
     [new THREE.IcosahedronGeometry(1.8, 0).scale(1.4, 0.4, 1.4).translate(0, 8, 0), '#4fa846'],
   ]),
