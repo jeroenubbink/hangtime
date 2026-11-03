@@ -31,6 +31,7 @@ const fade = x => { const t = Math.min(1, Math.max(0, (Math.abs(x) - 50) / 170))
 const rails = (x, z0, z1) => Array.from({ length: Math.floor((z1 - z0) / 3) + 1 }, (_, i) => ['rail', x, z0 + i * 3, Math.PI / 2]);
 const D45 = Math.SQRT1_2;
 
+// (a `draft` is still rough: only there with rush.html?drafts)
 export const LEVELS = {
   cross: {
     name: 'Market Cross', blurb: 'Four lanes in, four lanes across. The lights are red for you; they don\'t have to be.',
@@ -260,6 +261,7 @@ export const LEVELS = {
     medals: [50000, 150000, 350000],
   },
   row: {
+    draft: true,
     name: 'Tanker Row', blurb: 'The depot\'s tankers wait nose to tail along the far kerb. Light one and they all go, both ways, into both junctions.',
     seed: 83,
     bounds: [-440, 440, -210, 470],
@@ -283,6 +285,7 @@ export const LEVELS = {
     medals: [60000, 180000, 400000],
   },
   pick: {
+    draft: true,
     name: 'Pick Your Poison', blurb: 'One ramp, two targets: hold back and come down on the queue at the lights, or rush it all the way to Fuel\'s Paradise.',
     seed: 89,
     bounds: [-440, 440, -330, 470],
@@ -314,6 +317,7 @@ export const LEVELS = {
     medals: [60000, 180000, 400000],
   },
   bank: {
+    draft: true,
     name: 'Bank Shot', blurb: 'Your road comes in at an angle and stops at the avenue. The big junction is down it: bounce the wreckage off the shops and send it there.',
     seed: 97,
     bounds: [-440, 440, -210, 470],
@@ -338,6 +342,7 @@ export const LEVELS = {
     medals: [40000, 120000, 300000],
   },
   octane: {
+    draft: true,
     name: 'High Octane', blurb: 'Fuel\'s Paradise, built out over the edge of a bridge. Light it up and the forecourt goes over, onto the road below.',
     seed: 101,
     bounds: [-440, 440, -210, 470],
@@ -370,6 +375,7 @@ export const LEVELS = {
     medals: [50000, 150000, 350000],
   },
   canal: {
+    draft: true,
     name: 'Mind the Gap', blurb: 'The road stops at the canal. The ramp doesn\'t. Too slow and you\'re swimming; fast enough and the quay road\'s yours.',
     seed: 103,
     bounds: [-440, 440, -210, 470],
@@ -396,6 +402,7 @@ export const LEVELS = {
     medals: [40000, 120000, 300000],
   },
   meet: {
+    draft: true,
     name: 'Rendezvous', blurb: 'Three tankers and a bus are crossing the park, nose to tail. Watch them come and be there when they are: flat out you\'re early.',
     seed: 107,
     bounds: [-440, 440, -210, 470],
@@ -420,6 +427,7 @@ export const LEVELS = {
     medals: [40000, 120000, 300000],
   },
   decker: {
+    draft: true,
     name: 'Double Decker', blurb: 'A jam on the bridge, a wall down one side of it, and a busy junction down below on the other. Go in at an angle.',
     seed: 109,
     bounds: [-440, 440, -210, 470],

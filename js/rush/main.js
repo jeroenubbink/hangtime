@@ -11,7 +11,7 @@ import { Puffs, Debris } from '../derby/fx.js';
 import { Vehicle, contact, damageFrom, subdivide } from '../derby/vehicle.js';
 import { loadSceneryKit } from '../scenery.js';
 import { City, rng, EDGE } from './city.js';
-import { LEVELS } from './levels.js';
+import { LEVELS as ALL_LEVELS } from './levels.js';
 import { Traffic } from './traffic.js';
 import { Props } from './props.js';
 import { buildStation as stationModel, DEBRIS_COLOURS } from './station.js';
@@ -56,6 +56,10 @@ camera.updateProjectionMatrix();
 const sound = new Sound();
 const smoke = new Puffs(scene, 1800, { soft: 0.15 });
 const glow = new Puffs(scene, 1400, { additive: true, soft: 0.35 });
+
+// The rough junctions still being tried out are only there with rush.html?drafts
+const DRAFTS = new URLSearchParams(location.search).has('drafts');
+const LEVELS = Object.fromEntries(Object.entries(ALL_LEVELS).filter(([, L]) => DRAFTS || !L.draft));
 
 // ---------- Settings & records ----------
 const settings = Object.assign({ level: 'cross', car: 'comet', time: 'day' }, store.load('rush.settings', {}));
