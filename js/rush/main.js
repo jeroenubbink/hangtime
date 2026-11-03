@@ -36,8 +36,10 @@ const KMH = 3.6;
 const PRE_INTRO = 4.2, PRE_COUNT = 2.4, PRE_RETRY = 1.2, PRE_ALL = PRE_INTRO + PRE_COUNT;
 const FRAGILE = 2.4;
 const ZONE = 45;   // metres around where you crashed (and round the junction): whatever crashes in there is part of your crash
-const CRASH_MAX = 30, CRASH_QUIET = 5, FOLLOW_YOU = 5, SHOT = 2.5, HOLD = 2, HEAP = 1.5;   // seconds
-const INCOMING = 1.8;   // seconds of the (slowed) simulation: something this close to hitting the pile is worth watching
+const CRASH_MAX = 30, CRASH_QUIET = 5, FOLLOW_YOU = 5, SHOT = 3.5, HOLD = 2, HEAP = 1.5;   // seconds
+// Seconds of the (slowed) simulation: something this close to hitting the pile is worth watching (seen coming, so the
+// camera's there before it hits)
+const INCOMING = 2.5;
 
 // ---------- Stage ----------
 const stage = createStage($('view'));
@@ -357,7 +359,7 @@ function updatePops(raw) {
     _pp.copy(inc.pos).setY(inc.pos.y + 2 + inc.born * 1.5).project(camera);
     const vis = _pp.z < 1 && inc.born < 1.8;
     inc.el.style.display = vis ? '' : 'none';
-    inc.el.style.transform = `translate(${((_pp.x + 1) / 2 * W).toFixed(0)}px, ${((1 - _pp.y) / 2 * H).toFixed(0)}px) translate(-50%, -50%) scale(${Math.min(1, inc.born * 6).toFixed(2)})`;
+    inc.el.style.transform = `translate(${((_pp.x + 1) / 2 * W).toFixed(1)}px, ${((1 - _pp.y) / 2 * H).toFixed(1)}px) translate(-50%, -50%) scale(${Math.min(1, inc.born * 6).toFixed(2)})`;
     inc.el.style.opacity = String(clamp((1.8 - inc.born) / 0.5, 0, 1));
     if (inc.born >= 1.8) { inc.el.remove(); C.incidents.splice(i, 1); }
   }
@@ -1402,7 +1404,7 @@ function labelHeaps() {
     if (!g.el) continue;
     _pp.set(g.c.x, g.top + 2.5, g.c.z).project(camera);
     g.el.style.display = _pp.z < 1 && Math.abs(_pp.x) < 1.2 && Math.abs(_pp.y) < 1.2 ? '' : 'none';
-    g.el.style.transform = `translate(${((_pp.x + 1) / 2 * W).toFixed(0)}px, ${((1 - _pp.y) / 2 * H).toFixed(0)}px) translate(-50%, -100%)`;
+    g.el.style.transform = `translate(${((_pp.x + 1) / 2 * W).toFixed(1)}px, ${((1 - _pp.y) / 2 * H).toFixed(1)}px) translate(-50%, -100%)`;
   }
 }
 
@@ -1568,10 +1570,23 @@ function updateCamera(dt, rawDt) {
     // further than keeps each car a car), instead of cutting about between them. Back in once it's down to one for
     // a second.
     // (round what it's framing already, so it can drift along with the action; else round what it's watching)
+    // (each shot held a while, wide or not: none in for under 2 s, out again, and in again)
+    C.wideT = (C.wideT || 0) + rawDt;
     const T = C.rt > 1.5 ? together(all, ks, C.wide ? C.wide.at : C.subject ? C.subject.car.pos : C.focus) : null;
-    if (T) { C.wide = C.wide || { at: T.at.clone(), r: T.r }; C.wideOff = 0; }
-    else if (C.wide && (C.wideOff = (C.wideOff || 0) + rawDt) > 1) C.wide = null;
-    if (C.wide && T) { C.wide.at.lerp(T.at, 1 - Math.exp(-rawDt * 2)); C.wide.r += (T.r - C.wide.r) * (1 - Math.exp(-rawDt * 2)); C.wide.pts = T.pts.map(p => p.clone()); }
+    if (T && (C.wide || (C.wideT > 2 && C.cutT > 2))) { if (!C.wide) { C.wide = { at: T.at.clone(), r: T.r }; C.wideT = 0; } C.wideOff = 0; }
+    else if (C.wide && (C.wideOff = (C.wideOff || 0) + rawDt) > 1.5 && C.wideT > SHOT) {
+      C.wide = null;
+      C.wideT = 0;
+      // (back in on whatever's most worth watching now, held a full shot: not on the one it had before it went wide,
+      // which is long done, and not to the pile for a moment and then off again)
+      let b = null, bk = 0;
+      for (const v of all) { const { k } = ks.get(v); if (k > bk) { bk = k; b = v; } }
+      if (b) C.side = behind(b, 1).distanceTo(camera.position) <= behind(b, -1).distanceTo(camera.position) ? 1 : -1;
+      C.subject = b;
+      C.cutT = C.cutS = C.restT = 0;
+    }
+    // (and it drifts with the action slowly: a gentle move, not a lurch each time the crashes regroup)
+    if (C.wide && T) { C.wide.at.lerp(T.at, 1 - Math.exp(-rawDt * 0.8)); C.wide.r += (T.r - C.wide.r) * (1 - Math.exp(-rawDt * 1)); C.wide.pts = T.pts.map(p => p.clone()); }
     if (C.rt < FOLLOW_YOU) {
       if (C.subject !== player) { C.subject = player; C.side = 1; }
     } else {
@@ -1583,9 +1598,11 @@ function updateCamera(dt, rawDt) {
       // (or a wreck thrown off down the street: a moment's watching, then back to the pile)
       const missed = C.subject && C.subject !== player && ((!(C.subject.gen > 0) && (C.restT > 0.4 || C.cutS > INCOMING)) ||
         (C.cutT > SHOT && Math.hypot(C.subject.car.pos.x - C.focus.x, C.subject.car.pos.z - C.focus.z) > 35));
-      const tired = C.restT > 0.8 || C.cutT > 6 || missed;
+      const tired = C.restT > 1.2 || C.cutT > 7 || missed;
       // (while it's framing it all, it stays on what it's got)
-      if (best && best !== C.subject && !C.wide && (C.cutT > SHOT || missed) && (tired || bk > cur.k * 1.8)) {
+      // (or sooner, for something about to hit and well worth more: it's there to see it coming)
+      const coming = C.cutT > 1.5 && ks.get(best)?.at && bk > cur.k * 2.5;
+      if (best && best !== C.subject && !C.wide && (C.cutT > SHOT || missed || coming) && (tired || coming || bk > cur.k * 1.8)) {
         C.subject = best;
         // Behind it on whichever side is nearer where the camera is: it stays on its side of the action, so what was
         // on the left is still on the left (swapping sides every cut turns the whole scene round)
@@ -1599,35 +1616,44 @@ function updateCamera(dt, rawDt) {
         if (Math.min(dp, dn) < 12) C.glide = false;
         else if (C.look && best.car.pos.distanceTo(C.look) > 30) C.glide = true;
         else { C.cutNow = true; C.glide = false; }
-      } else if ((!best || missed) && tired && C.subject) { C.subject = null; C.cutT = C.cutS = 0; }
+      } else if ((!best || missed) && tired && C.subject && C.wideT > 1.5) { C.subject = null; C.cutT = C.cutS = 0; }
     }
     const S = C.subject;
     let look;
     if (C.wide) {
       // From up and back, on the side the camera's already on, turning slowly; far enough out to fit it all
       const W = C.wide, r = Math.min(WIDE_MAX, W.r), D = r / Math.sin(THREE.MathUtils.degToRad(camera.fov) / 2) + 4;
-      if (C.wideA == null) C.wideA = Math.atan2(camera.position.x - W.at.x, camera.position.z - W.at.z);
+      if (C.wideA == null) { C.wideA = C.wideGoal = Math.atan2(camera.position.x - W.at.x, camera.position.z - W.at.z); C.wideLook = 0; }
       C.wideA += rawDt * 0.08;
+      C.wideGoal += rawDt * 0.08;
       _l.copy(W.at);
       // (`up`: 0, up and back; 1, nearly straight down)
       const spot = (a, up) => _c.set(W.at.x + Math.sin(a) * D * (0.8 - 0.6 * up), W.at.y + D * (0.55 + 0.4 * up), W.at.z + Math.cos(a) * D * (0.8 - 0.6 * up));
       // (a building in the way of any of it: round to the nearest side that sees it all; none, between towers: higher,
       // looking down on it, until one does)
       const hidden = (a, up) => { spot(a, up); return blocked(_c, _l) || (W.pts || []).some(p => blocked(_c, p)); };
-      let up = 0;
-      search: for (const u of [0, 0.5, 1]) {
-        for (let i = 0; i <= 8; i++) {
-          const a = C.wideA + Math.ceil(i / 2) * 0.4 * (i % 2 ? 1 : -1);
-          if (!hidden(a, u)) { C.wideA = a; up = u; break search; }
+      // (looked for only when where it's going is hidden, at most every half second, and then it turns round to it
+      // steadily, never snapping: a camera swinging about loses you)
+      if ((C.wideLook -= rawDt) <= 0 && hidden(C.wideGoal, C.wideUpGoal || 0)) {
+        C.wideLook = 0.5;
+        let up = 0, a0 = C.wideGoal;
+        search: for (const u of [0, 0.5, 1]) {
+          for (let i = 0; i <= 8; i++) {
+            const a = a0 + Math.ceil(i / 2) * 0.4 * (i % 2 ? 1 : -1);
+            if (!hidden(a, u)) { C.wideGoal = a; up = u; break search; }
+          }
+          up = u;
         }
-        up = u;
+        C.wideUpGoal = up;
       }
-      C.wideUp = (C.wideUp || 0) + (up - (C.wideUp || 0)) * (1 - Math.exp(-rawDt * 2));
+      const da = C.wideGoal - C.wideA;
+      C.wideA += Math.sign(da) * Math.min(Math.abs(da), Math.min(0.6, Math.abs(da) * 1.5) * rawDt);
+      C.wideUp = (C.wideUp || 0) + ((C.wideUpGoal || 0) - (C.wideUp || 0)) * (1 - Math.exp(-rawDt * 1.2));
       spot(C.wideA, C.wideUp);
       look = _l;
       C.on = 'wide';
     } else if (S) {
-      C.wideA = C.wideUp = null;
+      C.wideA = C.wideUp = C.wideUpGoal = null;
       const p = S.car.pos, v = S.car.vel, sp = Math.hypot(v.x, v.z);
       if (sp > 3) C.dir = (C.dir || new THREE.Vector3()).set(v.x / sp, 0, v.z / sp);
       else C.dir = C.dir || S.forward.clone().setY(0).normalize();
@@ -1643,7 +1669,7 @@ function updateCamera(dt, rawDt) {
       look = _l;
       C.on = S === player ? 'you' : (n.at ? 'incoming ' : 'wreck ') + S.kind;
     } else {
-      C.wideA = C.wideUp = null;
+      C.wideA = C.wideUp = C.wideUpGoal = null;
       C.ang += rawDt * 0.15;
       _c.set(C.focus.x + Math.sin(C.ang) * 17, C.focus.y + 8, C.focus.z + Math.cos(C.ang) * 17);
       look = C.focus;
@@ -2063,6 +2089,9 @@ function tick(raw, draw = true) {
   post.mat.uniforms.tint.value = G.rushK * 0.35;
   updateLines(fast * 0.6 + G.rushK * 0.6);
   updateCamera(dt, raw);
+  // (the labels that sit over things go where the camera is now, not where it was last frame: else they trail it, and
+  // shake as it pans)
+  camera.updateMatrixWorld();
   if (G.tour) stage.focusSun(G.tour.look, G.tour.D + 25);
   else stage.focusSun(_c.copy(player.car.pos).addScaledVector(cam.dir, G.crash ? 0 : 25), G.crash ? 40 : 55);
   // Sound
