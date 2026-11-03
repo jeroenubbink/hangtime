@@ -952,8 +952,9 @@ function step() {
   const fwd = player.forward;
   const focus = G.crash ? { x: G.crash.origin.x, z: G.crash.origin.z, dx: 0, dz: 0 } : { x: c.pos.x, z: c.pos.z, dx: fwd.x, dz: fwd.z };
   const B = bodies();
-  // (in a crash, whatever it's thrown about wakes the traffic it's heading for, however far it flies)
-  const hot = G.crash ? B.filter(b => (b.gen > 0 || b === player) && b.car.vel.lengthSq() > 25).map(b => b.car.pos) : null;
+  // (in a crash, whatever it's thrown about wakes the traffic it's heading for, however far it flies, and still does
+  // once it's lying in the road: a sleeper glides on its lane, through anything that isn't)
+  const hot = G.crash ? B.filter(b => b.gen > 0 || b === player).map(b => b.car.pos) : null;
   traffic.update(DT, focus, [...B, ...traffic.list.filter(v => v.asleep)], true, G.crash ? G.crash.t : null, hot);
   if (G.state === 'run') drive(DT);
   else if (running) {
