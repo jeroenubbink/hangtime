@@ -217,7 +217,7 @@ export const LEVELS = {
       { road: 'second', side: -1, i: 0, speed: [15, 18], gap: [1.7, 3.2], spawn: true },
       { road: 'second', side: -1, i: 1, speed: [16, 20], gap: [1.9, 3.6], spawn: true },
       // and a queue at the second lights too, for the long jump (full rush lands you here)
-      { road: 'down', side: 1, i: 0, speed: [16, 20], stop: 218.3, queue: [null, 'bus', null, null, null, null] },
+      { road: 'down', side: 1, i: 0, speed: [16, 20], stop: 218.3, queue: [null, 'bus', null, null, null] },
       { road: 'down', side: 1, i: 1, speed: [16, 20], stop: 218.3, queue: [null, null, 'van', null, 'lorry'] },
       // Round the corner, across your way straight on: now and then, for a close call
       { road: 'bend', side: -1, i: 0, speed: [14, 17], gap: [5, 9], spawn: true, then: { road: 'main', side: -1, i: 0 } },
