@@ -102,7 +102,7 @@ through them. Things to know:
   sunset-and-flaming-palm logo on its roof. Anything that hits it hard enough sets it off: your car under the canopy at speed or through a pump or pillar, or, once
   you've crashed, the traffic you've thrown at it, or a blast beside it. Then the pumps go, the canopy and its logo
   fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction.
-- **Guide lines** (on by default; G or the menu turns them off): up to three coloured routes painted on the road
+- **Guide lines** (for testing only, not shown to players: open `rush.html?guides`): up to three coloured routes painted on the road
   per junction, each the best of a different idea that route bots found (20 runs per junction: either lane, a late
   swerve either way, rush or not, easing off), ending in a ring where the car first hit, labelled with what to do
   ("Rush, left lane", "Steady, swerve left") and what the bot scored. Off the ground the line goes dashed.
@@ -153,7 +153,6 @@ through them. Things to know:
 | Space | Drift |
 | R | Retry, at any time |
 | Esc | Pause |
-| G | Guide lines on or off |
 
 ### Balance
 

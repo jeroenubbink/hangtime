@@ -53,11 +53,13 @@ const smoke = new Puffs(scene, 1800, { soft: 0.15 });
 const glow = new Puffs(scene, 1400, { additive: true, soft: 0.35 });
 
 // ---------- Settings & records ----------
-const settings = Object.assign({ level: 'cross', car: 'comet', time: 'day', guides: true }, store.load('rush.settings', {}));
+const settings = Object.assign({ level: 'cross', car: 'comet', time: 'day' }, store.load('rush.settings', {}));
 const records = Object.assign({ best: {}, medals: {} }, store.load('rush.records', {}));
 if (!LEVELS[settings.level]) settings.level = 'cross';
 if (!RIDES[settings.car]) settings.car = 'comet';
 if (!['day', 'sunset'].includes(settings.time)) settings.time = 'day';
+// The guide lines are for testing only: rush.html?guides
+const GUIDES = new URLSearchParams(location.search).has('guides');
 const saveSettings = () => store.save('rush.settings', settings);
 
 // ---------- World ----------
@@ -133,7 +135,7 @@ function loadLevel(key) {
   city = new City(scene, LEVELS[key]);
   city.key = key;
   guides?.dispose();
-  guides = new Guides(scene, city);
+  guides = GUIDES ? new Guides(scene, city) : null;
   debris = new Debris(scene, (x, z, y) => city.groundHeight(x, z, y));
   stage.setTime(settings.time);
 }
@@ -1047,7 +1049,6 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyR' && city && G.state !== 'menu') startRun(PRE_RETRY);
   if (e.code === 'Escape') { if (G.state === 'paused') resume(); else if (['run', 'crash', 'count', 'intro'].includes(G.state)) pause(); }
   if (e.code === 'KeyM') sound.setMuted(!sound.muted);
-  if (e.code === 'KeyG') { settings.guides = !settings.guides; saveSettings(); if (G.state === 'menu') renderMenu(); }
   if (G.state === 'intro' && ['Space', 'Enter', 'ArrowUp', 'KeyW'].includes(e.code)) { skipTo(PRE_COUNT); G.state = 'count'; }
   if (G.state === 'results' && e.code === 'Enter') startRun(PRE_RETRY);
   if (G.state === 'tour' && e.code === 'Enter') skipTour();
@@ -1985,15 +1986,6 @@ function renderMenu() {
     b.onclick = () => { settings.time = t; saveSettings(); stage.setTime(t); for (const v of traffic.list) v.setLights(TIMES[t].lamps); renderMenu(); };
     tod.appendChild(b);
   }
-  const guide = $('guide');
-  guide.innerHTML = '';
-  for (const on of [true, false]) {
-    const b = document.createElement('button');
-    b.className = on === settings.guides ? 'active' : '';
-    b.textContent = on ? 'Show' : 'Hide';
-    b.onclick = () => { settings.guides = on; saveSettings(); renderMenu(); };
-    guide.appendChild(b);
-  }
 }
 $('btn-go').onclick = () => { sound.init(); loadLevel(settings.level); startRun(PRE_INTRO + PRE_COUNT); };
 $('btn-retry').onclick = () => startRun(PRE_RETRY);
@@ -2035,7 +2027,7 @@ function frame(now) {
 function tick(raw, draw = true) {
   // (the guide lines show up to the crash, not over the wreckage)
   // (paused, by what it was paused from)
-  if (guides) guides.group.visible = settings.guides && ['menu', 'intro', 'count', 'run'].includes(G.state === 'paused' ? G.paused : G.state);
+  if (guides) guides.group.visible = ['menu', 'intro', 'count', 'run'].includes(G.state === 'paused' ? G.paused : G.state);
   if (G.state === 'menu') {
     // The junction, from above, with its traffic going about its business
     cam.menuA += raw * 0.05;
