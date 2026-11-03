@@ -102,6 +102,10 @@ through them. Things to know:
   sunset-and-flaming-palm logo on its roof. Anything that hits it hard enough sets it off: your car under the canopy at speed or through a pump or pillar, or, once
   you've crashed, the traffic you've thrown at it, or a blast beside it. Then the pumps go, the canopy and its logo
   fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction.
+- **Guide lines** (on by default; G or the menu turns them off): up to three coloured routes painted on the road
+  per junction, each the best of a different idea that route bots found (20 runs per junction: either lane, a late
+  swerve either way, rush or not, easing off), ending in a ring where the car first hit, labelled with what to do
+  ("Rush, left lane", "Steady, swerve left") and what the bot scored. Off the ground the line goes dashed.
 - **The opening shot** pans across the junction, then flies back down the road to your car and round behind it
   for the countdown.
 - **The traffic is scripted:** the same every time, so a junction can be learned. Until you crash its drivers are
@@ -121,7 +125,13 @@ through them. Things to know:
   sweeps over what's left, gathered into up to six heaps, a second and a half each (a second if there's only one),
   each with its score and a name (The Pile, Stragglers, Just a Dent, Ground Zero…), the biggest last. Enter skips it. Then the results, circling over the lot, with a **wreck report**: the
   damage by type, and the vehicles that took the most, with what happened to each.
-- **The crash camera** keeps out of buildings and vehicles, rising over anything it would end up inside.
+- **The crash camera** keeps out of buildings and vehicles, rising over anything it would end up inside. With two
+  or more separate crashes going at once it pulls back (never so far you can't tell the cars apart) and holds one shot
+  of them all. It keeps to its side of the action from one subject to the next, so left stays left. It slides over a
+  short way, flies over the roofs to anything far off, and goes up and over any building in the way. The tour pulls
+  up and back between heaps, so you see where each lies from the last, and looks at each from where all of it shows.
+- **Wrecks stay in the area:** anything thrown clear more than 50 m from where anything happened (where you hit, the
+  junction, a blast) slows in the air and comes down about where it is, on a flat roof or the street beside it.
 - **The town:** brick walk-ups over shop fronts mixed with stone-based towers, the tallest stepping back in tiers to
   a crown, water tanks on the roofs. Tankers explode, other wrecks
   sometimes catch fire and go up, cars split in half, lamp posts and trees go flying, hydrants gush, and on the
@@ -142,6 +152,7 @@ through them. Things to know:
 | Space | Drift |
 | R | Retry, at any time |
 | Esc | Pause |
+| G | Guide lines on or off |
 
 ### Balance
 
@@ -277,6 +288,7 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
     its lane without physics
   - `props.js`: lamp posts, trees, traffic lights, bins, hydrants, bollards and crash barriers that get knocked flying
   - `replay.js`: records each run for the Send replay button (see Run)
+  - `guides.js`, `routes.js`: the guide lines, and the bots' routes they draw (generated)
   - `roster.js`: your cars and the traffic
 - `assets/cars/toy-bus.glb`, `toy-tanker.glb`, `toy-lorry.glb`, `toy-flatbed.glb`: Rushtime's big vehicles, made in
   Blender (source: `assets/src/rush-vehicles.blend`)

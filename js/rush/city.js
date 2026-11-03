@@ -12,7 +12,9 @@ const CELL = 24;
 
 function rng(seed) { return () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296); }
 const _p = new THREE.Vector3(), _n = new THREE.Vector3(), _r = new THREE.Vector3(), _pv = new THREE.Vector3();
-const _t1 = new THREE.Vector3(), _t2 = new THREE.Vector3(), _J = new THREE.Vector3(), _vt = new THREE.Vector3();
+// How far a roof's top stands over `top`: a walk-up's cornice, a hall's ledge, a tower's crown
+const ROOF = { walkup: 0.2, hall: 0.3 };
+const _g = new THREE.Vector3(), _t1 = new THREE.Vector3(), _t2 = new THREE.Vector3(), _J = new THREE.Vector3(), _vt = new THREE.Vector3();
 
 // A road from (x0, z0) to (x1, z1), in any direction. `right`/`left`: lanes for traffic going from 0 to 1 and
 // back. Positions on it are (u, v): u metres along from (x0, z0), v metres across toward the right of travel
@@ -148,6 +150,8 @@ export class City {
     const [a, b, c, d] = this.deck.rect;
     return x > a - m && x < b + m && z > c - m && z < d + m;
   }
+  // The ground's height under (x, z), on a bridge's deck if there's one there (for what stands on it)
+  top(x, z) { return this.inDeck(x, z) ? this.deck.y : this.base(x, z); }
   // The height a road's surface follows: the deck's over the bridge (unless it's the road under it), right to
   // its edges
   roadBase(r, x, z) { return !r.under && this.inDeck(x, z, 0.05) ? this.deck.y : this.base(x, z); }
@@ -164,6 +168,10 @@ export class City {
       if (Math.abs(x - r.x) > r.w / 2) continue;
       const t = (r.z - z) / r.len;   // 0 at the foot, 1 at the lip (ramps face -z)
       if (t > 0 && t < 1) h = Math.max(h, this.base(x, z) + r.h * t);
+    }
+    // (a flat roof holds what comes down on it from above; a tower's tiers don't, and it slides off into the street)
+    if (y < Infinity) for (const b of this.near(x, z)) {
+      if (!b.tiers && b.floor == null && y > b.top - 0.6 && this.blockDist(b, x, z, _g) < 0) h = Math.max(h, b.top + (ROOF[b.type] ?? 0.7));
     }
     return h;
   }
@@ -189,6 +197,14 @@ export class City {
 
   // Buildings near (x, z)
   near(x, z) { return this.grid.get(Math.floor(x / CELL) + ',' + Math.floor(z / CELL)) || EMPTY; }
+  // Something solid (a building, a wall) over [x0, x1] x [z0, z1], in every cell near it
+  addToGrid(b, x0, x1, z0, z1) {
+    for (let i = Math.floor(x0 / CELL) - 1; i <= Math.floor(x1 / CELL) + 1; i++) for (let k = Math.floor(z0 / CELL) - 1; k <= Math.floor(z1 / CELL) + 1; k++) {
+      const key = i + ',' + k;
+      if (!this.grid.has(key)) this.grid.set(key, []);
+      this.grid.get(key).push(b);
+    }
+  }
   // Signed distance from (x, z) to a block's footprint, and the outward normal
   blockDist(b, x, z, n) {
     const ex = x - b.x, ez = z - b.z, lx = ex * b.ca + ez * b.sa, lz = -ex * b.sa + ez * b.ca;
@@ -218,7 +234,7 @@ export class City {
     for (const [x, z] of CORNERS) {
       _p.set(x * hw, 0, z * hl).applyQuaternion(car.q).add(car.pos);
       for (const b of list) {
-        if (_p.y > b.top) continue;
+        if (_p.y > b.top || _p.y < b.floor) continue;
         const d = this.blockDist(b, _p.x, _p.z, _n);
         if (d > 0) continue;
         _r.subVectors(_p, car.pos);
@@ -311,9 +327,9 @@ export class City {
     return faceUp(P, U, I);
   }
   // A flat polygon on the ground
-  patch(poly, lift) {
+  patch(poly, lift, h = (x, z) => this.base(x, z)) {
     const P = [], I = [];
-    for (const [x, z] of poly) P.push(x, this.base(x, z) + lift, z);
+    for (const [x, z] of poly) P.push(x, h(x, z) + lift, z);
     for (let i = 1; i < poly.length - 1; i++) I.push(0, i, i + 1);
     return faceUp(P, poly.flatMap(([x, z]) => [x / 4, z / 4]), I);
   }
@@ -364,20 +380,14 @@ export class City {
         return [b.x + lx * b.ca - lz * b.sa, b.z + lx * b.sa + lz * b.ca];
       });
       // (nor down a bank, nor in the level's open ground)
-      const open = ([x, z]) => this.base(x, z) < -0.3 || this.inPark(x, z);
+      const open = ([x, z]) => this.base(x, z) < -0.3 || this.inPark(x, z) || this.water?.below(x, z);
       if (!b.fixed && (pts.some(([x, z]) => this.roadDist(x, z) < WALK - 0.6 || this.inLot(x, z, 1)) || pts.some(open) || fixed.some(o => overlaps(o, b)))) continue;
       if (this.blocks.some(o => overlaps(o, b))) continue;
       b.y = Math.min(...pts.slice(0, 4).map(([x, z]) => this.base(x, z))) - 1;
       b.top = b.y + b.h + 1;
       this.blocks.push(b);
       const xs = pts.map(p => p[0]), zs = pts.map(p => p[1]);
-      const [a, c] = [Math.floor(Math.min(...xs) / CELL), Math.floor(Math.max(...xs) / CELL)];
-      const [e, f] = [Math.floor(Math.min(...zs) / CELL), Math.floor(Math.max(...zs) / CELL)];
-      for (let i = a - 1; i <= c + 1; i++) for (let k = e - 1; k <= f + 1; k++) {
-        const key = i + ',' + k;
-        if (!this.grid.has(key)) this.grid.set(key, []);
-        this.grid.get(key).push(b);
-      }
+      this.addToGrid(b, Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs));
     }
     // Neighbours whose cornices and ledges reach over each other stand a few centimetres apart in height, so
     // their overhangs never share a plane (and flicker). (Buildings start a metre underground: it doesn't show.)
@@ -391,7 +401,7 @@ export class City {
     const paveParts = walk.map(g => [g, '#c9c2b4']);
     for (const lot of L.lots || []) {
       const [a, b, c, d] = lot.rect;
-      paveParts.push([this.patch([[a, c], [b, c], [b, d], [a, d]], CURB + 0.04), lot.colour || '#bdb8ae']);
+      paveParts.push([this.patch([[a, c], [b, c], [b, d], [a, d]], CURB + 0.04, (x, z) => this.top(x, z)), lot.colour || '#bdb8ae']);
     }
     for (const [r, e, p, q] of curb) {
       const P = [];
@@ -452,6 +462,12 @@ export class City {
       parts.push([new THREE.BoxGeometry(1.6, hi - lo, 1.6).translate(x, (lo + hi) / 2, z), '#bdb6a8']);
       parts.push([new THREE.BoxGeometry(2.4, 0.5, 2.4).translate(x, hi - 0.25, z), '#a9a296']);
     }
+    // A wall along part of its edge, `wall`: [x0, x1, z0, z1], 3 m high: solid on the deck, nothing under it
+    if (this.deck.wall) {
+      const [x0, x1, z0, z1] = this.deck.wall, H = 3;
+      parts.push([new THREE.BoxGeometry(x1 - x0, H + T, z1 - z0).translate((x0 + x1) / 2, y + (H - T) / 2, (z0 + z1) / 2), '#b3ab9c']);
+      this.addToGrid({ x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0, ca: 1, sa: 0, top: y + H, floor: y - T, h: H }, x0, x1, z0, z1);
+    }
     // (lit a little from below, by the road under it: in its own shadow it would be near black)
     const m = new THREE.Mesh(merge(parts.map(([g, col]) => [g.toNonIndexed(), col])), new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#6e6a60' }));
     m.castShadow = m.receiveShadow = true;
@@ -464,10 +480,12 @@ export class City {
     const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, W.y, (z0 + z1) / 2);
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: '#2f7fa8', transparent: true, opacity: 0.85 }));
     this.group.add(m);
-    // The quay wall
-    const q = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, CURB - W.floor, 1).translate((x0 + x1) / 2, (CURB + W.floor) / 2, W.edge - 0.5), new THREE.MeshLambertMaterial({ color: '#8a8478' }));
-    q.receiveShadow = true;
-    this.group.add(q);
+    // The quay wall (or walls, either side of a canal: [z0, z1] each)
+    for (const [z0, z1] of W.walls || [[W.edge - 1, W.edge]]) {
+      const q = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, CURB - W.floor, z1 - z0).translate((x0 + x1) / 2, (CURB + W.floor) / 2, (z0 + z1) / 2), new THREE.MeshLambertMaterial({ color: '#8a8478' }));
+      q.receiveShadow = true;
+      this.group.add(q);
+    }
   }
 }
 const EMPTY = [];

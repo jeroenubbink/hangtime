@@ -222,7 +222,7 @@ export class Traffic {
     for (const P of level.parked || []) {
       const fx = -Math.sin(P.yaw || 0), fz = -Math.cos(P.yaw || 0), len = TRAFFIC[P.kind || 'saloon'].size[1];
       this.lanes.push(new Lane(city, { path: [[P.x - fx * 6, P.z - fz * 6], [P.x + fx * 6, P.z + fz * 6]], speed: [0, 0], gap: [0, 0],
-        stop: 6 + len / 2 + 1, queue: [P.kind || null], parked: true }, this.lanes.length));
+        stop: 6 + len / 2 + 1, queue: [P.kind || null], parked: true, hp: P.hp }, this.lanes.length));
     }
     this.list = [];
     this.input = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false };
@@ -236,7 +236,7 @@ export class Traffic {
       // Bumper to bumper, back from the stop line
       let at = L.stop - 1;
       const queue = Array.isArray(L.queue) ? L.queue : Array(L.queue || 0).fill(null);
-      for (const k of queue) { const kind = k || this.kind(L), len = TRAFFIC[kind].size[1]; const v = this.add(kind, L, at - len / 2, 0, true); if (k && !L.parked) v.special = k; at -= len + 2; }
+      for (const k of queue) { const kind = k || this.kind(L), len = TRAFFIC[kind].size[1]; const v = this.add(kind, L, at - len / 2, 0, true); if (k && !L.parked) v.special = k; if (L.hp) v.hp = v.maxHp = L.hp; at -= len + 2; }
       const back = at;
       if (L.fill) {
         for (let s = L.fill[0]; s < L.fill[1]; s += L.gap[0] + R() * (L.gap[1] - L.gap[0])) {
@@ -257,9 +257,10 @@ export class Traffic {
     // The big ones, timed to reach the junction when a fast run does: clear room for them
     for (const sp of level.specials || []) {
       const L = this.lanes[sp.lane];
-      // (clear room where it actually goes: a long eta is held back to the start of the lane)
-      const s = Math.max(L.from + 2, L.jS - L.speedMid * sp.eta);
-      for (const v of L.cars.filter(c => Math.abs(c.s - s) < 16)) this.remove(v);
+      // (clear room where it actually goes: a long eta is held back to where its lane's traffic starts, or with
+      // `exact`, to the start of the road)
+      const s = Math.max(sp.exact ? 2 : L.from + 2, L.jS - L.speedMid * sp.eta);
+      for (const v of L.cars.filter(c => Math.abs(c.s - s) < 16 && !c.special)) this.remove(v);
       const v = this.add(sp.kind, L, s, L.speedMid);
       v.special = sp.kind;
     }

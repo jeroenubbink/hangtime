@@ -17,6 +17,7 @@ import { Props } from './props.js';
 import { buildStation as stationModel, DEBRIS_COLOURS } from './station.js';
 import { RIDES, TRAFFIC, TRAFFIC_PAINTS } from './roster.js';
 import { Recorder, FLAGS, canSend, send } from './replay.js';
+import { Guides } from './guides.js';
 
 const $ = id => document.getElementById(id);
 const DEBRIS = { door: 'debris-door', doorWin: 'debris-door-window', bumper: 'debris-bumper', plate: 'debris-plate-a', plateB: 'debris-plate-b',
@@ -50,7 +51,7 @@ const smoke = new Puffs(scene, 1800, { soft: 0.15 });
 const glow = new Puffs(scene, 1400, { additive: true, soft: 0.35 });
 
 // ---------- Settings & records ----------
-const settings = Object.assign({ level: 'cross', car: 'comet', time: 'day' }, store.load('rush.settings', {}));
+const settings = Object.assign({ level: 'cross', car: 'comet', time: 'day', guides: true }, store.load('rush.settings', {}));
 const records = Object.assign({ best: {}, medals: {} }, store.load('rush.records', {}));
 if (!LEVELS[settings.level]) settings.level = 'cross';
 if (!RIDES[settings.car]) settings.car = 'comet';
@@ -58,7 +59,7 @@ if (!['day', 'sunset'].includes(settings.time)) settings.time = 'day';
 const saveSettings = () => store.save('rush.settings', settings);
 
 // ---------- World ----------
-let city = null, props = null, traffic = null, debris = null, player = null;
+let city = null, props = null, traffic = null, debris = null, player = null, guides = null;
 let halves = [];
 const G = { state: 'menu', t: 0, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0 };
 window.rush = G;
@@ -129,6 +130,8 @@ function loadLevel(key) {
   props?.dispose();
   city = new City(scene, LEVELS[key]);
   city.key = key;
+  guides?.dispose();
+  guides = new Guides(scene, city);
   debris = new Debris(scene, (x, z, y) => city.groundHeight(x, z, y));
   stage.setTime(settings.time);
 }
@@ -468,6 +471,7 @@ function blowUp(X) {
   // (a forecourt car: thrown up and out, and wrecked by it)
   if (X.launch) { launch(X); X.launchT = G.t; if (!X.wrecked && !X.halved) wreck(X, false); }
   const p = X.car.pos.clone(), big = X.def.explosive ? 2 : 1, R = 8 * big;
+  G.crash?.anchors.push(p.clone());
   explosion(p, big);
   sound.boom(Math.min(1, 0.6 * big));
   if (!X.launch) {
@@ -590,15 +594,16 @@ function buildStation(S) {
   G.station = null;
   if (!S) return;
   const L = city.level, P = L.props || [], sign = P.find(p => p[0] === 'sign');
-  const parts = stationModel({ ...S, pumps: P.filter(p => p[0] === 'pump').map(p => [p[1], p[2]]) }, city.base(S.x, S.z),
+  const parts = stationModel({ ...S, pumps: P.filter(p => p[0] === 'pump').map(p => [p[1], p[2]]) }, city.top(S.x, S.z),
     sign && [sign[1], sign[2]], L.blocks?.find(b => b.shop));
   for (const m of Object.values(parts)) if (m) scene.add(m);
   G.station = { S, ...parts, lit: false, fx: [] };
 }
-// Is `p` in under the canopy (or within `m` of it)?
+// Is `p` in under the canopy (or within `m` of it)? (on the forecourt: not on a road down below it, when it's out
+// on a bridge)
 function atStation(p, m = 0) {
-  const S = G.station.S;
-  return Math.abs(p.x - S.x) < S.w / 2 + m && Math.abs(p.z - S.z) < S.d / 2 + m && p.y < city.base(S.x, S.z) + S.h + 2;
+  const S = G.station.S, y = city.top(S.x, S.z);
+  return Math.abs(p.x - S.x) < S.w / 2 + m && Math.abs(p.z - S.z) < S.d / 2 + m && p.y > y - 1.5 && p.y < y + S.h + 2;
 }
 // Until you've crashed only you can set it off
 const canLight = v => G.station && !G.station.lit && !G.ended && (v === player || !!G.crash);
@@ -635,9 +640,10 @@ function ignite(p, by) {
   p = p.clone();
   T.lit = true;
   G.rec?.event(G.t, 'station', { by: by?.id });
+  G.crash?.anchors.push(p.clone());
   if (by === player && G.state === 'run') startCrash({ point: p.clone(), speed: player.car.vel.length() }, null);
   callout('FILL \'ER UP', 'big');
-  const y = city.base(S.x, S.z);
+  const y = city.top(S.x, S.z);
   // The big one under the canopy, then each pump
   explosion(new THREE.Vector3(S.x, y + 1, S.z), 3);
   sound.boom(1);
@@ -724,7 +730,7 @@ function startCrash(h, other) {
   G.impact = { kmh, bonus };
   G.heat = Math.round((G.heat + bonus) * 10) / 10;
   G.crash = { t: 0, rt: 0, quiet: 0, focus: h.point.clone(), origin: h.point.clone(), subject: player, side: 1, ang: 0, dist: 13, cutT: 0, lastSpike: G.t,
-    incidents: [], ledger: new Map(), spots: [], popSum: 0, popN: 0 };
+    incidents: [], ledger: new Map(), spots: [], popSum: 0, popN: 0, anchors: [h.point.clone(), new THREE.Vector3(city.level.junction[0], 0, city.level.junction[1])] };
   // Start the camera low beside the impact, looking across the way you came in
   const f = player.forward.clone().setY(0).normalize();
   G.crash.ang = Math.atan2(-f.x, -f.z) + (Math.random() < 0.5 ? 1 : -1) * (0.9 + Math.random() * 0.5);
@@ -970,6 +976,7 @@ function step() {
     if (running) water(player);
     for (const h of halves) { h.car.step(DT, NONE); water(h); }
     const all = bodies();
+    if (G.crash) reinIn(all);
     for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
       // Until you crash the traffic is scripted: it doesn't crash into itself (unless you've had a go at it)
       if (!G.crash && !all[i].player && !all[j].player && !all[i].gen && !all[j].gen) continue;
@@ -1003,6 +1010,26 @@ function step() {
   }
 }
 
+// Whatever's thrown clear out of it all, over the roofs or off down the street in the air, slows in the air once it's
+// AREA m from anywhere anything's happened (where you hit, the junction, a blast), and comes down about where it is: on a
+// roof, or in the street beside it. A wreck sliding away down the street slows the same. (A dented car still driving
+// goes where it likes: off, if it wants.)
+const AREA = 50;
+function reinIn(bs) {
+  for (const b of bs) {
+    const c = b.car;
+    // (a wreck sliding along the ground too: it's not driving anywhere)
+    if (!b.wrecked && !b.half && b !== player && c.pos.y - city.groundHeight(c.pos.x, c.pos.z, c.pos.y) < 1.5) continue;
+    let d = Infinity, o = null;
+    for (const a of G.crash.anchors) { const e = Math.hypot(c.pos.x - a.x, c.pos.z - a.z); if (e < d) { d = e; o = a; } }
+    // (only on the way out)
+    if (d < AREA || (c.pos.x - o.x) * c.vel.x + (c.pos.z - o.z) * c.vel.z <= 0) continue;
+    const k = Math.exp(-DT * 3 * clamp((d - AREA) / 10, 0, 1));
+    c.vel.x *= k;
+    c.vel.z *= k;
+  }
+}
+
 // ---------- Input ----------
 const keys = new Set();
 window.addEventListener('keydown', e => {
@@ -1013,6 +1040,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyR' && city && G.state !== 'menu') startRun(PRE_RETRY);
   if (e.code === 'Escape') { if (G.state === 'paused') resume(); else if (['run', 'crash', 'count', 'intro'].includes(G.state)) pause(); }
   if (e.code === 'KeyM') sound.setMuted(!sound.muted);
+  if (e.code === 'KeyG') { settings.guides = !settings.guides; saveSettings(); if (G.state === 'menu') renderMenu(); }
   if (G.state === 'intro' && ['Space', 'Enter', 'ArrowUp', 'KeyW'].includes(e.code)) { skipTo(PRE_COUNT); G.state = 'count'; }
   if (G.state === 'results' && e.code === 'Enter') startRun(PRE_RETRY);
   if (G.state === 'tour' && e.code === 'Enter') skipTour();
@@ -1118,6 +1146,36 @@ function interest(v, all) {
   }
   // A wreck on the move: worth watching near the pile, hardly at all once it's rolled off down the street
   return { k: (sp + c.w.length() * 2) * (d < 30 ? 1 : 0.15), at: null };
+}
+// What's happening at once round `anchor`: everything worth watching (`ks`: each body's interest()) or hit in the
+// last moment, within WIDE_REACH of it, in incidents (whatever's within 7 m of the busiest). Two or more incidents
+// that each amount to something: returns the middle of them (weighted by how much is going on) and how far out they
+// go (and where each one is). One (however busy): null, the usual shot does that.
+const WIDE_REACH = 40, WIDE_MAX = 16;
+const _wc = new THREE.Vector3();
+function together(all, ks, anchor) {
+  const pts = [];
+  for (const v of all) {
+    let k = ks.get(v)?.k || 0;
+    if (v.touchT != null && G.t - v.touchT < 0.5) k = Math.max(k, 25);
+    const p = v.car.pos;
+    if (k > 8 && Math.hypot(p.x - anchor.x, p.z - anchor.z) < WIDE_REACH && Math.abs(p.y - anchor.y) < 6) pts.push([p, k]);
+  }
+  pts.sort((a, b) => b[1] - a[1]);
+  const inc = [];
+  for (const [p, k] of pts) {
+    const I = inc.find(i => Math.hypot(p.x - i.p.x, p.z - i.p.z) < 7);
+    if (I) I.k += k; else inc.push({ p, k });
+  }
+  const big = inc.filter(i => i.k >= 30);
+  if (big.length < 2) return null;
+  _wc.set(0, 0, 0);
+  let w = 0;
+  for (const { p, k } of big) { _wc.addScaledVector(p, k); w += k; }
+  _wc.divideScalar(w);
+  let r = 0;
+  for (const { p } of big) r = Math.max(r, Math.hypot(p.x - _wc.x, p.z - _wc.z));
+  return { at: _wc, r: r + 5, pts: big.map(i => i.p) };
 }
 // For the opening shot: the junction, which way your road runs to it (u), and which way is the middle of the
 // road from your car (w)
@@ -1233,60 +1291,92 @@ function startTour() {
   centre.divideScalar(w);
   const spread = Math.max(...all.map(g => Math.hypot(g.c.x - centre.x, g.c.z - centre.z) + g.r));
   const p = camera.position, first = gs[0]?.c || centre;
-  // Each heap seen from where nothing's in the way, turning as little as it can from the last
+  // Each heap seen from where nothing's in the way of any of it (its middle, and every car and piece in it), turning as
+  // little as it can from the last
   let az = Math.atan2(p.x - first.x, p.z - first.z);
   for (const g of gs) {
     let best = az, bs = Infinity;
-    for (let i = 0; i < 24; i++) {
+    const see = [g.c, ...g.items.slice(0, 8).map(i => i.pos)];
+    // (and if no side sees it all, from higher, looking down on it: down a street between tall buildings)
+    let bu = 0;
+    for (const up of [0, 0.5, 1]) for (let i = 0; i < 24; i++) {
       const a = az + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 12, turn = Math.abs(Math.ceil(i / 2) * Math.PI / 12);
-      tourSpot(g.c, a, g.D, _c);
-      const sc = turn + (blocked(_c, g.c) ? 10 : 0) + (city.near(_c.x, _c.z).some(b => city.blockDist(b, _c.x, _c.z, _w) < 1) ? 5 : 0);
-      if (sc < bs) { bs = sc; best = a; }
+      tourSpot(g.c, a, g.D, _c, up);
+      const hid = see.filter(q => blocked(_c, q)).length / see.length;
+      const sc = turn + up * 1.5 + hid * 10 + (city.near(_c.x, _c.z).some(b => !(_c.y < b.floor) && city.blockDist(b, _c.x, _c.z, _w) < 1) ? 5 : 0);
+      if (sc < bs) { bs = sc; best = a; bu = up; }
     }
     g.az = az = best;
+    g.up = bu;
   }
-  G.tour = { gs, t: -HOLD, end: gs.length > 1 ? gs.length * HEAP : gs.length, centre, D: clamp(14 + spread * 1.1, 20, 60), from: p.clone(), fromLook: (C.look || C.focus).clone(),
+  const T = G.tour = { gs, t: -HOLD, end: gs.length > 1 ? gs.length * HEAP : gs.length, centre, D: clamp(14 + spread * 1.1, 20, 60), from: p.clone(), fromLook: (C.look || C.focus).clone(),
     fromD: Math.hypot(p.x - first.x, p.z - first.z), az0: Math.atan2(p.x - first.x, p.z - first.z), look: centre.clone(), max: Math.max(1, ...gs.map(g => g.pts)) };
+  // How high each move to a heap has to go to clear the roofs under the way it takes (the way it would take down at
+  // street level, followed through: every building it would cross, and anything beside them)
+  const look = new THREE.Vector3(), at = new THREE.Vector3(), was = new THREE.Vector3(), each = T.end / Math.max(1, gs.length);
+  gs.forEach((g, i) => {
+    g.roof = -Infinity;
+    for (let k = 0; k <= 16; k++) {
+      tourPose(T, i * each + k / 16 * each * 0.5, look, at);
+      if (k) g.roof = Math.max(g.roof, roofsBetween(was, at));
+      was.copy(at);
+    }
+  });
   $('callouts').innerHTML = '';
 }
 // Enter (or Start) skips the rest of it, to the results
 function skipTour() { G.tour.t = Math.max(G.tour.t, G.tour.end); }
-// Where the camera looks at a heap from: `a` round it, `D` out and up
-const tourSpot = (c, a, D, out) => out.set(c.x + Math.sin(a) * D, c.y + 3 + D * 0.5, c.z + Math.cos(a) * D);
+// Where the camera looks at a heap from: `a` round it, `D` out and up (`up`: 0, at the usual angle; 1, much more
+// steeply down on it)
+const tourSpot = (c, a, D, out, up = 0) => out.set(c.x + Math.sin(a) * D * (1 - 0.6 * up), c.y + 3 + D * (0.5 + 0.7 * up), c.z + Math.cos(a) * D * (1 - 0.6 * up));
 // Where the tour's camera is: HEAP seconds a heap (one on its own, a second), getting there in the first half, then the results
 // circle out over the lot
+// Where the tour's camera is at `t`, looking at `look` from `out`: on the way to heap i it pulls up and back, and looks
+// more steeply down (the further the hop, the more back), so the way from one to the next is seen like a map, and where
+// each lies by the last, then pushes in on it; and it's up over the roofs on the way, never through them. Back the heap's index (-1 after the last).
+const tourEase = t => t * t * (3 - 2 * t);
+function tourPose(T, t, look, out) {
+  const n = T.gs.length, END = T.end, each = END / Math.max(1, n);
+  let D, az, i = -1;
+  if (t < END) {
+    i = Math.min(n - 1, Math.floor(t / each));
+    const u = (t - i * each) / each, k = tourEase(Math.min(1, u / 0.5));
+    const g = T.gs[i], prev = T.gs[i - 1], from = prev ? prev.c : T.fromLook;
+    look.lerpVectors(from, g.c, k);
+    D = prev ? prev.D + (g.D - prev.D) * k : T.fromD + (g.D - T.fromD) * k;
+    D += Math.sin(k * Math.PI) * Math.min(25, Math.hypot(g.c.x - from.x, g.c.z - from.z) * 0.45);
+    const a0 = prev ? prev.az : T.az0, u0 = prev ? prev.up : 0;
+    az = a0 + (g.az - a0) * k + (u - 0.5) * 0.15;
+    tourSpot(look, az, D, out, u0 + (g.up - u0) * k + Math.sin(k * Math.PI) * 0.7);
+    // (the first move starts from wherever the crash camera was)
+    if (i === 0) out.lerpVectors(T.from, out, k);
+    // (and over the roofs on the way: up as it sets off, down only as it gets there)
+    if (g.roof > out.y - 5) out.y += (g.roof + 5 - out.y) * Math.min(1, Math.sin(k * Math.PI) * 3);
+  } else {
+    // (then slowly round the lot)
+    const last = T.gs[n - 1], s = t - END, k = tourEase(clamp(s / 1.8, 0, 1));
+    look.lerpVectors(last ? last.c : T.centre, T.centre, k);
+    D = last ? last.D + (T.D - last.D) * k : T.D;
+    az = (last ? last.az + 0.075 : T.az0) + s * 0.08;
+    tourSpot(look, az, D, out, last ? last.up * (1 - k) : 0);
+  }
+  return i;
+}
 function tourCamera(rawDt) {
-  const T = G.tour, n = T.gs.length, END = T.end, each = END / Math.max(1, n), ease = t => t * t * (3 - 2 * t);
+  const T = G.tour, END = T.end, each = END / Math.max(1, T.gs.length);
   T.t += rawDt;
   // (by the state, not the clock: a skip puts the clock at the end already)
   if (G.state === 'tour' && T.t >= END) { G.state = 'results'; showScreen('results'); for (const g of T.gs) g.el?.classList.add('gone'); }
   // (first a moment on the 0, everything frozen where it was)
   if (T.t < 0) return;
   $('hud').classList.add('touring');
-  let D, az;
-  if (T.t < END) {
-    const i = Math.min(n - 1, Math.floor(T.t / each)), u = (T.t - i * each) / each, k = ease(Math.min(1, u / 0.5));
-    const g = T.gs[i], prev = T.gs[i - 1];
-    T.look.lerpVectors(prev ? prev.c : T.fromLook, g.c, k);
-    D = prev ? prev.D + (g.D - prev.D) * k : T.fromD + (g.D - T.fromD) * k;
-    const a0 = prev ? prev.az : T.az0;
-    az = a0 + (g.az - a0) * k + (u - 0.5) * 0.15;
-    if (u > 0.4 && !g.el) heapLabel(g);
-  } else {
-    // (then slowly round the lot)
-    const last = T.gs[n - 1], s = T.t - END, k = ease(clamp(s / 1.8, 0, 1));
-    T.look.lerpVectors(last ? last.c : T.centre, T.centre, k);
-    D = last ? last.D + (T.D - last.D) * k : T.D;
-    az = (last ? last.az + 0.075 : T.az0) + s * 0.08;
-  }
-  tourSpot(T.look, az, D, _c);
-  // (the first move starts from wherever the crash camera was)
-  if (n && T.t < each) _c.lerpVectors(T.from, _c, ease(Math.min(1, T.t / each / 0.5)));
+  const i = tourPose(T, T.t, T.look, _c), g = T.gs[i];
+  if (g && T.t - i * each > each * 0.4 && !g.el) heapLabel(g);
   unblock(T.look, _c, null);
   camera.position.lerp(_c, 1 - Math.exp(-rawDt * 8));
   // (between heaps it flies over the roofs, never through them)
   for (const b of city.near(camera.position.x, camera.position.z)) {
-    if (camera.position.y < b.top + 1 && city.blockDist(b, camera.position.x, camera.position.z, _w) < 1) camera.position.y = b.top + 1;
+    if (camera.position.y < b.top + 1 && !(camera.position.y < b.floor) && city.blockDist(b, camera.position.x, camera.position.z, _w) < 1) camera.position.y = b.top + 1;
   }
   // (out of the deck, and back above the ground if that put it down in a bank)
   clear(T.look, camera.position);
@@ -1339,7 +1429,7 @@ function blocked(from, to) {
   for (let i = 1; i < 10; i++) {
     _s.lerpVectors(from, to, i / 10);
     if (deck && city.inDeck(_s.x, _s.z) && _s.y < D.y + 0.2 && _s.y > D.y - 1.6) return true;
-    for (const b of city.near(_s.x, _s.z)) if (_s.y < b.top && city.blockDist(b, _s.x, _s.z, _w) < 0) return true;
+    for (const b of city.near(_s.x, _s.z)) if (_s.y < b.top && !(_s.y < b.floor) && city.blockDist(b, _s.x, _s.z, _w) < 0) return true;
     for (const q of props.near(_s.x, _s.z)) {
       if (q.alive && q.h >= 3 && _s.y < q.y + q.h + 0.4 && Math.hypot(q.x - _s.x, q.z - _s.z) < (q.kind === 'tree' ? 2.4 : 0.6)) return true;
     }
@@ -1353,7 +1443,7 @@ const _c = new THREE.Vector3(), _l = new THREE.Vector3();
 function clear(from, p) {
   for (let i = 0; i < 12; i++) {
     let inside = false;
-    for (const b of city.near(p.x, p.z)) if (p.y < b.top && city.blockDist(b, p.x, p.z, _w) < 0.6) { inside = true; break; }
+    for (const b of city.near(p.x, p.z)) if (p.y < b.top && !(p.y < b.floor) && city.blockDist(b, p.x, p.z, _w) < 0.6) { inside = true; break; }
     if (!inside) break;
     p.lerp(from, 0.2);
   }
@@ -1407,6 +1497,25 @@ function liftOver(p, b, cap = Infinity) {
   p.copy(_s.applyQuaternion(c.q).add(c.pos));
   return true;
 }
+// Where the crash camera follows `S` from: behind it, the way it's going, and out to `side`, up a little
+const _b = new THREE.Vector3();
+function behind(S, side) {
+  const p = S.car.pos, v = S.car.vel, sp = Math.hypot(v.x, v.z), C = G.crash;
+  const d = sp > 3 ? _f.set(v.x / sp, 0, v.z / sp) : C.dir || S.forward.clone().setY(0).normalize();
+  return _b.set(p.x - d.x * 9 + d.z * 4 * side, p.y + 3.6, p.z - d.z * 9 - d.x * 4 * side);
+}
+// The top of the highest building that the way from `a` to `b` crosses and that's taller than its lower end (-Infinity
+// for none). By where it goes over the ground only, not how high: else lifting over it would clear it, drop, and
+// lift again.
+function roofsBetween(a, b) {
+  let top = -Infinity;
+  const low = Math.min(a.y, b.y), n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 2);
+  for (let i = 1; i < n; i++) {
+    _s.lerpVectors(a, b, i / n);
+    for (const k of city.near(_s.x, _s.z)) if (k.floor == null && k.top > low && k.top > top && city.blockDist(k, _s.x, _s.z, _w) < 0.5) top = k.top;
+  }
+  return top;
+}
 function updateCamera(dt, rawDt) {
   const c = player.car;
   let fov = 66;
@@ -1453,33 +1562,79 @@ function updateCamera(dt, rawDt) {
     const all = bodies().filter(b => !b.half);
     const pile = pileCentre(C);
     C.focus.lerp(pile, 1 - Math.exp(-rawDt * 2));
+    const ks = new Map();
+    for (const v of all) ks.set(v, interest(v, all));
+    // Several things going on at once near what it's watching: pull back to get them all in one shot (but no
+    // further than keeps each car a car), instead of cutting about between them. Back in once it's down to one for
+    // a second.
+    // (round what it's framing already, so it can drift along with the action; else round what it's watching)
+    const T = C.rt > 1.5 ? together(all, ks, C.wide ? C.wide.at : C.subject ? C.subject.car.pos : C.focus) : null;
+    if (T) { C.wide = C.wide || { at: T.at.clone(), r: T.r }; C.wideOff = 0; }
+    else if (C.wide && (C.wideOff = (C.wideOff || 0) + rawDt) > 1) C.wide = null;
+    if (C.wide && T) { C.wide.at.lerp(T.at, 1 - Math.exp(-rawDt * 2)); C.wide.r += (T.r - C.wide.r) * (1 - Math.exp(-rawDt * 2)); C.wide.pts = T.pts.map(p => p.clone()); }
     if (C.rt < FOLLOW_YOU) {
       if (C.subject !== player) { C.subject = player; C.side = 1; }
     } else {
-      const cur = interest(C.subject, all);
+      const cur = ks.get(C.subject) || interest(C.subject, all);
       C.restT = cur.k < 3 ? (C.restT || 0) + rawDt : 0;
       let best = null, bk = 0;
-      for (const v of all) { const n = interest(v, all); if (n.k > bk) { bk = n.k; best = v; } }
+      for (const v of all) { const { k } = ks.get(v); if (k > bk) { bk = k; best = v; } }
       // (one that was coming for the pile and got away with it, or still hasn't got there: off it at once)
-      const missed = C.subject && C.subject !== player && !(C.subject.gen > 0) && (C.restT > 0.4 || C.cutS > INCOMING);
+      // (or a wreck thrown off down the street: a moment's watching, then back to the pile)
+      const missed = C.subject && C.subject !== player && ((!(C.subject.gen > 0) && (C.restT > 0.4 || C.cutS > INCOMING)) ||
+        (C.cutT > SHOT && Math.hypot(C.subject.car.pos.x - C.focus.x, C.subject.car.pos.z - C.focus.z) > 35));
       const tired = C.restT > 0.8 || C.cutT > 6 || missed;
-      if (best && best !== C.subject && (C.cutT > SHOT || missed) && (tired || bk > cur.k * 1.8)) {
+      // (while it's framing it all, it stays on what it's got)
+      if (best && best !== C.subject && !C.wide && (C.cutT > SHOT || missed) && (tired || bk > cur.k * 1.8)) {
         C.subject = best;
-        C.side = -C.side || 1;
+        // Behind it on whichever side is nearer where the camera is: it stays on its side of the action, so what was
+        // on the left is still on the left (swapping sides every cut turns the whole scene round)
+        const sp = behind(best, 1).clone(), sn = behind(best, -1), dp = sp.distanceTo(camera.position), dn = sn.distanceTo(camera.position);
+        C.side = dp <= dn ? 1 : -1;
         // (the new one's rest starts now: the last one's would have it "missed" at once, and cut again)
         C.cutT = C.cutS = C.restT = 0;
-        C.cutNow = true;
+        // Just along a bit: there, smoothly (a cut that short only jumps). Off somewhere else: it flies over there, up
+        // over the roofs, so you see where. Otherwise a cut. (A cut ends any flight still going: else it lands up in the
+        // air, and drifts down slowly.)
+        if (Math.min(dp, dn) < 12) C.glide = false;
+        else if (C.look && best.car.pos.distanceTo(C.look) > 30) C.glide = true;
+        else { C.cutNow = true; C.glide = false; }
       } else if ((!best || missed) && tired && C.subject) { C.subject = null; C.cutT = C.cutS = 0; }
     }
     const S = C.subject;
     let look;
-    if (S) {
+    if (C.wide) {
+      // From up and back, on the side the camera's already on, turning slowly; far enough out to fit it all
+      const W = C.wide, r = Math.min(WIDE_MAX, W.r), D = r / Math.sin(THREE.MathUtils.degToRad(camera.fov) / 2) + 4;
+      if (C.wideA == null) C.wideA = Math.atan2(camera.position.x - W.at.x, camera.position.z - W.at.z);
+      C.wideA += rawDt * 0.08;
+      _l.copy(W.at);
+      // (`up`: 0, up and back; 1, nearly straight down)
+      const spot = (a, up) => _c.set(W.at.x + Math.sin(a) * D * (0.8 - 0.6 * up), W.at.y + D * (0.55 + 0.4 * up), W.at.z + Math.cos(a) * D * (0.8 - 0.6 * up));
+      // (a building in the way of any of it: round to the nearest side that sees it all; none, between towers: higher,
+      // looking down on it, until one does)
+      const hidden = (a, up) => { spot(a, up); return blocked(_c, _l) || (W.pts || []).some(p => blocked(_c, p)); };
+      let up = 0;
+      search: for (const u of [0, 0.5, 1]) {
+        for (let i = 0; i <= 8; i++) {
+          const a = C.wideA + Math.ceil(i / 2) * 0.4 * (i % 2 ? 1 : -1);
+          if (!hidden(a, u)) { C.wideA = a; up = u; break search; }
+        }
+        up = u;
+      }
+      C.wideUp = (C.wideUp || 0) + (up - (C.wideUp || 0)) * (1 - Math.exp(-rawDt * 2));
+      spot(C.wideA, C.wideUp);
+      look = _l;
+      C.on = 'wide';
+    } else if (S) {
+      C.wideA = C.wideUp = null;
       const p = S.car.pos, v = S.car.vel, sp = Math.hypot(v.x, v.z);
       if (sp > 3) C.dir = (C.dir || new THREE.Vector3()).set(v.x / sp, 0, v.z / sp);
       else C.dir = C.dir || S.forward.clone().setY(0).normalize();
-      const d = C.dir, n = interest(S, all);
+      const d = C.dir;
+      const n = ks.get(S) || interest(S, all);
       // Behind and to one side of it, up a little
-      _c.set(p.x - d.x * 9 + d.z * 4 * C.side, p.y + 3.6, p.z - d.z * 9 - d.x * 4 * C.side);
+      _c.copy(behind(S, C.side));
       // Toward where it's headed (what it's about to hit, if anything), with a pull toward the pile
       _l.copy(p).addScaledVector(v, 0.35);
       if (n.at) _l.lerp(n.at.car.pos, 0.4);
@@ -1488,20 +1643,27 @@ function updateCamera(dt, rawDt) {
       look = _l;
       C.on = S === player ? 'you' : (n.at ? 'incoming ' : 'wreck ') + S.kind;
     } else {
+      C.wideA = C.wideUp = null;
       C.ang += rawDt * 0.15;
       _c.set(C.focus.x + Math.sin(C.ang) * 17, C.focus.y + 8, C.focus.z + Math.cos(C.ang) * 17);
       look = C.focus;
       C.on = 'pile';
     }
     unblock(look, _c, S);
+    // (flying over to somewhere else: up over the roofs on the way, the higher the further it's got to go, and pulled
+    // back a little, so the way there is seen too)
+    const far = camera.position.distanceTo(_c);
+    if (C.glide) { if (far < 4) C.glide = false; else _c.y += Math.min(18, far * 0.35); }
+    // (and whatever the move, over a building that stands between, never through it: up, over and down the other side)
+    if (!C.cutNow && far > 3) _c.y = Math.max(_c.y, roofsBetween(camera.position, _c) + 2.5);
     if (C.cutNow || C.rt < 0.02) { camera.position.copy(_c); C.look = look.clone(); C.cutNow = false; }
-    else camera.position.lerp(_c, 1 - Math.exp(-rawDt * 5));
+    else camera.position.lerp(_c, 1 - Math.exp(-rawDt * (C.glide ? 2.5 : C.wide ? 2.5 : 5)));
     // (on its way there it can pass through things: never inside one)
     clear(look, camera.position);
     outside(camera.position);
-    C.look = (C.look || look.clone()).lerp(look, 1 - Math.exp(-rawDt * 7));
+    C.look = (C.look || look.clone()).lerp(look, 1 - Math.exp(-rawDt * (C.glide ? 3 : 7)));
     camera.lookAt(C.look.x, C.look.y + 0.8, C.look.z);
-    fov = 56;
+    fov = 56 + (C.glide ? Math.min(8, far * 0.25) : 0);
   } else {
     // Chase: low and close; it pulls in and widens as you go faster, and more when you burn rush
     const speed = c.vel.length();
@@ -1785,6 +1947,15 @@ function renderMenu() {
     b.onclick = () => { settings.time = t; saveSettings(); stage.setTime(t); for (const v of traffic.list) v.setLights(TIMES[t].lamps); renderMenu(); };
     tod.appendChild(b);
   }
+  const guide = $('guide');
+  guide.innerHTML = '';
+  for (const on of [true, false]) {
+    const b = document.createElement('button');
+    b.className = on === settings.guides ? 'active' : '';
+    b.textContent = on ? 'Show' : 'Hide';
+    b.onclick = () => { settings.guides = on; saveSettings(); renderMenu(); };
+    guide.appendChild(b);
+  }
 }
 $('btn-go').onclick = () => { sound.init(); loadLevel(settings.level); startRun(PRE_INTRO + PRE_COUNT); };
 $('btn-retry').onclick = () => startRun(PRE_RETRY);
@@ -1824,6 +1995,9 @@ function frame(now) {
 }
 // One frame `raw` seconds long; `draw: false` skips the rendering
 function tick(raw, draw = true) {
+  // (the guide lines show up to the crash, not over the wreckage)
+  // (paused, by what it was paused from)
+  if (guides) guides.group.visible = settings.guides && ['menu', 'intro', 'count', 'run'].includes(G.state === 'paused' ? G.paused : G.state);
   if (G.state === 'menu') {
     // The junction, from above, with its traffic going about its business
     cam.menuA += raw * 0.05;
