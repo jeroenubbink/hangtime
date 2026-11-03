@@ -24,10 +24,14 @@
     <div id="msg"><div id="msg-main"></div><div id="msg-sub"></div></div>
     <div id="speedo"><span id="speed">0</span><small>km/h</small></div>
     <div id="rush"><span>RUSH <kbd>Shift</kbd></span><div id="rush-bar"><div id="rush-fill"></div></div></div>
+    <div id="boom" class="hidden">
+      <div id="boom-head"><span>EXPLOSION</span><span id="boom-t"></span></div>
+      <div id="boom-bar"><div id="boom-fill"></div><div id="boom-txt">STEER INTO TRAFFIC</div></div>
+    </div>
     <div id="touch">
       <div class="pad left"><button data-key="ArrowLeft">◀</button><button data-key="ArrowRight">▶</button></div>
       <div class="pad right">
-        <button data-key="Space" class="small">DRIFT</button><button data-key="ShiftLeft" class="small rushb">RUSH</button>
+        <button data-key="Space" class="small" id="t-drift">DRIFT</button><button data-key="ShiftLeft" class="small rushb">RUSH</button>
         <button data-key="ArrowDown">▼</button><button data-key="ArrowUp" class="gas">▲</button>
       </div>
       <div class="pad top"><button data-tap="KeyR" class="small">RETRY</button><button data-tap="Escape" class="small">❚❚</button></div>
@@ -82,7 +86,7 @@
         <b>oncoming lane</b>, <b>drifts</b> and <b>air</b>. How fast you hit adds more.</p>
       <p><b>Rush</b> (<kbd>Shift</kbd>) is your boost. It fills the same way heat does, so the more you risk, the faster you go.</p>
       <p>Once you crash, everything the crash reaches counts: each car hit by something you hit scores more, down a
-        chain as long as the traffic keeps coming. When the countdown appears, it's nearly over. Steer for a few seconds after impact to push your wreck into more trouble.
+        chain as long as the traffic keeps coming. When the countdown appears, it's nearly over. After impact time slows right down: steer your wreck (↑ pushes it on, ↓ holds it back) into more traffic to fill the explosion meter, and press Space to blow it up once it's full. After 20 seconds it blows anyway.
         Tankers explode.</p>
       <p class="keys"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive ·
         <kbd>Shift</kbd> rush · <kbd>Space</kbd> drift · <kbd>R</kbd> retry at any time · <kbd>Esc</kbd> pause · <kbd>M</kbd> mute.

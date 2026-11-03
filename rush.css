@@ -103,6 +103,28 @@ kbd { display: inline-block; min-width: 20px; text-align: center; font: 600 12px
 #rush-fill { height: 100%; width: 40%; background: linear-gradient(90deg, var(--accent), #8ff6ff); transition: width .08s linear; }
 #rush.full #rush-fill { background: linear-gradient(90deg, #ffd23a, #fff3a8); }
 #rush.on #rush-fill { background: linear-gradient(90deg, var(--hot), #ffd23a); box-shadow: 0 0 18px var(--hot); }
+#hud.crashing #rush { display: none; }
+/* The explosion meter: a bar of fire along the bottom while you aim, throbbing white-hot once it's full */
+#boom { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); width: min(720px, 88vw);
+  font: 15px 'Russo One', sans-serif; letter-spacing: 4px; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5); }
+/* (on a phone, above the thumb pads) */
+body.touch #boom { bottom: 172px; pointer-events: auto; }
+#boom-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; color: #ffb02e; }
+#boom-t { font: italic 26px 'Russo One', sans-serif; letter-spacing: 1px; color: #fff; }
+#boom-t.late { color: #ff3d1f; animation: blink .25s infinite alternate; }
+#boom-bar { position: relative; height: 38px; border-radius: 19px; background: rgba(30, 6, 0, 0.65); border: 2px solid rgba(255, 140, 40, 0.7);
+  overflow: hidden; box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.8), 0 0 22px rgba(255, 70, 0, 0.35); }
+#boom-fill { position: absolute; inset: 0 auto 0 0; width: 0; transition: width .18s ease-out;
+  background: linear-gradient(to bottom, rgba(255, 240, 170, 0.75), rgba(255, 240, 170, 0) 45%, rgba(110, 0, 0, 0.55)),
+    repeating-linear-gradient(115deg, #ff2a00 0 16px, #ff7a00 16px 30px, #ffc23a 30px 38px);
+  background-size: 100% 100%, 76px 100%; animation: flames .5s linear infinite; box-shadow: 0 0 26px #ff5a00; }
+#boom-fill::after { content: ''; position: absolute; right: -6px; top: -10px; bottom: -10px; width: 26px; border-radius: 50%;
+  background: radial-gradient(#fff6c8, #ffb02e 40%, rgba(255, 80, 0, 0) 70%); filter: blur(2px); }
+@keyframes flames { from { background-position: 0 0, 0 0; } to { background-position: 0 0, 76px 0; } }
+#boom-txt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 15px; color: #fff; }
+#boom.full #boom-bar { border-color: #fff1a8; animation: throb .3s ease-in-out infinite alternate; }
+#boom.full #boom-txt { font-size: 22px; color: #fff; text-shadow: 0 0 10px #ff3d00, 2px 2px 0 #7a1500; }
+@keyframes throb { from { box-shadow: 0 0 24px #ff7a00, 0 0 50px #ff3d00; transform: scale(1); } to { box-shadow: 0 0 44px #ffd23a, 0 0 110px #ff3d00; transform: scale(1.03); } }
 #heatbox { position: absolute; right: 26px; top: 20px; text-align: right; }
 #heat { font: italic 46px 'Russo One', sans-serif; color: var(--hot); text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4); }
 .lbl { font: 12px 'Russo One', sans-serif; letter-spacing: 4px; opacity: 0.8; }
@@ -159,6 +181,7 @@ body.touch #hint { display: none; }
 #touch button { width: 74px; height: 74px; font-size: 26px; border-radius: 50%; background: rgba(255, 255, 255, 0.12); }
 #touch button.small { width: 88px; height: 44px; font-size: 14px; border-radius: 10px; }
 #touch button.down { background: rgba(46, 230, 255, 0.35); }
+#touch button.ready { background: linear-gradient(#ffd23a, #ff3d00); color: #fff; font-weight: 800; text-shadow: 1px 1px 0 #7a1500; animation: throb .3s ease-in-out infinite alternate; }
 body.touch #speedo { bottom: 120px; }
 @media (max-width: 640px) {
   h1 { font-size: 40px; }

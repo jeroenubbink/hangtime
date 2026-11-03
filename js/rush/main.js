@@ -36,10 +36,15 @@ const KMH = 3.6;
 const PRE_INTRO = 4.2, PRE_COUNT = 2.4, PRE_RETRY = 1.2, PRE_ALL = PRE_INTRO + PRE_COUNT;
 const FRAGILE = 2.4;
 const ZONE = 45;   // metres around where you crashed (and round the junction): whatever crashes in there is part of your crash
-const CRASH_MAX = 30, CRASH_QUIET = 5, FOLLOW_YOU = 5, SHOT = 3.5, HOLD = 2, HEAP = 1.5;   // seconds
+const CRASH_MAX = 30, CRASH_QUIET = 5, CRASH_FEED = 6, FOLLOW_YOU = 5, SHOT = 3.5, HOLD = 2, HEAP = 1.5;   // seconds
 // Seconds of the (slowed) simulation: something this close to hitting the pile is worth watching (seen coming, so the
 // camera's there before it hits)
 const INCOMING = 2.5;
+// Aim: after the impact you steer your wreck, slowed to AIM_SLOW, for up to AIM seconds (yours, not the simulation's),
+// tagging traffic to fill the meter; then it blows, full or not (or sooner, when you set it off with a full meter).
+// AIM_TURN: how fast you turn the way it's going (rad/s of simulation), AIM_PUSH: up pushes it on (m/s²), to AIM_TOP m/s.
+const AIM = 20, AIM_SLOW = 0.3, AIM_TURN = 3.5, AIM_PUSH = 14, AIM_TOP = 24;
+const BLOWN = 1.5;   // seconds watching your car blow, from behind where you aimed it, before the crash cam takes over
 
 // ---------- Stage ----------
 const stage = createStage($('view'));
@@ -136,7 +141,9 @@ function loadLevel(key) {
   city.key = key;
   guides?.dispose();
   guides = GUIDES ? new Guides(scene, city) : null;
-  debris = new Debris(scene, (x, z, y) => city.groundHeight(x, z, y));
+  // (asked from half a metre up, about where a car's middle would be: a small piece lying on the quay has its middle
+  // lower than the quay's edge takes for gone over it, see groundHeight, and would drop through the stone)
+  debris = new Debris(scene, (x, z, y) => city.groundHeight(x, z, y + 0.5));
   stage.setTime(settings.time);
 }
 
@@ -483,6 +490,11 @@ function blowUp(X) {
     X.car.w.add(_kick.set(G.rand() - 0.5, 0, G.rand() - 0.5).multiplyScalar(4));
   }
   scoreEvent(X, 1500 * X.value, X.def.explosive ? 'TANKER BLAST' : 'BLAST', true, 'blast');
+  blast(X, p, R, big);
+}
+
+// Everything within R of p is thrown clear of X's blast, and hurt (and is part of your crash, if X was)
+function blast(X, p, R, big) {
   for (const B of bodies()) {
     if (B === X) continue;
     const d = B.car.pos.distanceTo(p);
@@ -493,7 +505,8 @@ function blowUp(X) {
     if (!B.launch || (B.launchT != null && G.t - B.launchT > 3.5)) B.car.vel.addScaledVector(dir, 14 * k * big).add(_kick.set(0, 5 + 6 * k * big, 0));
     B.car.w.add(_kick.set(G.rand() - 0.5, G.rand() - 0.5, G.rand() - 0.5).multiplyScalar(5 * k));
     if (!B.half) {
-      if (!B.gen && X.gen) B.gen = X.gen + 1;
+      // (not you: you start the chain, generation 0, however many blasts have reached you)
+      if (!B.gen && B !== player && (X.gen || X === player)) B.gen = (X.gen || 0) + 1;
       G.chain = Math.max(G.chain, B.gen || 0);
       if (B.asleep) B.asleep = false;
       hurt(B, X, 40 * k * big, B.car.pos.clone().addScaledVector(dir, -1), dir);
@@ -535,6 +548,7 @@ function collided(A, B, h) {
       return;
     }
   }
+  if ((A === player || B === player) && base > 3 && G.crash?.aim && !G.crash.aim.done) tag(A === player ? B : A);
   // The chain: whatever the crash has reached passes it on
   // (you start it, generation 0; whatever you hit is 1, what that hits is 2, and so on; halves carry theirs)
   const src = b => (b === player ? (G.crash ? 0 : null) : b.gen > 0 ? b.gen : null);
@@ -732,10 +746,13 @@ function startCrash(h, other) {
   const bonus = clamp((kmh - 110) / 110, 0, 1.5);
   G.impact = { kmh, bonus };
   G.heat = Math.round((G.heat + bonus) * 10) / 10;
+  const f = player.forward.clone().setY(0).normalize(), v = player.car.vel;
+  // (aimed the way it's going; barely going anywhere, the way it faces)
+  const yaw = Math.hypot(v.x, v.z) > 2 ? Math.atan2(-v.x, -v.z) : Math.atan2(-f.x, -f.z);
   G.crash = { t: 0, rt: 0, quiet: 0, focus: h.point.clone(), origin: h.point.clone(), subject: player, side: 1, ang: 0, dist: 13, cutT: 0, lastSpike: G.t,
-    incidents: [], ledger: new Map(), spots: [], popSum: 0, popN: 0 };
+    incidents: [], ledger: new Map(), spots: [], popSum: 0, popN: 0,
+    aim: { t: 0, yaw, meter: 0, tagged: new Set(), was: true, done: false } };
   // Start the camera low beside the impact, looking across the way you came in
-  const f = player.forward.clone().setY(0).normalize();
   G.crash.ang = Math.atan2(-f.x, -f.z) + (Math.random() < 0.5 ? 1 : -1) * (0.9 + Math.random() * 0.5);
   if (other && !other.half && !other.gen) other.gen = 1;
   G.chain = Math.max(G.chain, 1);
@@ -749,6 +766,56 @@ function startCrash(h, other) {
   sound.crash();
   callout(`IMPACT ${kmh} km/h${bonus > 0 ? `<small>heat +${bonus.toFixed(1)}</small>` : ''}`, 'big');
   $('crashbox').classList.remove('hidden');
+}
+
+// Aiming your wreck: left and right turn the way it's going (less in the air), up pushes it on, down holds it back
+function aim(A, c) {
+  const I = playerInput, k = c.pos.y - city.groundHeight(c.pos.x, c.pos.z, c.pos.y + 1) < 1.6 ? 1 : 0.6;
+  if (I.steer) {
+    const a = -I.steer * AIM_TURN * k * DT;
+    c.vel.applyAxisAngle(_up, a);
+    A.yaw += a;
+  }
+  // (the way it's going, while it's going anywhere: what a hit has thrown it into, too)
+  const sp = Math.hypot(c.vel.x, c.vel.z);
+  if (sp > 4) A.yaw = Math.atan2(-c.vel.x, -c.vel.z);
+  // (as hard as the pedal's pressed: a trigger part way, part way)
+  if (I.throttle && sp < AIM_TOP) { c.vel.x -= Math.sin(A.yaw) * AIM_PUSH * I.throttle * k * DT; c.vel.z -= Math.cos(A.yaw) * AIM_PUSH * I.throttle * k * DT; }
+  if (I.brake) { const b = 1 - 1.5 * I.brake * DT; c.vel.x *= b; c.vel.z *= b; }
+  // (setting it off is looked for every frame, in tick: see there)
+}
+
+// Something you hit while aiming: each new one tagged fills the meter (a big one more), the same one again a little
+function tag(v) {
+  const A = G.crash.aim, again = v.half || A.tagged.has(v);
+  if (!again) A.tagged.add(v);
+  const was = A.meter;
+  A.meter = Math.min(1, A.meter + (again ? 0.04 : BIG.has(v.kind) ? 0.4 : 0.3));
+  if (again) return;
+  sound.beep(true);
+  const ready = A.meter >= 1 && was < 1;
+  callout(ready ? `EXPLOSION READY<small>${document.body.classList.contains('touch') ? 'tap BOOM' : 'Space'}</small>` : `TAG ${A.tagged.size}`, ready ? 'big' : '');
+}
+
+// Your car goes up: as big as a tanker with a full meter, less on the self-destruct with less. It throws you up too.
+function detonate(full) {
+  const A = G.crash.aim;
+  A.done = true;
+  A.endT = G.crash.rt;
+  const c = player.car, p = c.pos.clone(), big = full ? 2 : 0.6 + 1.4 * A.meter, R = 8 * big;
+  G.rec?.event(G.t, 'boom', { id: 'you', kind: settings.car });
+  // (a fat one: the fireball and two more bursting round it, a second shock wave, and a white-out)
+  explosion(p, big);
+  for (const s of [-1, 1]) explosion(new THREE.Vector3(G.rand() - 0.5, 0, G.rand() - 0.5).normalize().multiplyScalar(2.5 * s).add(p), big * 0.5);
+  glow.emit(p.x, p.y + 2, p.z, 0, 0, 0, { life: 0.18, size: 9 * big, grow: 2, colour: '#fff1c4', alpha: 0.8 });
+  wave(p, R * 1.6);
+  sound.boom(1);
+  sound.crash();
+  c.vel.y = Math.max(c.vel.y, 0) + 6 + 3 * big;
+  c.w.add(_kick.set(G.rand() - 0.5, G.rand() - 0.5, G.rand() - 0.5).multiplyScalar(6));
+  blast(player, p, R, big);
+  G.shake = 2;
+  callout(full ? 'DETONATION' : 'SELF-DESTRUCT', 'big');
 }
 
 function endCrash() {
@@ -957,14 +1024,11 @@ function step() {
   // (in a crash, whatever it's thrown about wakes the traffic it's heading for, however far it flies, and still does
   // once it's lying in the road: a sleeper glides on its lane, through anything that isn't)
   const hot = G.crash ? B.filter(b => b.gen > 0 || b === player).map(b => b.car.pos) : null;
-  traffic.update(DT, focus, [...B, ...traffic.list.filter(v => v.asleep)], true, G.crash ? G.crash.t : null, hot);
+  // (and no more of it coming once a crash is CRASH_FEED seconds in: what's on its way still gets there, and then it's done)
+  traffic.update(DT, focus, [...B, ...traffic.list.filter(v => v.asleep)], !G.crash || G.crash.t < CRASH_FEED, G.crash ? G.crash.t : null, hot);
   if (G.state === 'run') drive(DT);
   else if (running) {
-    // Aftertouch: a few seconds to steer your wreck into more trouble
-    if (G.crash && G.crash.t < 3.5 && playerInput.steer) {
-      _r.setFromMatrixColumn(camera.matrixWorld, 0).setY(0).normalize();
-      c.vel.addScaledVector(_r, playerInput.steer * 9 * DT);
-    }
+    if (G.crash?.aim && !G.crash.aim.done) aim(G.crash.aim, c);
     c.step(DT, NONE);
   }
   {
@@ -1007,10 +1071,12 @@ function step() {
   if (G.crash && !G.ended) {
     const C = G.crash;
     C.t += DT;
-    C.quiet += DT;
-    // Traffic keeps piling in while there's anything to hit it; after CALM (25 s) the drivers start stopping in
+    // (quiet counts from when your car's blown: while you aim the crash can't end, so nothing counts down to it)
+    if (C.aim.done) C.quiet += DT;
+    // Traffic keeps piling in while there's anything to hit it; after CALM (19 s) the drivers start stopping in
     // time, and at 30 it's over whatever's still flying. Five quiet seconds end it sooner.
-    if (C.quiet > CRASH_QUIET || C.t > CRASH_MAX) endCrash();
+    // (not while you're still aiming)
+    if ((C.quiet > CRASH_QUIET || C.t > CRASH_MAX) && C.aim.done) endCrash();
   }
 }
 
@@ -1028,7 +1094,8 @@ function fence(bs) {
     if (p.z < z0 + M && c.vel.z < 0) c.vel.z *= -0.3;
     if (p.z > z1 - M && c.vel.z > 0) c.vel.z *= -0.3;
     const d = city.pavedDist(p.x, p.z);
-    if (d < EDGE || city.inPark(p.x, p.z) || city.water?.below(p.x, p.z)) continue;
+    // (the water's whole rect: a jetty out into it too)
+    if (d < EDGE || city.inPark(p.x, p.z) || city.water?.wet(p.x, p.z)) continue;
     // (back toward the nearest paved ground: down the slope of the distance to it)
     const gx = city.pavedDist(p.x + 1, p.z) - city.pavedDist(p.x - 1, p.z), gz = city.pavedDist(p.x, p.z + 1) - city.pavedDist(p.x, p.z - 1), l = Math.hypot(gx, gz);
     if (l < 1e-6) continue;
@@ -1052,7 +1119,7 @@ window.addEventListener('keydown', e => {
   if (G.state === 'intro' && ['Space', 'Enter', 'ArrowUp', 'KeyW'].includes(e.code)) { skipTo(PRE_COUNT); G.state = 'count'; }
   if (G.state === 'results' && e.code === 'Enter') startRun(PRE_RETRY);
   if (G.state === 'tour' && e.code === 'Enter') skipTour();
-  if (G.state === 'crash' && e.code === 'Enter' && G.crash.t > 2) endCrash();
+  if (G.state === 'crash' && e.code === 'Enter' && G.crash.t > 2 && G.crash.aim.done) endCrash();
 });
 window.addEventListener('keyup', e => keys.delete(e.code));
 window.addEventListener('blur', () => keys.clear());
@@ -1090,6 +1157,12 @@ for (const b of document.querySelectorAll('#touch button')) {
   b.addEventListener('pointerup', up);
   b.addEventListener('pointercancel', up);
 }
+// (and on a phone the explosion bar is a button too: tap it to blow once it's full)
+$('boom').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const A = G.crash?.aim;
+  if (A && !A.done && !G.ended && A.meter >= 1) detonate(true);
+});
 if (matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window) document.body.classList.add('touch');
 
 // ---------- Camera ----------
@@ -1201,7 +1274,14 @@ function intro() {
 // When it's over everything stops dead, and after HOLD seconds on the 0 the camera sweeps over what's left, HEAP seconds a heap: the damage
 // gathered into a handful of heaps, each named and scored, the biggest last. Then the results, circling the lot.
 const BIG = new Set(['bus', 'tanker', 'lorry', 'flatbed', 'garbage']);
-const SOLO = { bus: 'Last Bus Home', tanker: 'Running on Empty', police: 'Off Duty', cab: 'Meter Off', garbage: 'Taken Out', van: 'Out for Delivery' };
+const SOLO = {
+  bus: ['Last Bus Home', 'Not in Service', 'Request Stop', 'Terminus', 'Standing Room Only'],
+  tanker: ['Running on Empty', 'Highly Flammable', 'Premium Unleaded', 'Spilt Milk', 'Fuel for Thought'],
+  police: ['Off Duty', 'Case Closed', 'Pulled Over', 'Doughnut Break', 'Blue Lights Out'],
+  cab: ['Meter Off', 'Keep the Change', 'Scenic Route', 'Fare Dodger', 'For Hire, Never Again'],
+  garbage: ['Taken Out', 'Bin Day', 'Wheelie Bad', 'Fully Recycled', 'Kerbside Collection'],
+  van: ['Out for Delivery', 'Return to Sender', 'Left with a Neighbour', 'Handle with Care', 'Signed For'],
+};
 function heaps() {
   const C = G.crash, items = [];
   for (const [v, e] of C.ledger) {
@@ -1264,30 +1344,40 @@ function heaps() {
   for (const g of gs) g.name = heapName(g, g === top, used);
   return gs;
 }
+// A name for a heap: the first of these that fits and isn't taken, at random from its handful
 function heapName(g, top, used) {
   const C = G.crash, n = g.cars.length, by = t => (g.by[t] || 0) / g.pts;
   const far = Math.hypot(g.c.x - C.origin.x, g.c.z - C.origin.z) > 35;
   const out = [];
-  if (top && n >= 3) out.push(n >= 8 ? 'The Big Pile' : 'The Pile');
-  if (by('splash') > 0.3) out.push(n > 1 ? 'The Deep End' : 'Gone Fishing');
-  if (G.station?.lit && atStation(g.c, 8)) out.push('Paradise Lost');
-  if (by('blast') > 0.4) out.push('Ground Zero');
-  if (by('split') > 0.2) out.push('Halves and Have-Nots');
-  if (!n) out.push('Street Furniture Sale', 'Kerb Appeal');
+  if (top && n >= 8) out.push(['The Big Pile', 'Mount Crumple', 'Rush Hour Lasagne', 'The Insurance Claim', 'Scrapheap Summit']);
+  if (top && n >= 3) out.push(['The Pile', 'The Car Salad', 'Knotted Up', 'Stacked Deck', 'Some Assembly Required']);
+  if (by('splash') > 0.3) out.push(n > 1 ? ['The Deep End', 'Swimming Lessons', 'Park and Swim', 'Sunk Costs', 'Car Wash Deluxe']
+    : ['Gone Fishing', 'Taking a Dip', 'Submarine Mode', 'Low Tide Surprise', 'Mind the Wet Paint']);
+  if (G.station?.lit && atStation(g.c, 8)) out.push(['Paradise Lost', 'Fill Her Up', 'Unleaded Fury', 'Self-Service', 'Pay at Pump']);
+  if (by('blast') > 0.4) out.push(['Ground Zero', 'Well Done', 'Flambé', 'The Barbecue', 'Bang for Your Buck']);
+  if (by('split') > 0.2) out.push(['Halves and Have-Nots', 'Two for One', 'Buy One Get Half', 'Fifty-Fifty', 'Sawn in Half, No Magician']);
+  if (!n) out.push(['Street Furniture Sale', 'Kerb Appeal', 'Bollard Bowling', 'Lamppost Limbo', 'Public Works']);
   if (n === 1) {
     const v = g.cars[0].v;
-    if (!v.wrecked && !v.halved) out.push('Just a Dent', 'Barely Scratched');
+    if (!v.wrecked && !v.halved) out.push(['Just a Dent', 'Barely Scratched', 'Walk It Off', 'Flesh Wound', 'Paint Job Pending']);
     if (SOLO[v.kind]) out.push(SOLO[v.kind]);
-    out.push('Lone Wolf', 'Solo Act');
+    out.push(['Lone Wolf', 'Solo Act', 'Party of One', 'Table for One', 'The Wallflower']);
   }
-  if (far && n >= 2) out.push('Stragglers', 'Late Arrivals');
-  if (n === 2) out.push(g.wrecked ? 'Head to Head' : 'Fender Bender');
-  if (n >= 3) out.push(top ? 'The Main Event' : 'The Sideshow', 'The Scrum', 'Pile-On');
-  if (BIG.has(g.cars[0]?.v.kind)) out.push('Heavy Metal');
-  out.push('Collateral', 'Bystanders', 'The Overflow', 'Afterthoughts', 'Loose Change');
-  const name = out.find(s => !used.has(s));
-  used.add(name);
-  return name;
+  if (far && n >= 2) out.push(['Stragglers', 'Late Arrivals', 'Fashionably Late', 'Missed the Party', 'The Commuter Belt']);
+  if (n === 2) out.push(g.wrecked ? ['Head to Head', 'Two to Tango', 'The Odd Couple', 'Slow Dance', 'Bumper Buddies']
+    : ['Fender Bender', 'A Small Disagreement', 'Exchange of Details', 'Bumper Kiss', 'Paint Swap']);
+  if (n >= 3) out.push(top ? ['The Main Event', 'Headliner', 'Centre Stage', 'The Showstopper', 'Top of the Bill']
+    : ['The Sideshow', 'The Support Act', 'The B-Side', 'Fringe Theatre', 'Warm-Up Act'], ['The Scrum', 'Pile-On', 'Group Hug', 'Bumper Cars', 'Car-Boot Sale']);
+  if (BIG.has(g.cars[0]?.v.kind)) out.push(['Heavy Metal', 'Wide Load', 'Big Rig Energy', 'Gross Vehicle Weight', 'Tonnage']);
+  out.push(['Collateral', 'Bystanders', 'The Overflow', 'Afterthoughts', 'Loose Change', 'Wrong Place, Wrong Time', 'Spare Parts', 'Odds and Ends', 'The Small Print']);
+  for (const names of out) {
+    const free = names.filter(s => !used.has(s));
+    if (!free.length) continue;
+    const name = free[Math.floor(Math.random() * free.length)];
+    used.add(name);
+    return name;
+  }
+  return 'Leftovers';
 }
 function startTour() {
   const C = G.crash, gs = heaps();
@@ -1560,11 +1650,24 @@ function updateCamera(dt, rawDt) {
   } else if (G.tour) {
     tourCamera(rawDt);
     fov = 56;
+  } else if (G.crash?.aim && (!G.crash.aim.done || G.crash.rt - G.crash.aim.endT < BLOWN) && G.state !== 'run') {
+    // Aiming: up behind your wreck, the way it's going, looking ahead to what's there to hit (so left is always left);
+    // when it blows, pulling back and up to see it go
+    const A = G.crash.aim, k = A.done ? clamp((G.crash.rt - A.endT) / 0.6, 0, 1) : 0;
+    if (!A.done) cam.dir.lerp(_f.set(-Math.sin(A.yaw), 0, -Math.cos(A.yaw)), 1 - Math.exp(-rawDt * 4)).normalize();
+    _c.copy(c.pos).addScaledVector(cam.dir, -12 - 14 * k);
+    _c.y = Math.max(c.pos.y, city.groundHeight(_c.x, _c.z, c.pos.y + 2)) + 5.5 + 9 * k;
+    clear(c.pos, _c);
+    camera.position.lerp(_c, 1 - Math.exp(-rawDt * 6));
+    _l.copy(c.pos).addScaledVector(cam.dir, 12).setY(c.pos.y);
+    camera.lookAt(_l);
+    fov = 68;
   } else if (G.crash && G.state !== 'run') {
     // Crash cam: it follows the action. First your car, wherever it goes; then whatever's most worth
     // watching (something about to hit, or a wreck still flying), held at least SHOT seconds unless it comes
     // to rest. It looks a little ahead of its subject, toward what it's going to hit, and leans to the pile.
-    const C = G.crash;
+    // (it takes over BLOWN seconds after your car's gone up: `since` is how long ago that was)
+    const C = G.crash, since = C.rt - C.aim.endT;
     C.cutT += rawDt;
     // (and on the simulation's own clock, slowed in the crash: the one what's coming gets there on)
     C.cutS = (C.cutS || 0) + dt;
@@ -1579,7 +1682,7 @@ function updateCamera(dt, rawDt) {
     // (round what it's framing already, so it can drift along with the action; else round what it's watching)
     // (each shot held a while, wide or not: none in for under 2 s, out again, and in again)
     C.wideT = (C.wideT || 0) + rawDt;
-    const T = C.rt > 1.5 ? together(all, ks, C.wide ? C.wide.at : C.subject ? C.subject.car.pos : C.focus) : null;
+    const T = together(all, ks, C.wide ? C.wide.at : C.subject ? C.subject.car.pos : C.focus);
     if (T && (C.wide || (C.wideT > 2 && C.cutT > 2))) { if (!C.wide) { C.wide = { at: T.at.clone(), r: T.r }; C.wideT = 0; } C.wideOff = 0; }
     else if (C.wide && (C.wideOff = (C.wideOff || 0) + rawDt) > 1.5 && C.wideT > SHOT) {
       C.wide = null;
@@ -1594,7 +1697,7 @@ function updateCamera(dt, rawDt) {
     }
     // (and it drifts with the action slowly: a gentle move, not a lurch each time the crashes regroup)
     if (C.wide && T) { C.wide.at.lerp(T.at, 1 - Math.exp(-rawDt * 0.8)); C.wide.r += (T.r - C.wide.r) * (1 - Math.exp(-rawDt * 1)); C.wide.pts = T.pts.map(p => p.clone()); }
-    if (C.rt < FOLLOW_YOU) {
+    if (since < FOLLOW_YOU) {
       if (C.subject !== player) { C.subject = player; C.side = 1; }
     } else {
       const cur = ks.get(C.subject) || interest(C.subject, all);
@@ -1695,7 +1798,7 @@ function updateCamera(dt, rawDt) {
     if (C.glide) { if (far < 4) C.glide = false; else _c.y += Math.min(18, far * 0.35); }
     // (and whatever the move, over a building that stands between, never through it: up, over and down the other side)
     if (!C.cutNow && far > 3) _c.y = Math.max(_c.y, roofsBetween(camera.position, _c) + 2.5);
-    if (C.cutNow || C.rt < 0.02) { camera.position.copy(_c); C.look = look.clone(); C.cutNow = false; }
+    if (C.cutNow) { camera.position.copy(_c); C.look = look.clone(); C.cutNow = false; }
     else camera.position.lerp(_c, 1 - Math.exp(-rawDt * (C.glide ? 2.5 : C.wide ? 2.5 : 5)));
     // (on its way there it can pass through things: never inside one)
     clear(look, camera.position);
@@ -1904,6 +2007,20 @@ function updateHud(dt) {
   $('rush').classList.toggle('full', G.rush > 0.98);
   setText('heat', '×' + G.heat.toFixed(1));
   $('heatbox').classList.toggle('oncoming', !!G.oncoming && G.state === 'run');
+  // The explosion meter, while you aim, and how long till it blows anyway
+  const A = G.crash?.aim, aiming = !!A && !A.done && !G.ended;
+  $('boom').classList.toggle('hidden', !aiming);
+  // (on a phone the drift button is the detonator: it says so while you aim, and burns once it's ready)
+  setText('t-drift', aiming ? 'BOOM' : 'DRIFT');
+  $('t-drift').classList.toggle('ready', aiming && A.meter >= 1);
+  if (aiming) {
+    $('boom-fill').style.width = (A.meter * 100).toFixed(1) + '%';
+    $('boom').classList.toggle('full', A.meter >= 1);
+    setText('boom-txt', A.meter >= 1 ? (document.body.classList.contains('touch') ? 'TAP BOOM' : 'SPACE · DETONATE') : 'STEER INTO TRAFFIC');
+    const left = Math.max(0, AIM - A.t);
+    setText('boom-t', left.toFixed(1));
+    $('boom-t').classList.toggle('late', left < 3);
+  }
   if (G.crash) {
     G.shown += (G.score - G.shown) * Math.min(1, dt * 6) + (G.score > G.shown ? 1 : 0);
     G.shown = Math.min(G.shown, G.score);
@@ -2058,8 +2175,16 @@ function tick(raw, draw = true) {
   // Time: slow motion through the crash, briefly slower still for the big moments
   let scale = 1;
   if (G.crash) {
-    const t = G.crash.rt += raw;
-    scale = t < 1.4 ? 0.14 : Math.min(0.85, 0.14 + (t - 1.4) * 0.35);
+    // (while you aim, steady at AIM_SLOW after the moment of impact; once it's blown, back up to full speed)
+    const A = G.crash.aim, t = G.crash.rt += raw;
+    if (!A.done && !G.ended) {
+      // (set off with a fresh press, not the drift you were holding into the junction: looked for every frame, as the
+      // slowed simulation steps only every few frames and a quick tap can fall between them; and on time, full or not)
+      if (playerInput.handbrake && !A.was && A.meter >= 1) detonate(true);
+      else if ((A.t += raw) >= AIM) detonate(A.meter >= 1);
+      A.was = playerInput.handbrake;
+    }
+    scale = !A.done ? (t < 0.6 ? 0.14 : Math.min(AIM_SLOW, 0.14 + (t - 0.6) * 0.4)) : Math.min(1, AIM_SLOW + (t - A.endT) * 0.5);
     if (G.spike > 0) { G.spike -= raw; scale = Math.min(scale, G.spikeK); }
     // (and once it's over, everything stops dead for the tour of the wreckage)
     if (G.ended) scale = 0;

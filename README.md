@@ -89,7 +89,7 @@ through them. Things to know:
 
 ## Rushtime
 
-- **Six junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
+- **Thirteen junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
   **Dockside Drop**, a downhill run with a crest that throws you, ending at a six-lane harbour road with the
   water behind it; **Gridlock Leap**, where your way is jammed solid back from the lights and the roadworks left
   a ramp: fly onto the jam and shove it into the busy junction; **Over the Edge**, a jam backed up across a bridge,
@@ -102,6 +102,14 @@ through them. Things to know:
   sunset-and-flaming-palm logo on its roof. Anything that hits it hard enough sets it off: your car under the canopy at speed or through a pump or pillar, or, once
   you've crashed, the traffic you've thrown at it, or a blast beside it. Then the pumps go, the canopy and its logo
   fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction.
+- **Seven rough ones, for ideas:** **Tanker Row** (tankers parked nose to tail along the far kerb: light one and
+  the blasts run down the row both ways into two junctions); **Pick Your Poison** (one ramp: hold back for the
+  queue at the lights, or rush all the way to Fuel's Paradise); **Bank Shot** (your road comes in at 45° and stops
+  at the avenue: bounce the wreckage off the shops and down to the big junction); **High Octane** (Fuel's Paradise
+  out on a bridge deck: its forecourt goes over the edge onto the road below); **Mind the Gap** (the road stops at a
+  canal, the ramp doesn't: short and you're swimming, long and you land on the queue past the quay road);
+  **Rendezvous** (three tankers and a bus cross the park nose to tail: flat out you're early, so ease off and meet
+  them); and **Double Decker** (a jam on a bridge with a wall down one side and a junction down below the other).
 - **Guide lines** (for testing only, not shown to players: open `rush.html?guides`): up to three coloured routes painted on the road
   per junction, each the best of a different idea that route bots found (20 runs per junction: either lane, a late
   swerve either way, rush or not, easing off), ending in a ring where the car first hit, labelled with what to do
@@ -114,10 +122,14 @@ through them. Things to know:
 - **The run-up:** about six seconds through traffic. Near misses (closer counts more, oncoming more still), the
   oncoming lane, drifts and air build **heat**, the multiplier on your final score, and fill **rush**, the boost.
   Burning rush widens the view, blurs the edges and pulls the camera in.
-- **The crash:** the moment you hit something solid, time slows right down and the camera circles the pile-up.
-  Traffic keeps coming and its drivers react a moment too late, so one hit becomes many. Everything that crashes
+- **The crash:** the moment you hit something solid, time slows right down and the camera rides up behind your
+  wreck. Steer it (↑ pushes it on, ↓ holds it back) into more traffic: each new one you hit fills the **explosion
+  meter**, and once it's full Space blows your car up as big as a tanker. After 20 seconds it blows anyway, smaller
+  the less you filled. Then time picks up again and the camera follows the pile-up.
+  Traffic keeps coming for the first 14 seconds or so (longer on Over the Edge, where a crash takes a while to get
+  going), then stops before the end, and its drivers react a moment too late, so one hit becomes many. Everything that crashes
   around your crash or in the junction scores; each vehicle hit by something your crash already reached is a link in
-  the **chain** and scores more. The crash runs while it keeps scoring: after 25 seconds the drivers start stopping
+  the **chain** and scores more. The crash runs while it keeps scoring: after 19 seconds the drivers start stopping
   in time, and at 30 it's over. When things go quiet (or near the limit) a countdown shows, swelling as it runs out.
 - **Scores pop up** over every incident: everything scored within a few metres in half a second, added up, small
   and yellow for a dent, big and red for well above the crash's average.
@@ -136,7 +148,7 @@ through them. Things to know:
 - **The town:** brick walk-ups over shop fronts mixed with stone-based towers, the tallest stepping back in tiers to
   a crown, water tanks on the roofs. Tankers explode, other wrecks
   sometimes catch fire and go up, cars split in half, lamp posts and trees go flying, hydrants gush, and on the
-  docks cars go over the quay into the water. Steer for a few seconds after impact to push your wreck further.
+  docks cars go over the quay into the water.
 - **Traffic:** six kinds of car, vans, pickups, police cars, garbage trucks, city buses, fuel tankers, box lorries
   and flatbeds with a load.
 - **Medals** per junction: bronze is a decent crash; gold needs heat and a well-timed hit.
@@ -150,7 +162,7 @@ through them. Things to know:
 | --- | --- |
 | ↑ ↓ ← → or W A S D | Drive (↓ brakes, then reverses) |
 | Shift | Rush (boost) |
-| Space | Drift |
+| Space | Drift; after impact, blow your wreck up (once the explosion meter's full) |
 | R | Retry, at any time |
 | Esc | Pause |
 

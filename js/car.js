@@ -340,8 +340,9 @@ export class CarPhysics {
       _r.subVectors(_p, this.pos);
       let pen = 0;
       // (the body as a whole is over or under a bridge, by where its middle is)
-      const gy = world.groundHeight(_p.x, _p.z, this.pos.y);
-      if (_p.y < gy) { pen = gy - _p.y; world.groundNormal(_p.x, _p.z, _n, this.pos.y); }
+      // (and the point's own height, for a world where that matters: a roof only holds what's come down onto it)
+      const gy = world.groundHeight(_p.x, _p.z, this.pos.y, _p.y);
+      if (_p.y < gy) { pen = gy - _p.y; world.groundNormal(_p.x, _p.z, _n, this.pos.y, _p.y); }
       const len = _r.length();
       _d.copy(_r).divideScalar(len);
       const hit = world.raycast(this.pos, _d, len, false);

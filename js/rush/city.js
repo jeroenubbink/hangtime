@@ -19,6 +19,17 @@ const _p = new THREE.Vector3(), _n = new THREE.Vector3(), _r = new THREE.Vector3
 // How far a roof's top stands over `top`: a walk-up's cornice, a hall's ledge, a tower's crown
 const ROOF = { walkup: 0.2, hall: 0.3 };
 const _g = new THREE.Vector3(), _t1 = new THREE.Vector3(), _t2 = new THREE.Vector3(), _J = new THREE.Vector3(), _vt = new THREE.Vector3();
+// The rise across (a: ahead, h: here, b: behind), ignoring a side that's over a sheer edge (more than a metre and a
+// half off: a roof's, the quay's or a bridge deck's, not a ramp's lip or a kerb): see groundNormal. (Out here, not a closure in it: it runs for every wheel and hull point, every step.)
+// Whether a point `deep` under a raised surface (a roof, a bridge's deck), `inside` metres in from its edge, has come
+// down onto it rather than up beside it: nearer the top than the edge (or only just under it), and never more than
+// half a metre under (deeper than that it's in under the edge, not landing). One beside it is
+// the wall's to push off, not lifted metres onto the top, or thrown out sideways over the street by its edge.
+const onTop = (deep, inside) => deep < 0.3 || (deep < inside && deep < 0.5);
+function edgeSlope(a, h, b) {
+  const da = a - h, db = h - b;
+  return Math.abs(da) > 1.5 ? (Math.abs(db) > 1.5 ? 0 : 2 * db) : Math.abs(db) > 1.5 ? 2 * da : da + db;
+}
 
 // A road from (x0, z0) to (x1, z1), in any direction. `right`/`left`: lanes for traffic going from 0 to 1 and
 // back. Positions on it are (u, v): u metres along from (x0, z0), v metres across toward the right of travel
@@ -91,7 +102,11 @@ export class City {
     this.roads = level.roads.map(road);
     this.base = level.height || (() => 0);
     this.ramps = level.ramps || [];
-    this.water = level.water || null;
+    // (a jetty, `jetties`: [[x0, x1, z0, z1]], out into the water is dry ground at the quay's height, on a concrete block)
+    const W = level.water, J = W?.jetties || [], onJetty = (x, z) => J.some(([a, b, c, d]) => x > a && x < b && z > c && z < d);
+    const below = (x, z) => W.below(x, z) && !onJetty(x, z);
+    // (`beside`: within a long vehicle's half-length of the water, for what's gone over the edge, see groundHeight)
+    this.water = W ? { ...W, wet: W.below, below, beside: (x, z) => below(x + 4.6, z) || below(x - 4.6, z) || below(x, z + 4.6) || below(x, z - 4.6) } : null;
     this.deck = level.deck || null;
     this.blocks = [];
     this.grid = new Map();
@@ -169,11 +184,17 @@ export class City {
   // its edges
   roadBase(r, x, z) { return !r.under && this.inDeck(x, z, 0.05) ? this.deck.y : this.base(x, z); }
   // The ground under (x, z), from height y: on a bridge, the deck from anywhere near or above it, and the road
-  // under it from below
-  groundHeight(x, z, y = Infinity) {
-    if (this.water && this.water.below(x, z)) return this.water.floor;
+  // under it from below. (py: the height of the point itself, of a body whose middle is at y)
+  groundHeight(x, z, y = Infinity, py = y) {
+    // (for something already down below the quay's top (its middle lower than anything lying on it), going in over the edge, the quay's edge is water too: else the
+    // end of it that's still over the quay is pushed out of it, and throws it metres out across the harbour)
+    // (from the ground there, not from 0: a quay needn't stand at street level)
+    if (this.water && (this.water.below(x, z) || (y - this.base(x, z) < 0.45 && this.water.beside(x, z)))) return this.water.floor;
     if (this.inDeck(x, z)) {
-      if (y > this.deck.y - 1.6) return this.deck.y + (this.isRoad(x, z, false) ? 0 : CURB);
+      const top = this.deck.y + (this.isRoad(x, z, false) ? 0 : CURB), [a, b, c, d] = this.deck.rect;
+      // (its middle up at the deck: one coming up beside it from below, a long lorry with its end in under the deck,
+      // isn't put on top)
+      if (y > this.deck.y - 0.5 && onTop(top - py, Math.min(x - a, b - x, z - c, d - z))) return top;
       return this.base(x, z) + (this.isRoad(x, z, true) ? 0 : CURB);
     }
     let h = this.base(x, z) + (this.isRoad(x, z) ? 0 : CURB);
@@ -184,13 +205,18 @@ export class City {
     }
     // (a flat roof holds what comes down on it from above; a tower's tiers don't, and it slides off into the street)
     if (y < Infinity) for (const b of this.near(x, z)) {
-      if (!b.tiers && b.floor == null && y > b.top - 0.6 && this.blockDist(b, x, z, _g) < 0) h = Math.max(h, b.top + (ROOF[b.type] ?? 0.7));
+      if (b.tiers || b.floor != null || y <= b.top - 0.6) continue;
+      const roof = b.top + (ROOF[b.type] ?? 0.7), dist = this.blockDist(b, x, z, _g);
+      if (dist < 0 && onTop(roof - py, -dist)) h = Math.max(h, roof);
     }
     return h;
   }
-  groundNormal(x, z, out = new THREE.Vector3(), y = Infinity) {
-    const e = 0.35;
-    const dx = this.groundHeight(x + e, z, y) - this.groundHeight(x - e, z, y), dz = this.groundHeight(x, z + e, y) - this.groundHeight(x, z - e, y);
+  // (across a sheer edge, a roof's or the quay's, only the side (x, z) is on counts: it's flat there, not a wall
+  // leaning out, which would throw what's sunk into it sideways off the edge)
+  groundNormal(x, z, out = new THREE.Vector3(), y = Infinity, py = y) {
+    const e = 0.35, h = this.groundHeight(x, z, y, py);
+    const dx = edgeSlope(this.groundHeight(x + e, z, y, py), h, this.groundHeight(x - e, z, y, py));
+    const dz = edgeSlope(this.groundHeight(x, z + e, y, py), h, this.groundHeight(x, z - e, y, py));
     return out.set(-dx, 2 * e, -dz).normalize();
   }
   surfaceGrip() { return 1; }
@@ -234,8 +260,9 @@ export class City {
       const under = this.deck.y - 1.35;
       let top = -Infinity;
       for (const h of car.hull) top = Math.max(top, _p.copy(h.p).applyQuaternion(car.q).add(car.pos).y);
+      // (a step at a time: one that's come up beside the deck, with its end in under it, isn't thrown metres down)
       if (top > under) {
-        car.pos.y -= top - under;
+        car.pos.y -= Math.min(top - under, 0.25);
         if (car.vel.y > 0) { worst = car.vel.y; car.vel.y *= -0.3; car.w.multiplyScalar(0.8); }
       }
     }
@@ -250,6 +277,10 @@ export class City {
         if (_p.y > b.top || _p.y < b.floor) continue;
         const d = this.blockDist(b, _p.x, _p.z, _n);
         if (d > 0) continue;
+        // (just under the roof, further in than that from the walls: it's come down over the edge, or tipped onto
+        // it, so it's lifted onto the roof rather than thrown out sideways through the wall; and only lifted: the
+        // roof under it does the bouncing)
+        if (b.floor == null && !b.tiers && b.top - _p.y < -d) { car.pos.y += (b.top - _p.y) * 0.9; continue; }
         _r.subVectors(_p, car.pos);
         _pv.crossVectors(car.w, _r).add(car.vel);
         const vn = _pv.dot(_n);
@@ -449,7 +480,8 @@ export class City {
       const x = pos.getX(i), z = pos.getZ(i);
       // (under a bridge, only the road down there: the one over it is up on the deck)
       const under = this.roadDist(x, z, this.inDeck(x, z) || undefined) < 2.8;
-      const wet = this.water && this.water.below(x, z);
+      // (the harbour floor under a jetty too: the jetty's block stands on it)
+      const wet = this.water && this.water.wet(x, z);
       pos.setY(i, wet ? this.water.floor : this.base(x, z) + (under ? -0.4 : CURB - 0.03));
       // (grass in the open ground and down the banks)
       const park = this.inPark(x, z) || this.base(x, z) < -0.2;
@@ -498,6 +530,13 @@ export class City {
       const q = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, CURB - W.floor, z1 - z0).translate((x0 + x1) / 2, (CURB + W.floor) / 2, (z0 + z1) / 2), new THREE.MeshLambertMaterial({ color: '#8a8478' }));
       q.receiveShadow = true;
       this.group.add(q);
+    }
+    // (where a jetty meets the quay its top is level with the quay wall's: drawn just behind it there, so they don't flicker)
+    for (const [a, b, c, d] of W.jetties || []) {
+      const j = new THREE.Mesh(new THREE.BoxGeometry(b - a, CURB - W.floor, d - c).translate((a + b) / 2, (CURB + W.floor) / 2, (c + d) / 2),
+        new THREE.MeshLambertMaterial({ color: '#9a948a', polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
+      j.receiveShadow = j.castShadow = true;
+      this.group.add(j);
     }
   }
 }

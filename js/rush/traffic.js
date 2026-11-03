@@ -7,7 +7,11 @@ import { TRAFFIC } from './roster.js';
 
 const RIDE = 0.88;              // a resting car's height above the road
 const WAKE = 95;                // physics within this distance of the camera's subject
-const CALM = 25;                // seconds into a crash when drivers start to see trouble coming (all of them by CALM + 4)
+const CALM = 19;
+// In a crash, a new car only comes on if it gets to the junction within ARRIVE seconds of the crash: the last of
+// them are there and done with before drivers start to stop in time (at CALM). A level where a crash takes a while to
+// get going can let them come later (its `arrive`)
+const ARRIVE = 14;                // seconds into a crash when drivers start to see trouble coming (all of them by CALM + 4)
 const _l = new THREE.Vector3(), _f = new THREE.Vector3(), _r = new THREE.Vector3(), _q = new THREE.Quaternion();
 const _m = new THREE.Matrix4(), _up = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
@@ -217,6 +221,7 @@ export class Traffic {
     this.city = city;
     this.make = makeVehicle;           // (kind, lane, s, speed) => vehicle
     this.rand = rand;
+    this.arrive = level.arrive ?? ARRIVE;
     this.lanes = level.lanes.map((d, i) => new Lane(city, d, i));
     // Parked vehicles stand on a short lane of their own, at its red light
     for (const P of level.parked || []) {
@@ -329,7 +334,7 @@ export class Traffic {
   // before you crash); `hot`: where things the crash has thrown about are (they wake what's near them too).
   update(dt, focus, bodies, spawning, crashT = null, hot = null) {
     for (const L of this.lanes) {
-      if (spawning && L.spawn && (L.next -= dt) <= 0) {
+      if (spawning && L.spawn && (crashT == null || crashT + (L.jS - L.from) / L.speedMid < this.arrive) && (L.next -= dt) <= 0) {
         L.next = L.gap[0] + this.rand() * (L.gap[1] - L.gap[0]);
         const first = L.cars[0];
         if (!first || first.s > L.from + 14) this.add(this.kind(L), L, L.from, L.speed[0] + this.rand() * (L.speed[1] - L.speed[0]));
@@ -353,11 +358,15 @@ export class Traffic {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const v = this.list[i], p = v.car.pos;
       const d = Math.hypot(p.x - focus.x, p.z - focus.z);
-      if (v.asleep && (d < WAKE || hot?.some(h => Math.abs(h.x - p.x) < 40 && Math.abs(h.z - p.z) < 40))) v.asleep = false;
+      // (near the action: looked for once, as the crash's list of what it's thrown about only grows)
+      const near = d < WAKE || !!hot?.some(h => Math.abs(h.x - p.x) < 40 && Math.abs(h.z - p.z) < 40);
+      if (v.asleep && near) v.asleep = false;
       if (!v.asleep) {
         v.s = v.lane.progress(p);
         this.input.throttle = 0;
-        v.driver.drive(v, bodies, dt, this.input, crashT == null || crashT > v.driver.wakesAt);
+        // (a parked one has nobody at the wheel: brakes on until it's hit, then it rolls where it's knocked)
+        if (v.lane.parked) Object.assign(this.input, { throttle: 0, brake: v.touched || v.wrecked ? 0.04 : 1, steer: 0, handbrake: false, boost: false, stop: true });
+        else v.driver.drive(v, bodies, dt, this.input, crashT == null || crashT > v.driver.wakesAt);
         v.input = { ...this.input };
       }
       const behind = (p.x - focus.x) * focus.dx + (p.z - focus.z) * focus.dz < -150;
@@ -365,8 +374,8 @@ export class Traffic {
       // (not one the crash has had while it's in play: shoved past the end of its lane, a wreck, or near
       // something flying; once it's driven on, well out of it, it goes, rather than on off the end of the road
       // for ever)
-      const inPlay = v.wrecked || d < WAKE || hot?.some(h => Math.abs(h.x - p.x) < 40 && Math.abs(h.z - p.z) < 40);
-      if (v.touched || v.gen ? done && !inPlay : done || behind) this.remove(v);
+      const inPlay = v.wrecked || near;
+      if (!v.lane.parked && (v.touched || v.gen ? done && !inPlay : done || behind)) this.remove(v);
     }
     for (const L of this.lanes) L.cars.sort((a, b) => a.s - b.s);
   }
