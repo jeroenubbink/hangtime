@@ -1271,7 +1271,12 @@ function intro() {
   const r = city.roads.find(o => { const [a, v] = o.local(s.x, s.z); return a >= 0 && a <= o.len && v >= o.vLo && v <= o.vHi; });
   let w = new THREE.Vector3(-u.z, 0, u.x);
   if (r) { const [, v] = r.local(s.x, s.z), mid = (r.vLo + r.vHi) / 2; w.set(r.rv[0], 0, r.rv[1]).multiplyScalar(v > mid ? -1 : 1); }
-  return (cam.intro = { city, J: new THREE.Vector3(jx, city.groundHeight(jx, jz) + 1.5, jz), u, w });
+  // and how far the pan across it can swing (up to 0.35 rad) and still be over the road, not over a roof beside a narrow one
+  const J = new THREE.Vector3(jx, city.groundHeight(jx, jz) + 1.5, jz);
+  let swing = 0;
+  while (swing < 0.35 && [1, -1].every(sg => { const a = sg * (swing + 0.01), c = Math.cos(a), sn = Math.sin(a);
+    return city.isRoad(J.x - (u.x * c - w.x * sn) * 26, J.z - (u.z * c - w.z * sn) * 26); })) swing += 0.01;
+  return (cam.intro = { city, J, u, w, swing });
 }
 
 // ---------- The tour of the wreckage ----------
@@ -1632,11 +1637,11 @@ function updateCamera(dt, rawDt) {
     const pan = a => _c.set(J.x - (I.u.x * Math.cos(a) - I.w.x * Math.sin(a)) * 26, J.y + 19, J.z - (I.u.z * Math.cos(a) - I.w.z * Math.sin(a)) * 26);
     const look = new THREE.Vector3();
     if (k < 0.35) {
-      pan(-0.35 + 0.7 * ease(k / 0.35));
+      pan(I.swing * (2 * ease(k / 0.35) - 1));
       look.copy(J);
     } else if (k < 0.78) {
       const t = ease((k - 0.35) / 0.43);
-      const from = pan(0.35).clone(), to = _l.copy(car).addScaledVector(I.u, 10).setY(car.y + 3.6);
+      const from = pan(I.swing).clone(), to = _l.copy(car).addScaledVector(I.u, 10).setY(car.y + 3.6);
       _c.lerpVectors(from, to, t);
       _c.y += Math.sin(t * Math.PI) * 6;
       look.lerpVectors(J, car, ease(Math.min(1, t * 1.6)));
