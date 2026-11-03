@@ -106,8 +106,8 @@ through them. Things to know:
   per junction, each the best of a different idea that route bots found (20 runs per junction: either lane, a late
   swerve either way, rush or not, easing off), ending in a ring where the car first hit, labelled with what to do
   ("Rush, left lane", "Steady, swerve left") and what the bot scored. Off the ground the line goes dashed.
-- **The opening shot** pans across the junction, then flies back down the road to your car and round behind it
-  for the countdown.
+- **The opening shot** pans across the junction from over the low roofs round it (only walk-ups near a junction),
+  then flies back down the road to your car and round behind it for the countdown.
 - **The traffic is scripted:** the same every time, so a junction can be learned. Until you crash its drivers are
   model drivers (queues wait, nobody crashes without you); once you've crashed they're slow to see trouble and
   slower to stop, so mostly they drive straight into it.
@@ -130,8 +130,9 @@ through them. Things to know:
   of them all. It keeps to its side of the action from one subject to the next, so left stays left. It slides over a
   short way, flies over the roofs to anything far off, and goes up and over any building in the way. The tour pulls
   up and back between heaps, so you see where each lies from the last, and looks at each from where all of it shows.
-- **Wrecks stay in the area:** anything thrown clear more than 50 m from where anything happened (where you hit, the
-  junction, a blast) slows in the air and comes down about where it is, on a flat roof or the street beside it.
+- **The edge of town:** wrecks fly as far as they're thrown, but anything heading out past the buildings along the
+  roads and round the forecourts (or off the end of the ground) meets an invisible wall and comes down on the
+  outskirts, on a flat roof or in the street, never out in the empty ground beyond.
 - **The town:** brick walk-ups over shop fronts mixed with stone-based towers, the tallest stepping back in tiers to
   a crown, water tanks on the roofs. Tankers explode, other wrecks
   sometimes catch fire and go up, cars split in half, lamp posts and trees go flying, hydrants gush, and on the

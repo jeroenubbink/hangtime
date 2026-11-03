@@ -10,7 +10,7 @@ import { createStage, TIMES } from '../derby/stage.js';
 import { Puffs, Debris } from '../derby/fx.js';
 import { Vehicle, contact, damageFrom, subdivide } from '../derby/vehicle.js';
 import { loadSceneryKit } from '../scenery.js';
-import { City, rng } from './city.js';
+import { City, rng, EDGE } from './city.js';
 import { LEVELS } from './levels.js';
 import { Traffic } from './traffic.js';
 import { Props } from './props.js';
@@ -180,7 +180,8 @@ function startRun(pre) {
   G.preSteps = Math.round(PRE_ALL * 120);
   skipTo(pre);
   cam.mode = G.state;
-  cam.dir.set(0, 0, -1);
+  // (behind the car the way it faces: not every road runs toward -z)
+  cam.dir.copy(player.forward).setY(0).normalize();
   $('hud').classList.remove('hidden', 'touring');
   $('crashbox').classList.add('hidden');
   $('callouts').innerHTML = '';
@@ -473,7 +474,6 @@ function blowUp(X) {
   // (a forecourt car: thrown up and out, and wrecked by it)
   if (X.launch) { launch(X); X.launchT = G.t; if (!X.wrecked && !X.halved) wreck(X, false); }
   const p = X.car.pos.clone(), big = X.def.explosive ? 2 : 1, R = 8 * big;
-  G.crash?.anchors.push(p.clone());
   explosion(p, big);
   sound.boom(Math.min(1, 0.6 * big));
   if (!X.launch) {
@@ -642,7 +642,6 @@ function ignite(p, by) {
   p = p.clone();
   T.lit = true;
   G.rec?.event(G.t, 'station', { by: by?.id });
-  G.crash?.anchors.push(p.clone());
   if (by === player && G.state === 'run') startCrash({ point: p.clone(), speed: player.car.vel.length() }, null);
   callout('FILL \'ER UP', 'big');
   const y = city.top(S.x, S.z);
@@ -732,7 +731,7 @@ function startCrash(h, other) {
   G.impact = { kmh, bonus };
   G.heat = Math.round((G.heat + bonus) * 10) / 10;
   G.crash = { t: 0, rt: 0, quiet: 0, focus: h.point.clone(), origin: h.point.clone(), subject: player, side: 1, ang: 0, dist: 13, cutT: 0, lastSpike: G.t,
-    incidents: [], ledger: new Map(), spots: [], popSum: 0, popN: 0, anchors: [h.point.clone(), new THREE.Vector3(city.level.junction[0], 0, city.level.junction[1])] };
+    incidents: [], ledger: new Map(), spots: [], popSum: 0, popN: 0 };
   // Start the camera low beside the impact, looking across the way you came in
   const f = player.forward.clone().setY(0).normalize();
   G.crash.ang = Math.atan2(-f.x, -f.z) + (Math.random() < 0.5 ? 1 : -1) * (0.9 + Math.random() * 0.5);
@@ -978,7 +977,7 @@ function step() {
     if (running) water(player);
     for (const h of halves) { h.car.step(DT, NONE); water(h); }
     const all = bodies();
-    if (G.crash) reinIn(all);
+    fence(all);
     for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
       // Until you crash the traffic is scripted: it doesn't crash into itself (unless you've had a go at it)
       if (!G.crash && !all[i].player && !all[j].player && !all[i].gen && !all[j].gen) continue;
@@ -1012,23 +1011,28 @@ function step() {
   }
 }
 
-// Whatever's thrown clear out of it all, over the roofs or off down the street in the air, slows in the air once it's
-// AREA m from anywhere anything's happened (where you hit, the junction, a blast), and comes down about where it is: on a
-// roof, or in the street beside it. A wreck sliding away down the street slows the same. (A dented car still driving
-// goes where it likes: off, if it wants.)
-const AREA = 50;
-function reinIn(bs) {
+// The edge of the town: anything thrown out past the buildings along its roads and lots (EDGE m from their edges: the
+// pavement and the deepest building) or off the end of the ground meets an invisible wall, and comes down on the outskirts,
+// not out in the empty ground beyond them, nor off the world. However far it was going, up to there it flies free.
+// (Open ground round a level's junction, and its water, count as in; so does a forecourt, and what's behind it.)
+function fence(bs) {
+  const [x0, x1, z0, z1] = city.level.bounds, M = 8;
   for (const b of bs) {
-    const c = b.car;
-    // (a wreck sliding along the ground too: it's not driving anywhere)
-    if (!b.wrecked && !b.half && b !== player && c.pos.y - city.groundHeight(c.pos.x, c.pos.z, c.pos.y) < 1.5) continue;
-    let d = Infinity, o = null;
-    for (const a of G.crash.anchors) { const e = Math.hypot(c.pos.x - a.x, c.pos.z - a.z); if (e < d) { d = e; o = a; } }
-    // (only on the way out)
-    if (d < AREA || (c.pos.x - o.x) * c.vel.x + (c.pos.z - o.z) * c.vel.z <= 0) continue;
-    const k = Math.exp(-DT * 3 * clamp((d - AREA) / 10, 0, 1));
-    c.vel.x *= k;
-    c.vel.z *= k;
+    const c = b.car, p = c.pos;
+    // (off the ground's ends: straight back in)
+    if (p.x < x0 + M && c.vel.x < 0) c.vel.x *= -0.3;
+    if (p.x > x1 - M && c.vel.x > 0) c.vel.x *= -0.3;
+    if (p.z < z0 + M && c.vel.z < 0) c.vel.z *= -0.3;
+    if (p.z > z1 - M && c.vel.z > 0) c.vel.z *= -0.3;
+    const d = city.pavedDist(p.x, p.z);
+    if (d < EDGE || city.inPark(p.x, p.z) || city.water?.below(p.x, p.z)) continue;
+    // (back toward the nearest paved ground: down the slope of the distance to it)
+    const gx = city.pavedDist(p.x + 1, p.z) - city.pavedDist(p.x - 1, p.z), gz = city.pavedDist(p.x, p.z + 1) - city.pavedDist(p.x, p.z - 1), l = Math.hypot(gx, gz);
+    if (l < 1e-6) continue;
+    const nx = -gx / l, nz = -gz / l, vn = c.vel.x * nx + c.vel.z * nz;
+    if (vn < 0) { c.vel.x -= 1.3 * vn * nx; c.vel.z -= 1.3 * vn * nz; }
+    p.x += nx * Math.min(0.5, d - EDGE);
+    p.z += nz * Math.min(0.5, d - EDGE);
   }
 }
 
@@ -1528,7 +1532,8 @@ function updateCamera(dt, rawDt) {
     const k = clamp((PRE_ALL - G.pre) / PRE_INTRO, 0, 1), I = intro();
     const ease = t => t * t * (3 - 2 * t);
     const car = c.pos, J = I.J;
-    const pan = a => _c.set(J.x - (I.u.x * Math.cos(a) - I.w.x * Math.sin(a)) * 20, J.y + 11, J.z - (I.u.z * Math.cos(a) - I.w.z * Math.sin(a)) * 20);
+    // (from over the roofs round it, kept low for this: the junction laid out below, and what's round it)
+    const pan = a => _c.set(J.x - (I.u.x * Math.cos(a) - I.w.x * Math.sin(a)) * 26, J.y + 19, J.z - (I.u.z * Math.cos(a) - I.w.z * Math.sin(a)) * 26);
     const look = new THREE.Vector3();
     if (k < 0.35) {
       pan(-0.35 + 0.7 * ease(k / 0.35));
@@ -1632,19 +1637,25 @@ function updateCamera(dt, rawDt) {
       // (a building in the way of any of it: round to the nearest side that sees it all; none, between towers: higher,
       // looking down on it, until one does)
       const hidden = (a, up) => { spot(a, up); return blocked(_c, _l) || (W.pts || []).some(p => blocked(_c, p)); };
-      // (looked for only when where it's going is hidden, at most every half second, and then it turns round to it
-      // steadily, never snapping: a camera swinging about loses you)
-      if ((C.wideLook -= rawDt) <= 0 && hidden(C.wideGoal, C.wideUpGoal || 0)) {
+      // (looked for only when where it's going is hidden, or it's gone up to see over something and might come back
+      // down, at most every half second; and then it turns round to it steadily, never snapping: a camera swinging
+      // about loses you)
+      if ((C.wideLook -= rawDt) <= 0) {
         C.wideLook = 0.5;
-        let up = 0, a0 = C.wideGoal;
-        search: for (const u of [0, 0.5, 1]) {
-          for (let i = 0; i <= 8; i++) {
-            const a = a0 + Math.ceil(i / 2) * 0.4 * (i % 2 ? 1 : -1);
-            if (!hidden(a, u)) { C.wideGoal = a; up = u; break search; }
+        // (up: back down where it is first, if it can see from lower, rather than off round to somewhere new)
+        const up0 = C.wideUpGoal || 0, lower = [0, 0.5].find(u => u < up0 && !hidden(C.wideGoal, u));
+        if (lower != null) C.wideUpGoal = lower;
+        else if (hidden(C.wideGoal, up0)) {
+          let up = 0, a0 = C.wideGoal;
+          search: for (const u of [0, 0.5, 1]) {
+            for (let i = 0; i <= 8; i++) {
+              const a = a0 + Math.ceil(i / 2) * 0.4 * (i % 2 ? 1 : -1);
+              if (!hidden(a, u)) { C.wideGoal = a; up = u; break search; }
+            }
+            up = u;
           }
-          up = u;
+          C.wideUpGoal = up;
         }
-        C.wideUpGoal = up;
       }
       const da = C.wideGoal - C.wideA;
       C.wideA += Math.sign(da) * Math.min(Math.abs(da), Math.min(0.6, Math.abs(da) * 1.5) * rawDt);

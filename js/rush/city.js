@@ -8,6 +8,10 @@ import { addDetail } from '../textures.js';
 export const LANE = 3.6;
 export const CURB = 0.16;
 const WALK = 5;                  // pavement width beside every road
+const DEPTH = 26;                // the deepest a building along a street goes back from its pavement
+// The edge of the town: this far from any paved ground (a road's edge, a lot), past the pavement and the deepest
+// building, is the empty ground beyond it
+export const EDGE = WALK + DEPTH + 1;
 const CELL = 24;
 
 function rng(seed) { return () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296); }
@@ -130,6 +134,15 @@ export class City {
       const px = x - r.x0, pz = z - r.z0, u = px * r.dir[0] + pz * r.dir[1], v = px * r.rv[0] + pz * r.rv[1];
       const du = Math.max(-u, u - r.len), dv = Math.max(r.vLo - v, v - r.vHi);
       best = Math.min(best, Math.hypot(Math.max(du, 0), Math.max(dv, 0)) + Math.min(Math.max(du, dv), 0));
+    }
+    return best;
+  }
+  // How far (x, z) is from the nearest paved ground: a road's edge or a lot's (negative on one)
+  pavedDist(x, z) {
+    let best = this.roadDist(x, z);
+    for (const { rect: [a, b, c, d] } of this.level.lots || []) {
+      const dx = Math.max(a - x, x - b), dz = Math.max(c - z, z - d);
+      best = Math.min(best, Math.hypot(Math.max(dx, 0), Math.max(dz, 0)) + Math.min(Math.max(dx, dz), 0));
     }
     return best;
   }
@@ -361,9 +374,9 @@ export class City {
           let s = p + (p > 1 ? WALK : 0);
           const end = q - (q < r.len - 1 ? WALK : 0);
           while (s < end - 4) {
-            const w = Math.min(end - s, 12 + rand() * 18), d = 14 + rand() * 12;
+            const w = Math.min(end - s, 12 + rand() * 18), d = 14 + rand() * (DEPTH - 14);
             const [x, z] = r.at(s + w / 2, e + side * (WALK + d / 2));
-            blocks.push({ x, z, w: w - 0.6, d, ang: r.ang, ...style(rand, L) });
+            blocks.push({ x, z, w: w - 0.6, d, ang: r.ang, ...style(rand, L, x, z) });
             s += w;
           }
         }
@@ -579,14 +592,19 @@ const FLOOR = 3.3, SHOP = 4.4, BAY = 4;
 const TOWER = ['#efe3cf', '#e3d3b2', '#d4d8dc', '#e8bf98', '#c2d0dc', '#f2e6c8', '#d9b48c', '#b8c8b0', '#e6c8c0'];
 const STONE = ['#f2ece0', '#ddd6c8', '#c9c2b4'];
 const SHOPS = ['#d94a3a', '#2f7f6f', '#3a5fa8', '#e0a030', '#7a4a8a', '#2f6f9f', '#c2603a'];
-function style(rand, L) {
+// Round the junction (LOW m of it) only walk-ups, and none over three floors: the opening shot looks down on the junction
+// over low roofs, not into a canyon of towers. (The same draws from `rand` either way: the rest of the town's the same.)
+const LOW = 60;
+function style(rand, L, x, z) {
   const t = rand(), lower = L.lower || 1;
+  const low = Math.hypot(x - L.junction[0], z - L.junction[1]) < LOW;
   if (t < 0.45) {
     const floors = 2 + Math.floor(rand() * 3);
-    return { type: 'walkup', h: SHOP + floors * FLOOR + 0.6, brick: Math.floor(rand() * 2), tank: rand() < 0.5 };
+    return { type: 'walkup', h: SHOP + Math.min(low ? 3 : 4, floors) * FLOOR + 0.6, brick: Math.floor(rand() * 2), tank: rand() < 0.5 };
   }
-  if (t < 0.87) return { type: 'tower', h: (15 + rand() * 13) * lower, tank: rand() < 0.3 };
-  return { type: 'tower', h: (30 + rand() * 16) * lower, tiers: true };
+  const h = t < 0.87 ? (15 + rand() * 13) * lower : (30 + rand() * 16) * lower, tank = t < 0.87 && rand() < 0.3;
+  if (low) return { type: 'walkup', h: SHOP + (2 + Math.floor(t * 20) % 2) * FLOOR + 0.6, brick: Math.floor(t * 40) % 2, tank };
+  return t < 0.87 ? { type: 'tower', h, tank } : { type: 'tower', h, tiers: true };
 }
 
 // Window, brick and shop-front tiles, one bay wide and one floor high
