@@ -289,6 +289,8 @@ export class City {
         _p.set(x * hw, 0, z * hl).applyQuaternion(car.q).add(car.pos);
         const over = (F.x - _p.x) * side + FIN;
         if (over <= 0 || _p.z > F.a.z || _p.z < Math.min(F.a.z - F.a.len, F.b.z - F.b.len)) continue;
+        // (it's only a metre over the higher ramp: see finMesh)
+        if (_p.y > this.base(F.x, _p.z) + Math.max(finRise(F.a, _p.z), finRise(F.b, _p.z)) + 1) continue;
         _n.set(side, 0, 0);
         _r.subVectors(_p, car.pos);
         _pv.crossVectors(car.w, _r).add(car.vel);
@@ -309,11 +311,13 @@ export class City {
         if (t <= 0 || t >= 1 || inside <= 0) continue;
         const deep = this.base(_p.x, _p.z) + rampRise(r, t) - _p.y;
         if (deep <= 0 || rampOn(deep, inside)) continue;
-        _n.set(Math.sign(_p.x - r.x) || 1, 0, 0);
+        // (out the nearer way: a side, or back off the lip's face, for something come at it from beyond)
+        const lip = _p.z - (r.z - r.len);
+        if (lip < inside) _n.set(0, 0, -1); else _n.set(Math.sign(_p.x - r.x) || 1, 0, 0);
         _r.subVectors(_p, car.pos);
         _pv.crossVectors(car.w, _r).add(car.vel);
         const vn = _pv.dot(_n);
-        car.pos.addScaledVector(_n, inside * 0.9);
+        car.pos.addScaledVector(_n, Math.min(lip, inside) * 0.9);
         if (vn >= 0) continue;
         const k = 1 / car.mass + _n.dot(_t2.crossVectors(car.invInertia(_t1.crossVectors(_r, _n), _J), _r));
         _J.copy(_n).multiplyScalar(-1.3 * vn / k);
@@ -681,14 +685,15 @@ function deckMesh(b) {
 }
 // The fins between the big ramps: concrete, a metre over the higher of the two all the way up
 const FIN = 0.25;
+// (how high ramp r is at z, for its fin: its full height past the lip, as the fin runs on to the longer one's)
+const finRise = (r, z) => { const t = (r.z - z) / r.len; return t > 0 && t < 1 ? rampRise(r, t) : t >= 1 ? r.h : 0; };
 function finMesh(fins, base) {
   const parts = [];
   for (const F of fins) {
     const N = 70, z0 = F.a.z, len = Math.max(F.a.len, F.b.len);
     for (let i = 0; i < N; i++) {
       const za = z0 - len * i / N, zb = z0 - len * (i + 1) / N;
-      const rise = r => { const t = (r.z - zb) / r.len; return t > 0 && t < 1 ? rampRise(r, t) : t >= 1 ? r.h : 0; };
-      const y0 = base(F.x, za), top = y0 + Math.max(rise(F.a), rise(F.b)) + 1;
+      const y0 = base(F.x, za), top = y0 + Math.max(finRise(F.a, zb), finRise(F.b, zb)) + 1;
       parts.push([new THREE.BoxGeometry(FIN * 2, top - y0, za - zb + 0.02).translate(F.x, (y0 + top) / 2, (za + zb) / 2), '#e8ecec']);
     }
   }

@@ -96,8 +96,8 @@ export class Stacks {
     // (leaning the way it was pushed, the higher the harder: a column topples rather than drops straight)
     const lean = 0.6 + S.tier * 0.9;
     c.vel.x += dir.x * lean; c.vel.z += dir.z * lean; c.vel.y += 0.3;
-    _p.set(dir.z, 0, -dir.x);
-    c.w.addScaledVector(_p, -(0.5 + S.tier * 0.25));
+    _p.set(dir.z, 0, -dir.x);                      // (up × dir: the top tips along dir)
+    c.w.addScaledVector(_p, 0.5 + S.tier * 0.25);
     const col = S.col;
     let first = false;
     if (!col.down) { col.down = true; this.down++; first = true; }

@@ -102,7 +102,13 @@ class Car extends Vehicle {
     this.soft = true;
     for (const m of this.model.userData.bodyMeshes) {
       const key = this.def.file + ':' + m.name;
-      if (!soft.has(key)) soft.set(key, subdivide(m.geometry, 0.42));
+      // (from the plain mesh as it was made, not as it is: a boxed car's own is dented by now, and this is every one's)
+      if (!soft.has(key)) {
+        const g = m.geometry.clone();
+        if (m.userData.orig) g.attributes.position.array.set(m.userData.orig);
+        soft.set(key, subdivide(g, 0.42));
+        g.dispose();
+      }
       m.geometry.dispose();
       m.geometry = soft.get(key).clone();
       m.userData.orig = m.geometry.attributes.position.array.slice();
@@ -207,6 +213,8 @@ function startRun(pre) {
   }
   for (const [x, z] of L.crates || []) crates.push(crate(x, z));
   mark.at.set(0, 0, 0);
+  cam.diveK = 0;
+  cam.diveAt = null;
   const def = RIDES[settings.car];
   player = new Car(city, scene, 0, def, def.livery, { player: true, name: 'You' });
   player.gen = 0;
@@ -215,7 +223,7 @@ function startRun(pre) {
   player.setLights(TIMES[settings.time].lamps);
   player.respawn({ x: L.start.x, z: L.start.z, yaw: L.start.yaw || 0 });
   for (let i = 0; i < 60; i++) player.car.step(DT, { ...NONE, brake: 1, stop: true });
-  Object.assign(G, { t: 0, pre, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0,
+  Object.assign(G, { t: 0, pre, heat: 1, rush: 0.4, crash: null, unpaid: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0,
     boosting: false, drifting: false, steer: 0, yaw: 0, drift: 0, geysers: [], air: 0, nearT: 0, oncoming: 0, best: 0, ended: false, slow: 1, spike: 0, tour: null, rec: null,
     nitro: 0, dive: null, stacksDown: 0, tricks: null, arm: null, latch: false, launched: false });
   document.querySelector('#touch .rushb')?.classList.remove('latched');
@@ -843,6 +851,12 @@ function freed(v, by, first) {
   if (camera.position.distanceTo(v.car.pos) < 60) sound.glass();
   if (!first) return;
   G.stacksDown++;
+  // (knocked down before the crash has begun, the one you came down into: paid for once it has, see startCrash)
+  if (G.state === 'run') (G.unpaid ||= []).push(v);
+  else paid(v);
+}
+// A column down: worth so much, and more for the last on its deck
+function paid(v) {
   scoreEvent(v, 1200, null, false, 'fall');
   const deck = v.stack.col.deck, left = stacks.cols.filter(c => c.deck === deck && !c.down).length;
   if (!left) scoreEvent(v, 8000, 'DECK CLEARED', true, 'fall');
@@ -852,13 +866,15 @@ function freed(v, by, first) {
 // A long way down: hitting the ground (or what's on it) hard hurts, and from high up it's worth something
 function fall(v, ev) {
   if (!G.crash || !v.gen || !ev) return;
-  const hit = Math.max(ev.under || 0, ev.impact || 0);
+  // (coming down onto the ground, or a deck: not into a wall, see wallHit)
+  const hit = Math.max(ev.under || 0, ev.ground || 0);
   if (hit < 12) return;
   hurt(v, null, (hit - 10) * 2, v.car.pos.clone(), DOWN);
   if (hit > 20) scoreEvent(v, Math.round((hit - 18) * 60 * v.value), hit > 28 ? 'SKYFALL' : null, false, 'fall');
 }
 // In the air off the big ramp: see DIVE_SLOW
-function fly(dt) {
+// (`vy0`, `sp0`: how you were going before this step's physics, which a landing has taken most of by now)
+function fly(dt, vy0, sp0) {
   const c = player.car, I = playerInput;
   c.vel.y -= 9.81 * (AIR_G - 1) * dt;
   // (off the lip: a kick to the camera and a thump, once a run)
@@ -899,9 +915,8 @@ function fly(dt) {
   const high = c.pos.y - city.groundHeight(c.pos.x, c.pos.z, c.pos.y);
   // (down on its roof or its side, no wheels on the ground: that's a landing too)
   if (G.air > 1 && high < 1.6) {
-    const vy = c.vel.y, sp = c.vel.length();
     landAir();
-    slam(vy, sp);
+    slam(Math.min(vy0, c.vel.y), Math.max(sp0, c.vel.length()));
     return;
   }
   if (!G.dive && G.air > 0.5 && c.vel.y < 3 && high > 10) {
@@ -956,6 +971,8 @@ function startCrash(h, other, fromAir = false) {
   G.crash = { t: 0, rt: 0, quiet: 0, focus: h.point.clone(), origin: h.point.clone(), subject: player, side: 1, ang: 0, dist: 13, cutT: 0, lastSpike: G.t,
     incidents: [], ledger: new Map(), spots: [], popSum: 0, popN: 0,
     aim: { t: 0, yaw, meter: 0, tagged: new Set(), was: true, done: false } };
+  for (const u of G.unpaid || []) paid(u);
+  G.unpaid = null;
   // Start the camera low beside the impact, looking across the way you came in
   G.crash.ang = Math.atan2(-f.x, -f.z) + (Math.random() < 0.5 ? 1 : -1) * (0.9 + Math.random() * 0.5);
   if (other && !other.half && !other.gen) other.gen = 1;
@@ -1066,7 +1083,7 @@ function record() {
   for (const h of halves) list.push({ id: h.id, kind: 'half', paint: h.owner.paint, len: 2.3, car: h.car, flags: 0 });
   camera.getWorldDirection(_rl).multiplyScalar(10).add(camera.position);
   // (and Tower Dive's nitro, firing in the air: on a phone it's switched on by a tap, too quick to show as RUSH held)
-  G.rec.frame(G.t, G.state, Object.assign(_ri, playerInput, { nitro: G.boosting && G.air > 0 }), list, camera.position, _rl, G.crash?.on);
+  G.rec.frame(G.t, G.state, Object.assign(_ri, playerInput, { nitro: !!city.level.dive && G.boosting && G.air > 0 }), list, camera.position, _rl, G.crash?.on);
 }
 
 // ---------- Fixed step ----------
@@ -1098,12 +1115,12 @@ function drive(dt) {
   const want = I.steer;
   const rate = Math.abs(want) > Math.abs(G.steer) && Math.sign(want) === Math.sign(G.steer || want) ? 7 : 12;
   G.steer += clamp(want - G.steer, -rate * dt, rate * dt);
-  const boosting = I.boost && G.rush > 0.01 && I.throttle > 0;
+  // (not in the air off Tower Dive's ramp, held on from the run-up: there it's for the nitro, see fly)
+  const boosting = I.boost && G.rush > 0.01 && I.throttle > 0 && !(city.level.dive && c.grounded < 2);
   if (boosting && !G.boosting) { G.punch = Math.max(G.punch, 6); sound.boom(0.25); }
   G.boosting = boosting;
   v.boosting = boosting;
-  // (not in the air off Tower Dive's ramp, held on from the run-up: there it's for the nitro, see fly)
-  if (boosting && !(city.level.dive && c.grounded < 2)) G.rush = Math.max(0, G.rush - dt * 0.13);
+  if (boosting) G.rush = Math.max(0, G.rush - dt * 0.13);
   // Speeds along and across the car before the physics step: the step adds suspension, bumps and walls,
   // and this model then sets how the car moves over the ground
   // (along the car's own axes, so it follows the road over hills and crests)
@@ -1116,7 +1133,7 @@ function drive(dt) {
   if (c.wallHit) return;               // hit a building: the physics has it this step
   if (c.grounded < 2) {
     G.air += dt;
-    if (city.level.dive) { fly(dt); return; }
+    if (city.level.dive) { fly(dt, vy0, sp0); return; }
     // In the air: a little yaw from the stick, nothing else
     c.w.y += (-G.steer * 1.1 - c.w.y) * Math.min(1, dt * 2);
     G.yaw = c.w.y;
@@ -1255,7 +1272,9 @@ function step() {
   }
   {
     for (const v of traffic.list) {
-      if (v.asleep || v.halved || v.held || v.rest) continue;
+      if (v.asleep || v.halved || v.held) continue;
+      // (one come to rest still has its fuse burning)
+      if (v.rest) { if (v.boomT != null && (v.boomT -= DT) <= 0) { v.rest = false; blowUp(v); } continue; }
       v.car.wallHit = null;
       const ev = v.car.step(DT, v.wrecked || !v.alive ? NONE : v.input || NONE);
       if (stacks) fall(v, ev);
@@ -1912,7 +1931,8 @@ const mark = (() => {
     update() {
       const on = !!G.dive && G.state === 'run';
       ring.visible = dots.visible = on;
-      if (!on) return;
+      // (and nowhere, out of a dive: the next one starts from where it is then, not where the last came down)
+      if (!on) { at.set(0, 0, 0); return; }
       p.copy(player.car.pos); v.copy(player.car.vel);
       const pos = dots.geometry.attributes.position, h = 0.05;
       let k = 0, g = 0, hit = null, wall = false;
@@ -2508,6 +2528,8 @@ function tick(raw, draw = true) {
       for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) contact(B[i], B[j]);
     }
     for (const v of traffic.list) v.pose();
+    // (no dive ring left up from a run quit in the middle of one)
+    mark.update();
     // (from over the roofs: Tower Dive's junction is a sky deck)
     const gy = city.groundHeight(jx, jz, 1e4);
     camera.position.set(jx + Math.sin(cam.menuA) * 46, gy + 24, jz + Math.cos(cam.menuA) * 46);

@@ -333,26 +333,28 @@ export class CarPhysics {
   // Body vs. ground, track and scenery. Impulse-based with positional correction.
   collide() {
     // Underbody hits (landings) are reported apart from nose, tail and side hits
-    let impact = 0, under = 0, roof = false;
+    // (`ground`: the hardest of those hits that were the ground's, not a wall's)
+    let impact = 0, under = 0, roof = false, ground = 0;
     const world = this.world;
     for (const h of this.hull) {
       _p.copy(h.p).applyQuaternion(this.q).add(this.pos);
       _r.subVectors(_p, this.pos);
-      let pen = 0;
+      let pen = 0, low = false;
       // (the body as a whole is over or under a bridge, by where its middle is)
       // (and the point's own height, for a world where that matters: a roof only holds what's come down onto it)
       const gy = world.groundHeight(_p.x, _p.z, this.pos.y, _p.y);
-      if (_p.y < gy) { pen = gy - _p.y; world.groundNormal(_p.x, _p.z, _n, this.pos.y, _p.y); }
+      if (_p.y < gy) { pen = gy - _p.y; low = true; world.groundNormal(_p.x, _p.z, _n, this.pos.y, _p.y); }
       const len = _r.length();
       _d.copy(_r).divideScalar(len);
       const hit = world.raycast(this.pos, _d, len, false);
-      if (hit && len - hit.dist > pen) { pen = len - hit.dist; _n.copy(hit.normal); }
+      if (hit && len - hit.dist > pen) { pen = len - hit.dist; low = false; _n.copy(hit.normal); }
       if (pen <= 0) continue;
       if (h.roof) roof = true;
       _pv.crossVectors(this.w, _r).add(this.vel);
       const vn = _pv.dot(_n);
       if (vn < 0) {
         if (h.under) under = Math.max(under, -vn); else impact = Math.max(impact, -vn);
+        if (low) ground = Math.max(ground, -vn);
         const k = 1 / this.mass + _n.dot(_t2.crossVectors(this.invInertia(_t1.crossVectors(_r, _n), _J), _r));
         const j = -1.2 * vn / k;
         _J.copy(_n).multiplyScalar(j);
@@ -377,7 +379,7 @@ export class CarPhysics {
     }
 
     // Arena fence (an arena with its own walls keeps the car in itself)
-    if (world.contain) return { impact: Math.max(impact, world.contain(this)), under, roof };
+    if (world.contain) return { impact: Math.max(impact, world.contain(this)), under, roof, ground };
     for (const axis of ['x', 'z']) {
       if (Math.abs(this.pos[axis]) > WORLD_LIMIT - 1.5) {
         const s = Math.sign(this.pos[axis]);
@@ -385,7 +387,7 @@ export class CarPhysics {
         if (this.vel[axis] * s > 0) { impact = Math.max(impact, Math.abs(this.vel[axis])); this.vel[axis] *= -0.3; }
       }
     }
-    return { impact, under, roof };
+    return { impact, under, roof, ground };
   }
 }
 
