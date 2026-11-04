@@ -8,6 +8,9 @@ export const BOX = { w: 2.7, l: 5.4, h: 2.3 };     // a box, outside: wide, long
 const RIDE = 0.9;
 const LOD = 260;
 const CELL = 8;                                   // a car's middle over its box's floor
+// A boxed car let go has nobody at the wheel, and the handbrake half on: shoved, it slides a few metres and stops, rather
+// than rolls on across the deck for ever and off its edge. (A wreck settles the same way: see main.js)
+export const LOOSE = { throttle: 0, brake: 0.15, steer: 0, handbrake: false, boost: false, stop: true };
 const KINDS = ['hatch', 'coupe', 'saloon', 'cab', 'suv', 'police', 'hatch', 'saloon'];
 const _q = new THREE.Quaternion(), _up = new THREE.Vector3(0, 1, 0), _m = new THREE.Matrix4(), _s = new THREE.Vector3(), _p = new THREE.Vector3();
 
@@ -89,6 +92,7 @@ export class Stacks {
   release(v, dir, by, t, onRelease) {
     if (!v.held) return false;
     v.held = false;
+    v.input = LOOSE;
     v.model.visible = true;
     v.model.traverse(o => { if (o.isMesh) o.castShadow = true; });
     const S = v.stack, c = v.car;

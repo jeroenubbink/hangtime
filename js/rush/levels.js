@@ -31,6 +31,34 @@ const fade = x => { const t = Math.min(1, Math.max(0, (Math.abs(x) - 50) / 170))
 const rails = (x, z0, z1) => Array.from({ length: Math.floor((z1 - z0) / 3) + 1 }, (_, i) => ['rail', x, z0 + i * 3, Math.PI / 2]);
 const D45 = Math.SQRT1_2;
 
+// Tower Dive's grounds. The stream through the park between the avenue and the skyway: its middle at x
+const brook = x => -85 + 7 * Math.sin(x / 26 + 0.4) + 2.5 * Math.sin(x / 11);
+// The car park behind the hotel: two rows of bays nosed in either side of an aisle, four bays then a green island, and
+// most of them taken
+// (centred: the islands between the fours at x -15.2, 0 and 15.2)
+const BAYS = [[-294, Math.PI], [-308.6, 0]].flatMap(([z, yaw]) => [0, 1, 2, 3].flatMap(g => [0, 1, 2, 3].map(k => ({ x: -28.6 + g * 15.2 + k * 2.9 + 1.45, z, yaw }))));
+const EMPTY_BAYS = [2, 9, 13, 20, 27];
+// Round the square behind the hotel, shut in on three sides: shops, tall and side by side, with no gaps. Along each
+// side, [depth along z, height, type, sign]; along the back, between the sides' fronts, [width along x, ...]
+const SHOPS_LEFT = [[26, 38, 'store', 'AISLE BE BACK'], [30, 52, 'tower', 'VINYL COUNTDOWN'], [22, 30, 'walkup', 'Knead to Know'], [28, 60, 'tower', 'REEL DEAL'],
+  [24, 40, 'store', 'SOLE MATES'], [34, 56, 'tiers', 'BOWL ME OVER'], [20, 34, 'walkup', 'Petal to the Metal'], [22, 62, 'store', 'TOYING AROUND']];
+const SHOPS_RIGHT = [[22, 46, 'tower', 'WOK THIS WAY'], [28, 34, 'walkup', 'Novel Ideas'], [32, 58, 'store', 'OHM SWEET OHM'], [24, 42, 'tower', 'PILLS & THRILLS'],
+  [26, 54, 'store', 'HAVING A BALL'], [30, 38, 'walkup', 'Pizza My Heart'], [20, 60, 'tiers', 'ARCADE-IA'], [24, 50, 'store', 'SCREWS LOOSE']];
+const SHOPS_BACK = [[20, 64, 'tiers', 'MALL OR NOTHING'], [18, 48, 'store', 'FROCK & ROLL'], [18, 72, 'tower', 'LETTUCE EAT'], [18, 56, 'store', 'TREBLE MAKERS'],
+  [18, 68, 'tiers', 'Carat & Stick'], [20, 52, 'store', 'PAWS FOR THOUGHT']];
+// (`face`: the side its sign's on, toward the square: worked out from where the square's middle is, the ones near its
+// ends would put theirs on a side that's up against the next shop's wall)
+const shop = ([len, h, type, sign], x, z, w, d, face) => ({ x, z, w, d, h, type: type === 'tiers' ? 'tower' : type, tiers: type === 'tiers', brick: Math.round(h) % 2,
+  sign, face, font: /[a-z]/.test(sign) ? 'script' : null, bare: type === 'walkup', fixed: true });
+// and the town behind the shops, block after block of it, so it's town as far as you can see from up there (the taller
+// the further back; `r`, a steady hash of where it stands, picks the rest)
+const TOWN = [...[98, 126, 154, 182, 210].flatMap(x => [x, -x]).flatMap(x => Array.from({ length: 10 }, (_, i) => [x, -158 - i * 28])),
+  ...[-70, -42, -14, 14, 42, 70].flatMap(x => [-392, -420].map(z => [x, z]))].map(([x, z]) => {
+  const r = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
+  return { x, z, w: 26, d: 26, h: 24 + r * 34 + (-150 - z) * 0.09, type: r < 0.3 ? 'store' : r < 0.45 ? 'hall' : 'tower', tiers: r > 0.82, fixed: true };
+});
+const along = (list, from, at) => { let s = from; return list.map(r => { const m = s + r[0] / 2; s += r[0]; return at(r, m); }); };
+
 // (a `draft` is still rough: only there with rush.html?drafts)
 export const LEVELS = {
   cross: {
@@ -461,6 +489,8 @@ export const LEVELS = {
   tower: {
     draft: true,
     name: 'Tower Dive', blurb: 'The biggest ramp in town, five angles wide. Up, over the avenue, and down onto the sky decks, where the cars are stacked in glass.',
+    // (the time of day it's first shown at, for its mood, till one's picked for it: the sign lit against the evening)
+    time: 'sunset',
     seed: 83,
     bounds: [-440, 440, -440, 470],
     start: { x: 1.8, z: 400, speed: 28 },
@@ -476,9 +506,34 @@ export const LEVELS = {
     ],
     // The ramp: five side by side, 30 to 50 degrees at the lip, their lips in a line 6 m past the end of the road
     ramps: [30, 35, 40, 45, 50].map((angle, i) => ({ x: -12 + i * 6, z: 64, len: 70, w: 6, angle, colour: ['#2fb3a8', '#3a8fd0', '#ff8a1e', '#ff5a3a', '#e8336a'][i] })),
-    // (the plaza paved, either side of the skyway and its pavements: not over it)
-    lots: [[-400, -142.2], [-117.8, -52]].map(([c, d]) => ({ rect: [-160, 160, c, d], colour: '#b8bcb8' })),
+    // (the hotel's grounds paved, past the skyway and its pavement; the park between it and the avenue)
+    lots: [{ rect: [-160, 160, -400, -142.2], colour: '#c4c2bb' }],
     park: [-160, 160, -122, -52],
+    // Hotel California: its name in lights across the front of the tall one (you can check out any time you like),
+    // the drive round it, the car park behind it, and the shops round the square; and the park with the stream
+    grounds: {
+      sign: { text: 'Hotel California', x: 0, z: -160, y: 29.5, w: 41, h: 12 },
+      square: [0, -255],
+      stream: { x0: -160, x1: 160, z: brook, w: 6, bridges: [-104, -36, 38, 106] },
+      paths: [
+        // along the stream, on the avenue side, and over it at each footbridge from one street to the other
+        { pts: Array.from({ length: 161 }, (_, i) => [-160 + i * 2, brook(-160 + i * 2) + 9.5]), w: 2.8 },
+        ...[-104, -36, 38, 106].map(x => ({ pts: [[x, -117.8], [x, -52.2]], w: 2.8 })),
+      ],
+      loop: { x: 0, z: -213, a: 46, b: 75.5, w: 7, door: [-12, 12, -160, -141.6] },
+      carpark: { rect: [-34, 34, -290.5, -312.5], bays: BAYS, arrows: [-24, -8, 8, 24] },
+      lawns: [
+        // the corners of the hotel's grounds, outside the drive, and the ends of the car park
+        ...[-1, 1].flatMap(s => [[s * 42, -152, 22, 12, 4], [s * 44, -278, 18, 12, 4], [s * 43, -301.5, 14, 20, 4]]),
+        // islands between the bays
+        ...[-1, 0, 1].flatMap(k => [[k * 15.2, -294, 2.6, 5.4, 1.2], [k * 15.2, -308.6, 2.6, 5.4, 1.2]]),
+        // planters along the shops at the back
+        ...[-50, -25, 25, 50].map(x => [x, -330, 14, 6, 2.5]),
+      ],
+    },
+    // (picked from random numbers of their own: the traffic's the same as before they were here)
+    parked: BAYS.filter((_, i) => !EMPTY_BAYS.includes(i)).map(B => ({ kind: null, ...B })),
+    parkedSeed: 61,
     // The sky decks: three towers stepping down away from you, 40, 26 and 12 m up, each with its rows of stacked
     // glass boxes. A row knocked over falls on the next, and off the deck's far edge onto the one below. Off the
     // 40 to 50 degree ramps at full speed you come down on the top one, a couple of seconds after the top of your flight.
@@ -486,14 +541,42 @@ export const LEVELS = {
     blocks: [
       ...[{ x: 0, z: -177.5, w: 44, d: 35, h: 40 }, { x: 0, z: -212.75, w: 44, d: 35, h: 26 }, { x: 0, z: -248, w: 44, d: 35, h: 12 }]
         .map(b => ({ ...b, type: 'tower', bare: true, tank: false, fixed: true, deck: true })),
-      // and the skyline round the plaza, well clear of your flight (rush, and you'll meet the ones at the back)
-      ...[[-72, -175, 62], [-78, -240, 84], [-70, -305, 50], [72, -170, 55], [80, -235, 78], [70, -300, 66], [-25, -345, 90], [30, -350, 70]]
-        .map(([x, z, h]) => ({ x, z, w: 30, d: 30, h, type: 'tower', tiers: true, fixed: true })),
+      // and the shops round the square, well clear of your flight (rush, and you'll meet the ones at the back)
+      ...along(SHOPS_LEFT, 144, (r, s) => shop(r, -69, -s, 26, r[0], [1, 0])),
+      ...along(SHOPS_RIGHT, 144, (r, s) => shop(r, 69, -s, 26, r[0], [-1, 0])),
+      ...along(SHOPS_BACK, -56, (r, x) => shop(r, x, -364, r[0], 28, [0, 1])),
+      // and the town over the roofs behind them
+      ...TOWN,
+      // and the back corners, behind the ends of the sides, where nobody'd see a shop's sign (last: the town's colours
+      // are drawn in order, and stay what they were)
+      ...[-69, 69].map((x, i) => ({ x, z: -364, w: 26, d: 28, h: 58 + i * 8, type: 'tower', fixed: true })),
     ],
     stacks: [
       ...[-166, -176, -186].map(z => ({ deck: 0, x: 0, z, n: 4, high: 4, along: 'x', gap: 4.6 })),
       ...[-203, -215].map(z => ({ deck: 1, x: 0, z, n: 5, high: 3, along: 'x', gap: 4 })),
       ...[-240, -252].map(z => ({ deck: 2, x: 0, z, n: 4, high: 2, along: 'x', gap: 4.5 })),
+    ],
+    // The park and the hotel's grounds: trees down the stream's far bank and round the edges, benches along the path
+    // facing the water, a bin by each, lamps; round the drive, along the car park and in front of the shops the same
+    props: [
+      ...Array.from({ length: 18 }, (_, i) => -153 + i * 18).filter(x => [-104, -36, 38, 106].every(b => Math.abs(x - b) > 6))
+        .flatMap((x, i) => [['tree', x, brook(x) - 7 - (i % 3), i], ...(x + 9 < 155 ? [['tree', x + 9, -57 - (i % 2) * 3, i + 1]] : [])]),
+      ...[-130, -88, -60, -14, 14, 60, 84, 132].flatMap(x => [['bench', x, brook(x) + 11.6, 0], ['bin', x + 1.8, brook(x) + 11.4, 0]]),
+      ...[-120, -70, -20, 20, 70, 120].map(x => ['lamp', x, brook(x) + 11.2, Math.PI / 2]),
+      ...[[-142, -100], [-80, -108], [-6, -110], [12, -104], [76, -110], [146, -104], [-50, -64], [52, -66]].map(([x, z], i) => ['bush', x, z, i]),
+      // palms round the drive, either side of the door and down the lawn inside it, and outside it along the shops
+      ...[-1, 1].flatMap(s => [[s * 42, -152], [s * 47, -155], [s * 38, -149], [s * 44, -278], [s * 41, -281]].map(([x, z], i) => [i % 3 === 1 ? 'bush' : 'palm', x, z, i])),
+      ...[-1, 1].flatMap(s => [[s * 14, -151], [s * 17.5, -153.5], ...[-170, -188, -206, -224, -242, -258].map(z => [s * 28, z])].map(([x, z], i) => ['palm', x, z, i * 1.7])),
+      ...[-1, 1].flatMap(s => [-175, -200, -225, -250].flatMap(z => [['lamp', s * 50, z, s > 0 ? 0 : Math.PI], ['bench', s * 53, z + 6, s * Math.PI / 2], ['palm', s * 52.5, z + 12.5, z]])),
+      ...[-1, 1].flatMap(s => [['bin', s * 52.8, -170, 0], ['bin', s * 52.8, -220, 0]]),
+      // the car park's islands and ends
+      ...[-1, 0, 1].flatMap(k => [['tree', k * 15.2, -294, k], ['tree', k * 15.2, -308.6, k + 2]]),
+      ...[-1, 1].flatMap(s => [['tree', s * 43, -296, 0], ['tree', s * 43, -307, 1], ['bush', s * 40, -301.5, 2]]),
+      // and in front of the shops
+      ...[-50, -25, 25, 50].flatMap((x, i) => [['tree', x - 4, -330, i], ['tree', x + 4, -330, i + 1], ['bench', x - 2, -326.4, Math.PI], ['bench', x + 2, -333.6, 0]]),
+      // (and the fountain in the middle, benches round it)
+      ['fountain', 0, -330, 0], ...[0, 1, 2, 3].map(k => ['bench', Math.sin(k * Math.PI / 2 + Math.PI / 4) * 5.4, -330 + Math.cos(k * Math.PI / 2 + Math.PI / 4) * 5.4, k * Math.PI / 2 + Math.PI / 4]),
+      ...[-37.5, -12.5, 12.5, 37.5].flatMap(x => [['lamp', x, -322, Math.PI / 2], ['bin', x, -336, 0]]),
     ],
     // Fly it: slow motion on the way down
     dive: true,

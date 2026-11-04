@@ -2,7 +2,7 @@
 // and, like real drivers, see trouble a moment too late. Far from the action they glide along their lane
 // without physics (cheap); near it they're full rigid bodies that can be hit, spun and piled up.
 import * as THREE from 'three';
-import { laneOffset } from './city.js';
+import { laneOffset, rng } from './city.js';
 import { TRAFFIC } from './roster.js';
 
 const RIDE = 0.88;              // a resting car's height above the road
@@ -223,11 +223,15 @@ export class Traffic {
     this.rand = rand;
     this.arrive = level.arrive ?? ARRIVE;
     this.lanes = level.lanes.map((d, i) => new Lane(city, d, i));
-    // Parked vehicles stand on a short lane of their own, at its red light
+    // Parked vehicles stand on a short lane of their own, at its red light. (With `parkedSeed`, they're picked and
+    // painted from random numbers of their own, not the traffic's: cars parked in a level that's already being learned
+    // leave its traffic as it was.)
+    const own = level.parkedSeed != null ? rng(level.parkedSeed) : null;
     for (const P of level.parked || []) {
       const fx = -Math.sin(P.yaw || 0), fz = -Math.cos(P.yaw || 0), len = TRAFFIC[P.kind || 'saloon'].size[1];
       this.lanes.push(new Lane(city, { path: [[P.x - fx * 6, P.z - fz * 6], [P.x + fx * 6, P.z + fz * 6]], speed: [0, 0], gap: [0, 0],
         stop: 6 + len / 2 + 1, queue: [P.kind || null], parked: true, hp: P.hp }, this.lanes.length));
+      if (own) this.lanes[this.lanes.length - 1].rand = own;
     }
     this.list = [];
     this.input = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false };
@@ -273,7 +277,7 @@ export class Traffic {
 
   // A mix like a real street: mostly cars, some vans and pickups, and on the busy roads buses and trucks
   kind(L) {
-    const r = this.rand();
+    const r = (L.rand || this.rand)();
     if (L.parked) return ['hatch', 'coupe', 'cab', 'saloon', 'suv', 'pickup', 'van'][Math.floor(r * 7)];
     if (L.spawn) {
       if (r < 0.07) return 'bus';
@@ -294,7 +298,7 @@ export class Traffic {
     v.s = s;
     v.glide = speed;
     v.asleep = true;
-    v.driver = new TrafficDriver(L, parked ? L.speedMid : speed || L.speedMid, this.rand);
+    v.driver = new TrafficDriver(L, parked ? L.speedMid : speed || L.speedMid, L.rand || this.rand);
     this.place(v);
     L.cars.push(v);
     L.cars.sort((a, b) => a.s - b.s);

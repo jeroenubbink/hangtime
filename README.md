@@ -113,8 +113,8 @@ through them. Things to know:
   **Tower Dive** (see below).
 - **Tower Dive** (a draft): the biggest ramp in town, five ramps side by side, 30° to 50° at the lip (white fins
   between them keep you in yours). Off the 35° to 45° ones at full speed you
-  come down on the first of three **sky decks**, tower roofs 40, 26 and 12 m up stepping down away from you in a
-  ring of taller towers, with
+  come down on the first of three **sky decks**, the roofs of the Hotel California (its name in lights across the
+  front of the tall one), 40, 26 and 12 m up stepping down away from you, with
   rows of cars stacked in glass boxes, three or four high. A boxed car doesn't move till something loose touches it;
   then its glass goes and it falls the way it was pushed, the one over it a moment later, so a row topples into the
   next, and off the deck's far edge onto the one below. Past the top of your flight comes the **skydive**: time
@@ -128,7 +128,9 @@ through them. Things to know:
   sets off the stacks round about; then you aim your wreck as anywhere else. Too shallow (30°) and you hit the top
   tower's wall unless you rush into it, or save rush to fly up onto it; rush hard off a steep one and you fly clean
   over the lot. Gold takes the dive: nitro, flips, or both, and most of the
-  stacks.
+  stacks. Under your flight, between the avenue and the skyway, a park with a stream winding through it; round the
+  hotel a drive lined with palms, a car park behind it, and a square of tall shops shutting it all in, with the town
+  going on behind them as far as you can see from up there.
 - **Guide lines** (for testing only, not shown to players: open `rush.html?guides`): up to three coloured routes painted on the road
   per junction, each the best of a different idea that route bots found (20 runs per junction: either lane, a late
   swerve either way, rush or not, easing off), ending in a ring where the car first hit, labelled with what to do
@@ -295,7 +297,8 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
 - `js/scenery.js`: instanced trees, bushes, flowers, rocks and tyre walls, the grandstand, and the rounded hills
 - `assets/cars/toy-*.glb`, `assets/scenery/nature.glb`, `assets/scenery/derby.glb`: both games' toy cars, the round
   trees, bushes and flowers, and Crunchtime's cones, drums, bales, tyre stacks, fence panels, barn and windmill,
-  modelled in Blender (source: `assets/src/toys.blend`)
+  modelled in Blender (source: `assets/src/toys.blend`); `assets/scenery/hotel.glb`, Tower Dive's palm and fountain
+  (source: `assets/src/hotel.blend`)
 - `js/net.js`: online rooms over WebRTC, found through public Nostr relays (Trystero, loaded only when you go online)
 - `js/toon.js`: the shared toybox look for both games: two-tone shading, rim light and a colour boost, patched into three.js's shaders
 - `js/derby/`: Crunchtime
@@ -319,6 +322,9 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
     its lane without physics
   - `props.js`: lamp posts, trees, traffic lights, bins, hydrants, bollards and crash barriers that get knocked flying
   - `stacks.js`: Tower Dive's stacks of cars in glass boxes, and how they come down
+  - `hotel.js`: Tower Dive's grounds: the hotel's sign, the park's stream and footbridges, the drive, the car park's
+    bays and the lawns (all paint and boards: nothing solid), and the shops' signs and awnings
+  - `standins.js`: a car park's cars, far off, as painted boxes (two draw calls instead of a few thousand triangles each)
   - `replay.js`: records each run for the Send replay button (see Run)
   - `guides.js`, `routes.js`: the guide lines, and the bots' routes they draw (generated)
   - `roster.js`: your cars and the traffic

@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { merge } from '../scenery.js';
 import { addDetail } from '../textures.js';
+import { grounds } from './hotel.js';
 
 export const LANE = 3.6;
 export const CURB = 0.16;
@@ -16,8 +17,8 @@ const CELL = 24;
 
 function rng(seed) { return () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296); }
 const _p = new THREE.Vector3(), _n = new THREE.Vector3(), _r = new THREE.Vector3(), _pv = new THREE.Vector3();
-// How far a roof's top stands over `top`: a walk-up's cornice, a hall's ledge, a tower's crown
-const ROOF = { walkup: 0.2, hall: 0.3 };
+// How far a roof's top stands over `top`: a walk-up's cornice, a hall's ledge, a store's parapet, a tower's crown
+const ROOF = { walkup: 0.2, hall: 0.3, store: 0.2 };
 const _g = new THREE.Vector3(), _t1 = new THREE.Vector3(), _t2 = new THREE.Vector3(), _J = new THREE.Vector3(), _vt = new THREE.Vector3();
 // The rise across (a: ahead, h: here, b: behind), ignoring a side that's over a sheer edge (more than a metre and a
 // half off: a roof's, the quay's or a bridge deck's, not a ramp's lip or a kerb): see groundNormal. (Out here, not a closure in it: it runs for every wheel and hull point, every step.)
@@ -126,6 +127,7 @@ export class City {
     for (const r of this.ramps) this.group.add(r.angle ? arcMesh(r, this.base(r.x, r.z)) : rampMesh(r, this.base(r.x, r.z)));
     if (this.fins.length) this.group.add(finMesh(this.fins, (x, z) => this.base(x, z)));
     if (this.deck) this.buildDeck();
+    if (level.grounds) this.group.add(grounds(this, level.grounds));
     scene.add(this.group);
   }
 
@@ -226,8 +228,9 @@ export class City {
   }
   // (across a sheer edge, a roof's or the quay's, only the side (x, z) is on counts: it's flat there, not a wall
   // leaning out, which would throw what's sunk into it sideways off the edge)
-  groundNormal(x, z, out = new THREE.Vector3(), y = Infinity, py = y) {
-    const e = 0.35, h = this.groundHeight(x, z, y, py);
+  // (`h`: the height there, if it's already known)
+  groundNormal(x, z, out = new THREE.Vector3(), y = Infinity, py = y, h = this.groundHeight(x, z, y, py)) {
+    const e = 0.35;
     const dx = edgeSlope(this.groundHeight(x + e, z, y, py), h, this.groundHeight(x - e, z, y, py));
     const dz = edgeSlope(this.groundHeight(x, z + e, y, py), h, this.groundHeight(x, z - e, y, py));
     return out.set(-dx, 2 * e, -dz).normalize();
@@ -244,7 +247,15 @@ export class City {
     }
     if (t < -0.3 || t > far) return null;
     const point = new THREE.Vector3().copy(origin).addScaledVector(dir, t);
-    return { dist: Math.max(0, t), point, normal: this.groundNormal(point.x, point.z, undefined, origin.y) };
+    // (a slanting ray across a sheer edge, a wheel gone out over a deck's back edge on a car tipping off it, never settles:
+    // it would take the roof it's left behind as right under the wheel, and the spring would throw the car metres up.
+    // The ground isn't where the ray says it is there: nothing in reach. Not off a ramp's lip, though: that's how
+    // every launch off one has always gone)
+    const [ra, rb, rc, rd] = this.rampBox, M = 6;
+    const ramp = point.x > ra - M && point.x < rb + M && point.z > rc - M && point.z < rd + M;
+    const h = this.groundHeight(point.x, point.z, origin.y);
+    if (!ramp && Math.abs(h - point.y) > 0.5) return null;
+    return { dist: Math.max(0, t), point, normal: this.groundNormal(point.x, point.z, undefined, origin.y, origin.y, h) };
   }
 
   // Buildings near (x, z)
@@ -852,6 +863,15 @@ function tiles() {
       }
     });
   }
+  // A department store's ribbon windows: a long band of glass across each floor, a plain band between
+  TILES.ribbon = tile(g => {
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 128, 128);
+    g.fillStyle = '#ececec'; g.fillRect(0, 0, 128, 6);
+    g.fillStyle = '#5a5f68'; g.fillRect(0, 50, 128, 52);
+    glass(g, 0, 53, 128, 46);
+    g.fillStyle = '#5a5f68'; g.fillRect(0, 53, 3, 46); g.fillRect(64, 53, 3, 46);
+    g.fillStyle = '#f4f4f4'; g.fillRect(0, 102, 128, 4);
+  });
   // Shop front: piers, a striped awning, a big window over a kick plate
   TILES.shop = tile(g => {
     g.fillStyle = '#ffffff'; g.fillRect(0, 0, 128, 128);
@@ -880,8 +900,8 @@ function tinted(map) {
 function buildingMesh(blocks, rand, palette = TOWER) {
   const T = tiles();
   const mats = [tinted(T.office), new THREE.MeshLambertMaterial({ vertexColors: true, map: T.brickA }),
-    new THREE.MeshLambertMaterial({ vertexColors: true, map: T.brickB }), tinted(T.shop), new THREE.MeshLambertMaterial({ vertexColors: true })];
-  const OFFICE = 0, SHOPM = 3, PLAIN = 4;
+    new THREE.MeshLambertMaterial({ vertexColors: true, map: T.brickB }), tinted(T.shop), new THREE.MeshLambertMaterial({ vertexColors: true }), tinted(T.ribbon)];
+  const OFFICE = 0, SHOPM = 3, PLAIN = 4, RIBBON = 5;
   const buf = mats.map(() => ({ P: [], N: [], U: [], C: [] }));
   const details = [];
   const white = new THREE.Color(1, 1, 1), _a = new THREE.Vector3(), _b = new THREE.Vector3();
@@ -926,6 +946,14 @@ function buildingMesh(blocks, rand, palette = TOWER) {
       ledge(b.w, b.d, g0 + SHOP - 0.2, 0.35, 0.2, trim);
       box(0, 0, b.w, b.d, g0 + SHOP, top, brick, white, { roofCol: new THREE.Color('#77706a') });
       ledge(b.w, b.d, top - 0.5, 0.7, 0.45, trim);
+    } else if (b.type === 'store') {
+      // A department store: shops along the street, ribbon windows over them, a deep plain parapet on top
+      const col = new THREE.Color(b.colour || palette[Math.floor(rand() * palette.length)]);
+      box(0, 0, b.w + 0.24, b.d + 0.24, b.y, g0 + SHOP, SHOPM, shopCol, { fh: SHOP, v0: -1 / SHOP, roof: false });
+      ledge(b.w, b.d, g0 + SHOP, 0.55, 0.35, stone);
+      box(0, 0, b.w, b.d, g0 + SHOP + 0.55, top - 2.4, RIBBON, col, { v0: (SHOP + 0.55) / FLOOR, roof: false });
+      box(0, 0, b.w, b.d, top - 2.4, top, PLAIN, col.clone().multiplyScalar(0.92), { flat: true });
+      ledge(b.w, b.d, top - 0.3, 0.5, 0.3, stone);
     } else if (b.type === 'hall') {
       box(0, 0, b.w, b.d, b.y, top, OFFICE, new THREE.Color(palette[Math.floor(rand() * palette.length)]));
       ledge(b.w, b.d, top - 0.6, 0.9, 0.6, stone);

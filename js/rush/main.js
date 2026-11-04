@@ -12,7 +12,8 @@ import { Vehicle, contact, damageFrom, subdivide } from '../derby/vehicle.js';
 import { loadSceneryKit } from '../scenery.js';
 import { City, rng, EDGE } from './city.js';
 import { LEVELS as ALL_LEVELS } from './levels.js';
-import { Stacks, BOX } from './stacks.js';
+import { Stacks, BOX, LOOSE } from './stacks.js';
+import { StandIns } from './standins.js';
 import { ITEMS, drawIcon } from '../derby/pickups.js';
 import { Traffic } from './traffic.js';
 import { Props } from './props.js';
@@ -28,12 +29,17 @@ const files = new Set([...Object.values(RIDES), ...Object.values(TRAFFIC)].flatM
 await Promise.all([
   ...[...files, ...Object.values(DEBRIS)].map(f => loadCarKits([f]).catch(() => console.info('No model', f))),
   loadSceneryKit().catch(e => console.warn('Scenery not loaded:', e)), loadSceneryKit('derby').catch(() => {}),
+  loadSceneryKit('hotel').catch(() => {}),
 ]);
 $('loading').remove();
 
 const DT = 1 / 120;
 const clamp = THREE.MathUtils.clamp;
 const NONE = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false };
+// A wreck (or half of one) rolling slowly to a stop, not on and on across the square at walking pace: whatever it
+// still has to hit, it hits at the speed the crash gave it, which this leaves alone (nobody at the wheel, the handbrake
+// half on, like a boxed car let go)
+const coast = c => (c.vel.lengthSq() < 36 ? LOOSE : NONE);
 const KMH = 3.6;
 const PRE_INTRO = 4.2, PRE_COUNT = 2.4, PRE_RETRY = 1.2, PRE_ALL = PRE_INTRO + PRE_COUNT;
 const FRAGILE = 2.4;
@@ -78,12 +84,18 @@ const records = Object.assign({ best: {}, medals: {} }, store.load('rush.records
 if (!LEVELS[settings.level]) settings.level = 'cross';
 if (!RIDES[settings.car]) settings.car = 'comet';
 if (!['day', 'sunset'].includes(settings.time)) settings.time = 'day';
+// The time of day's picked for each level: until it is, the one the level suggests for its mood (Tower Dive's at
+// sunset), or the one that was picked for them all before there was a pick each
+// (a draft's kept too, when it isn't shown: it's still there the next time it is)
+settings.times = Object.fromEntries(Object.entries(settings.times || {}).filter(([k, t]) => ALL_LEVELS[k] && ['day', 'sunset'].includes(t)));
+const timeFor = key => settings.times[key] || LEVELS[key].time || settings.time;
+let time = 'day';
 // The guide lines are for testing only: rush.html?guides
 const GUIDES = new URLSearchParams(location.search).has('guides');
 const saveSettings = () => store.save('rush.settings', settings);
 
 // ---------- World ----------
-let city = null, props = null, traffic = null, debris = null, player = null, guides = null, stacks = null;
+let city = null, props = null, traffic = null, debris = null, player = null, guides = null, stacks = null, standIns = null;
 const crates = [];
 let halves = [];
 const G = { state: 'menu', t: 0, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0 };
@@ -146,8 +158,8 @@ function trafficDef(kind) {
   }
   return (defs[kind] = def);
 }
-function makeTraffic(kind) {
-  const def = trafficDef(kind), R = G.rand;
+function makeTraffic(kind, R = G.rand) {
+  const def = trafficDef(kind);
   const paint = def.livery || TRAFFIC_PAINTS[Math.floor(R() * TRAFFIC_PAINTS.length)];
   const v = new Car(city, scene, nextId++, def, paint);
   v.kind = kind;
@@ -156,7 +168,7 @@ function makeTraffic(kind) {
   if (l > 6) v.spheres = [-1, -0.5, 0, 0.5, 1].map(k => k * (l / 2 - w / 2));
   v.gen = 0;
   v.colour = paintOf(paint);
-  v.setLights(TIMES[settings.time].lamps);
+  v.setLights(TIMES[time].lamps);
   return v;
 }
 
@@ -172,7 +184,8 @@ function loadLevel(key) {
   // (asked from half a metre up, about where a car's middle would be: a small piece lying on the quay has its middle
   // lower than the quay's edge takes for gone over it, see groundHeight, and would drop through the stone)
   debris = new Debris(scene, (x, z, y) => city.groundHeight(x, z, y + 0.5));
-  stage.setTime(settings.time);
+  time = timeFor(key);
+  stage.setTime(time);
 }
 
 function clearRun() {
@@ -180,6 +193,8 @@ function clearRun() {
   traffic = null;
   stacks?.dispose();
   stacks = null;
+  standIns?.dispose();
+  standIns = null;
   for (const k of crates) dropMesh(k.m);
   crates.length = 0;
   if (player) { player.dispose(); player = null; }
@@ -205,12 +220,15 @@ function startRun(pre) {
   // Scripted: the same traffic every time, so a junction can be learned. The traffic always gets exactly
   // PRE_ALL seconds of driving before GO, however much of the intro you watch.
   G.rand = rng(L.seed * 7919 + 17);
-  traffic = new Traffic(city, L, kind => makeTraffic(kind), G.rand);
+  traffic = new Traffic(city, L, (kind, lane) => makeTraffic(kind, lane?.rand), G.rand);
   traffic.populate({ ...L, specials: (L.specials || []).map(s => ({ ...s, eta: s.eta + PRE_ALL })) });
   if (L.stacks) {
     stacks = new Stacks(scene, L.stacks, (x, z) => city.groundHeight(x, z, 1e4), kind => makeTraffic(kind), G.rand);
     traffic.list.push(...stacks.list);
   }
+  // (a whole car park of them, far off: boxes, see standins.js. Cars only: a box with a cab on it is no tanker)
+  const parked = traffic.list.filter(v => v.lane?.parked && trafficDef(v.kind).size[1] < 6);
+  if (parked.length > 12) standIns = new StandIns(scene, parked.map(v => ({ v, size: trafficDef(v.kind).size })));
   for (const [x, z] of L.crates || []) crates.push(crate(x, z));
   mark.at.set(0, 0, 0);
   cam.diveK = 0;
@@ -220,7 +238,7 @@ function startRun(pre) {
   player.gen = 0;
   player.kind = 'you';
   player.colour = paintOf(def.livery);
-  player.setLights(TIMES[settings.time].lamps);
+  player.setLights(TIMES[time].lamps);
   player.respawn({ x: L.start.x, z: L.start.z, yaw: L.start.yaw || 0 });
   for (let i = 0; i < 60; i++) player.car.step(DT, { ...NONE, brake: 1, stop: true });
   Object.assign(G, { t: 0, pre, heat: 1, rush: 0.4, crash: null, unpaid: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0,
@@ -1245,7 +1263,7 @@ function skipTo(secs) {
 function go() {
   G.state = 'run';
   // Record the run, for sending from the results (see replay.js)
-  G.rec = new Recorder({ level: city.key, car: settings.car, time: settings.time, date: new Date().toISOString(),
+  G.rec = new Recorder({ level: city.key, car: settings.car, time, date: new Date().toISOString(),
     screen: [innerWidth, innerHeight], agent: navigator.userAgent });
   player.car.vel.copy(player.forward).multiplyScalar(city.level.start.speed);
   showMsg('GO!', '', 0.8);
@@ -1267,8 +1285,9 @@ function step() {
   traffic.update(DT, focus, [...B, ...traffic.list.filter(v => v.asleep)], !G.crash || G.crash.t < CRASH_FEED, G.crash ? G.crash.t : null, hot);
   if (G.state === 'run') { drive(DT); pickCrates(); }
   else if (running) {
-    if (G.crash?.aim && !G.crash.aim.done) aim(G.crash.aim, c);
-    c.step(DT, NONE);
+    const steering = G.crash?.aim && !G.crash.aim.done;
+    if (steering) aim(G.crash.aim, c);
+    c.step(DT, steering ? NONE : coast(c));
   }
   {
     for (const v of traffic.list) {
@@ -1276,7 +1295,7 @@ function step() {
       // (one come to rest still has its fuse burning)
       if (v.rest) { if (v.boomT != null && (v.boomT -= DT) <= 0) { v.rest = false; blowUp(v); } continue; }
       v.car.wallHit = null;
-      const ev = v.car.step(DT, v.wrecked || !v.alive ? NONE : v.input || NONE);
+      const ev = v.car.step(DT, v.wrecked || !v.alive ? coast(v.car) : v.input || NONE);
       if (stacks) fall(v, ev);
       if (v.stack) settle(v);
       if (v.car.wallHit) wallHit(v, v.car.wallHit);
@@ -1285,7 +1304,7 @@ function step() {
     }
     if (running && c.wallHit) { wallHit(player, c.wallHit); c.wallHit = null; }
     if (running) water(player);
-    for (const h of halves) { h.car.step(DT, NONE); water(h); }
+    for (const h of halves) { h.car.step(DT, coast(h.car)); water(h); }
     const all = bodies();
     fence(all);
     stacks?.update(G.t, freed);
@@ -1576,9 +1595,10 @@ function heaps() {
   }
   for (const s of C.spots) items.push({ pos: s.pos, pts: s.p, by: { prop: s.p } });
   // The nearest two heaps (middle to middle) become one, until there are six at most and none closer than 18 m
-  // (one on a bridge and one under it are as good as far apart)
+  // (one on a bridge and one under it are as good as far apart, and so are one up on a roof and one down in the street:
+  // together, their middle's in the building between)
   const D = city.deck, over = y => !D || y > D.y - 1.6;
-  const apart = (a, b) => Math.hypot(a.x - b.x, a.z - b.z) + (over(a.y) !== over(b.y) ? 1000 : 0);
+  const apart = (a, b) => Math.hypot(a.x - b.x, a.z - b.z) + (over(a.y) !== over(b.y) || Math.abs(a.y - b.y) > 6 ? 1000 : 0);
   let gs = items.map(i => ({ items: [i], x: i.pos.x, y: i.pos.y, z: i.pos.z }));
   for (;;) {
     let bi = -1, bj = -1, bd = Infinity;
@@ -1614,6 +1634,7 @@ function heaps() {
     g.c.divideScalar(items.length);
     for (const i of items) { g.r = Math.max(g.r, Math.hypot(i.pos.x - g.c.x, i.pos.z - g.c.z)); g.top = Math.max(g.top, i.pos.y); }
     g.c.y = city.groundHeight(g.c.x, g.c.z, g.top + 1) + 1;
+    outOfBlocks(g.c);
     g.D = clamp(11 + g.r * 1.4, 14, 42);
     g.wrecked = g.cars.filter(i => i.v.wrecked).length;
     return g;
@@ -1669,6 +1690,9 @@ function startTour() {
   let w = 0;
   for (const g of all) { centre.addScaledVector(g.c, Math.sqrt(g.pts)); w += Math.sqrt(g.pts); }
   centre.divideScalar(w);
+  // (the middle of heaps on roofs and down in the street, or a crash into a wall, can be inside a building: what goes
+  // round it looks at the wall)
+  outOfBlocks(centre);
   const spread = Math.max(...all.map(g => Math.hypot(g.c.x - centre.x, g.c.z - centre.z) + g.r));
   const p = camera.position, first = gs[0]?.c || centre;
   // Each heap seen from where nothing's in the way of any of it (its middle, and every car and piece in it), turning as
@@ -1703,6 +1727,18 @@ function startTour() {
     }
   });
   $('callouts').innerHTML = '';
+}
+// A point inside a building, out: through the nearest wall if it's just inside one, else up onto its roof. (Not through
+// a wall it shares with the next one along, into that: up onto the roof then too)
+const _ob = new THREE.Vector3();
+function outOfBlocks(p) {
+  const inside = q => city.near(q.x, q.z).find(b => q.y < b.top && !(q.y < b.floor) && city.blockDist(b, q.x, q.z, _w) < 0);
+  const b = inside(p);
+  if (!b) return p;
+  const d = city.blockDist(b, p.x, p.z, _w);
+  if (-d < 4 && !inside(_ob.copy(p).addScaledVector(_w, 2 - d))) return p.copy(_ob);
+  p.y = b.top + 1.5;
+  return p;
 }
 // Enter (or Start) skips the rest of it, to the results
 function skipTour() { G.tour.t = Math.max(G.tour.t, G.tour.end); }
@@ -2467,9 +2503,9 @@ function renderMenu() {
   tod.innerHTML = '';
   for (const t of ['day', 'sunset']) {
     const b = document.createElement('button');
-    b.className = t === settings.time ? 'active' : '';
+    b.className = t === time ? 'active' : '';
     b.textContent = TIMES[t].label;
-    b.onclick = () => { settings.time = t; saveSettings(); stage.setTime(t); for (const v of traffic.list) v.setLights(TIMES[t].lamps); renderMenu(); };
+    b.onclick = () => { settings.times[city.key] = time = t; saveSettings(); stage.setTime(t); for (const v of traffic.list) v.setLights(TIMES[t].lamps); renderMenu(); };
     tod.appendChild(b);
   }
 }
@@ -2599,6 +2635,7 @@ function tick(raw, draw = true) {
   updateCamera(dt, raw);
   mark.update();
   stacks?.lod(camera.position);
+  standIns?.update(camera.position);
   // (the labels that sit over things go where the camera is now, not where it was last frame: else they trail it, and
   // shake as it pans)
   camera.updateMatrixWorld();
@@ -2652,10 +2689,14 @@ document.body.appendChild(flashEl);
 // (for debugging: rush.debug.replay(json) loads its level and its vehicles; then .seek(t) shows them at game
 // time t, from the camera that was used or from `view`: [x, y, z, lookX, lookY, lookZ])
 function replay(R) {
-  Object.assign(settings, { level: R.level, car: R.car, time: R.time });
+  Object.assign(settings, { level: R.level, car: R.car });
   loadLevel(R.level);
+  time = R.time;
+  stage.setTime(time);
   startRun(0);
   for (const v of traffic.list.slice()) traffic.remove(v);
+  standIns?.dispose();
+  standIns = null;
   G.state = 'paused';
   showScreen(null);
   $('hud').classList.add('hidden');
@@ -2708,7 +2749,7 @@ function replay(R) {
     },
   };
 }
-G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay, renderer };
+G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, get standIns() { return standIns; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay, renderer };
 toMenu();
 if (!store.load('rush.seenHelp', false)) showScreen('help');
 requestAnimationFrame(frame);

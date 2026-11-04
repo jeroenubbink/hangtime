@@ -49,6 +49,15 @@ const MODELS = {
     ...[-0.75, 0.75].map(x => [new THREE.BoxGeometry(0.08, 0.45, 0.5).translate(x, 0.22, 0.02), '#3c414a']),
   ]),
   bush: () => sceneryGeo('bush') || new THREE.IcosahedronGeometry(0.9, 1).scale(1, 0.7, 1).translate(0, 0.45, 0),
+  // Hotel California's palms, and the fountain in the square behind it (from the hotel kit; plain stand-ins without it)
+  palm: () => sceneryGeo('palm') || merge([
+    [new THREE.CylinderGeometry(0.2, 0.32, 8, 7).translate(0, 4, 0), '#a9875e'],
+    [new THREE.IcosahedronGeometry(1.8, 0).scale(1.4, 0.4, 1.4).translate(0, 8, 0), '#4fa846'],
+  ]),
+  fountain: () => sceneryGeo('fountain') || merge([
+    [new THREE.CylinderGeometry(2.6, 2.6, 0.55, 24).translate(0, 0.28, 0), '#cfc7b6'],
+    [new THREE.CylinderGeometry(0.3, 0.3, 2.2, 10).translate(0, 1.1, 0), '#cfc7b6'],
+  ]),
   // Fuel's Paradise: its pumps, canopy pillars and price sign (the sign's face is the station's)
   pump: PUMP, pillar: PILLAR, sign: SIGN,
   // A length of crash barrier along the edge of a bridge: it stops nothing
@@ -68,7 +77,7 @@ const KINDS = {
   lamp: { r: 0.3, slow: 0.1, h: 6 }, light: { r: 0.3, slow: 0.1, h: 4.6 }, tree: { r: 0.45, slow: 0.22, h: 4 },
   bin: { r: 0.35, slow: 0.02, h: 1 }, hydrant: { r: 0.25, slow: 0.05, h: 0.8 }, bollard: { r: 0.25, slow: 0.08, h: 0.9 },
   cone: { r: 0.35, slow: 0, h: 0.8 }, barrier: { r: 1.1, slow: 0.03, h: 1 }, rail: { r: 1.5, slow: 0.04, h: 0.8 },
-  bench: { r: 0.8, slow: 0.04, h: 0.9 }, bush: { r: 0.8, slow: 0.03, h: 0.9 },
+  bench: { r: 0.8, slow: 0.04, h: 0.9 }, bush: { r: 0.8, slow: 0.03, h: 0.9 }, palm: { r: 0.4, slow: 0.22, h: 8.5 }, fountain: { r: 2.5, slow: 0.6, h: 3.9 },
   pump: { r: 0.5, slow: 0.12, h: 2.1 }, sign: { r: 0.3, slow: 0.15, h: 11.5 }, pillar: { r: 0.45, slow: 0.25, h: 5.4 },
 };
 
