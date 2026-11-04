@@ -487,7 +487,6 @@ export const LEVELS = {
     medals: [40000, 120000, 300000],
   },
   tower: {
-    draft: true,
     name: 'Tower Dive', blurb: 'The biggest ramp in town, five angles wide. Up, over the avenue, and down onto the sky decks, where the cars are stacked in glass.',
     // (the time of day it's first shown at, for its mood, till one's picked for it: the sign lit against the evening)
     time: 'sunset',
