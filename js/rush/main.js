@@ -47,8 +47,9 @@ const INCOMING = 2.5;
 // AIM_TURN: how fast you turn the way it's going (rad/s of simulation), AIM_PUSH: up pushes it on (m/s²), to AIM_TOP m/s.
 const AIM = 20, AIM_SLOW = 0.3, AIM_TURN = 3.5, AIM_PUSH = 14, AIM_TOP = 24;
 // Tower Dive: off the big ramp, past the top of your flight, time slows to DIVE_SLOW while you're well up, and you
-// fly it like a rocket: ↑ and ↓ tip the nose down and up, ← → turn it (rad/s), and nitro (from the crates in front of the
-// ramp, NITRO seconds of it) pushes you the way the nose points (m/s²). Gravity in the air is AIR_G times as strong,
+// fly it like a rocket: ↑ and ↓ tip the nose down and up, ← → turn it (rad/s), and nitro (your rush, what you built up on
+// the way, or from crates in front of the ramp where there are any: NITRO seconds of a full meter) pushes you the way
+// the nose points (m/s²). Gravity in the air is AIR_G times as strong,
 // so a flight off a 50° lip at full speed stays over the town. Come down hard (SLAM m/s and up) and it's a crash
 // where you land, with a shock wave that sets off the stacks round about.
 // (two vehicles further apart than REACH m can't be touching: a bus end to end with a bus, and some)
@@ -886,11 +887,11 @@ function fly(dt) {
     callout(`${T.n > 1 ? T.n + '× ' : ''}${name}<small>heat +${heat}</small>`);
     sound.beep(true);
   }
-  const thrust = (G.latch || (arm.boost && I.boost)) && G.nitro > 0;
+  const tank = fuel(), thrust = (G.latch || (arm.boost && I.boost)) && G[tank] > 0;
   if (thrust) {
     _f.set(0, 0, -1).applyQuaternion(c.q);
     c.vel.addScaledVector(_f, THRUST * dt);
-    G.nitro = Math.max(0, G.nitro - dt / NITRO);
+    G[tank] = Math.max(0, G[tank] - dt / NITRO);
   }
   G.boosting = player.boosting = thrust;
   G.airSpeed = c.vel.length();
@@ -906,9 +907,11 @@ function fly(dt) {
   if (!G.dive && G.air > 0.5 && c.vel.y < 3 && high > 10) {
     G.dive = { t: 0 };
     const touch = document.body.classList.contains('touch');
-    callout(`SKYDIVE<small>let go · ${touch ? '◀▶▲▼' : '↑↓←→'} fly${G.nitro > 0 ? (touch ? ' · tap RUSH: nitro' : ' · Shift: nitro') : ''}</small>`, 'big');
+    callout(`SKYDIVE<small>let go · ${touch ? '◀▶▲▼' : '↑↓←→'} fly${G[fuel()] > 0 ? (touch ? ' · tap RUSH: nitro' : ' · Shift: nitro') : ''}</small>`, 'big');
   }
 }
+// What the nitro burns in the air: the crates' where the level has them, else your rush
+function fuel() { return city.level.crates ? 'nitro' : 'rush'; }
 // Down from a dive: hard enough, and that's your crash, right there, with a shock wave that sets off the stacks round
 // about (wider the faster you came down)
 function slam(vy, sp) {
@@ -1099,7 +1102,8 @@ function drive(dt) {
   if (boosting && !G.boosting) { G.punch = Math.max(G.punch, 6); sound.boom(0.25); }
   G.boosting = boosting;
   v.boosting = boosting;
-  if (boosting) G.rush = Math.max(0, G.rush - dt * 0.13);
+  // (not in the air off Tower Dive's ramp, held on from the run-up: there it's for the nitro, see fly)
+  if (boosting && !(city.level.dive && c.grounded < 2)) G.rush = Math.max(0, G.rush - dt * 0.13);
   // Speeds along and across the car before the physics step: the step adds suspension, bumps and walls,
   // and this model then sets how the car moves over the ground
   // (along the car's own axes, so it follows the road over hills and crests)
@@ -1911,23 +1915,29 @@ const mark = (() => {
       if (!on) return;
       p.copy(player.car.pos); v.copy(player.car.vel);
       const pos = dots.geometry.attributes.position, h = 0.05;
-      let k = 0, g = 0, hit = null;
+      let k = 0, g = 0, hit = null, wall = false;
       const boxes = stacks ? stacks.list.filter(b => b.held) : [];
+      const drag = 0.7 / player.car.mass;      // (the car's own: see car.js)
       for (let i = 0; i < 400 && !hit; i++) {
         v.y -= 9.81 * AIR_G * h;
+        v.multiplyScalar(1 - drag * v.length() * h);
         p.addScaledVector(v, h);
         g = city.groundHeight(p.x, p.z, p.y);
-        if (p.y <= g + 0.3) break;
+        // (back to where it crossed, between the last step and this: else the ring, and the camera looking at it, jump on
+        // a step at a time as you fly)
+        if (p.y <= g + 0.3) { p.addScaledVector(v, -h * Math.min(1, (g + 0.3 - p.y) / Math.max(1e-3, -v.y * h))); break; }
+        // (or short, into a deck's face, or a tower's: that's where you'll hit)
+        if (inBlock(p, 0.3)) { wall = true; break; }
         // (or into a stack)
         for (const b of boxes) { const q = b.car.pos; if (Math.abs(q.y - p.y) < 1.6 && Math.abs(q.x - p.x) < 2.2 && Math.abs(q.z - p.z) < 3.4) { hit = b; break; } }
         if (i % 3 === 2 && k < N) pos.setXYZ(k++, p.x, p.y, p.z);
       }
-      if (hit) g = p.y - 0.15;
+      if (hit || wall) g = p.y - 0.15;
       for (let i = k; i < N; i++) pos.setXYZ(i, p.x, g + 0.3, p.z);
       pos.needsUpdate = true;
       ring.position.set(p.x, g + 0.15, p.z);
       at.copy(ring.position);
-      ring.material.color.set(hit ? '#ff5a1f' : g > 12 ? '#ffd23a' : '#ffffff');
+      ring.material.color.set(hit ? '#ff5a1f' : g > 12 && !wall ? '#ffd23a' : '#ffffff');
       ring.scale.setScalar(1 + 0.15 * Math.sin(G.t * 12));
     },
   };
@@ -2155,7 +2165,10 @@ function updateCamera(dt, rawDt) {
     camera.position.y += (Math.sin(t * 1.7) + Math.sin(t * 3.7)) * tr;
     _l.copy(c.pos).addScaledVector(cam.dir, 7).setY(c.pos.y + 1.0);
     // (in a dive, toward where you'll come down, past your car)
-    if (cam.diveK > 0.01 && mark.at.lengthSq()) _l.lerp(_v.lerpVectors(c.pos, mark.at, 0.55), cam.diveK);
+    // (and there smoothly: where that is jumps, off a deck's edge, say)
+    if (!diving || !mark.at.lengthSq()) cam.diveAt = null;
+    else cam.diveAt = (cam.diveAt || mark.at.clone()).lerp(mark.at, 1 - Math.exp(-rawDt * 4));
+    if (cam.diveK > 0.01 && cam.diveAt) _l.lerp(_v.lerpVectors(c.pos, cam.diveAt, 0.55), cam.diveK);
     camera.lookAt(_l);
     // Lean into the turns a little
     cam.roll += ((-G.steer * Math.min(1, speed / 40) * 0.035) - cam.roll) * Math.min(1, rawDt * 5);
@@ -2333,9 +2346,10 @@ function updateHud(dt) {
   setText('speed', G.crash ? '' : String(kmh));
   $('speedo').classList.toggle('hidden', !!G.crash);
   $('hud').classList.toggle('crashing', !!G.crash);
-  // (on Tower Dive, once you've a tank of nitro, the bar's that)
-  const nitro = G.nitro > 0 && !!city.level.dive;
-  $('rush-fill').style.width = ((nitro ? G.nitro : G.rush) * 100).toFixed(1) + '%';
+  // (on Tower Dive, once you've a tank of nitro, the bar's that; with no crates it's your rush, and up in the air it's
+  // your nitro)
+  const nitro = !!city.level.dive && (G.nitro > 0 || (fuel() === 'rush' && G.air > 0.2 && G.state === 'run'));
+  $('rush-fill').style.width = ((G.nitro > 0 && nitro ? G.nitro : G.rush) * 100).toFixed(1) + '%';
   $('rush').classList.toggle('nitro', nitro);
   $('rush').firstElementChild.firstChild.textContent = nitro ? 'NITRO ' : 'RUSH ';
   $('rush').classList.toggle('on', !!G.boosting);
@@ -2543,6 +2557,7 @@ function tick(raw, draw = true) {
   while (acc >= DT && n++ < 30) { step(); acc -= DT; }
   if (n >= 30) acc = 0;
   const dt = raw * scale;
+  lead(acc);
   for (const v of traffic.list) if (!v.halved) v.pose();
   player.pose();
   for (const h of halves) { h.model.position.copy(h.car.pos); h.model.quaternion.copy(h.car.q); }
@@ -2581,6 +2596,30 @@ function tick(raw, draw = true) {
   updatePops(raw);
   if (G.tour) labelHeaps();
   if (draw) post.render();
+  back();
+}
+// Each moving thing drawn (and followed) where it's got to by now, not where it was at its last step: `a`, the time
+// since. (In slow motion the simulation steps only every few frames: a car jumping on a step at a time, with the camera
+// gliding after it, shakes.) Back where the simulation left it once the frame's drawn.
+const _led = [];
+function lead(a) {
+  _led.length = 0;
+  if (a <= 0) return;
+  for (const b of bodies()) {
+    const c = b.car;
+    if (c.vel.lengthSq() + c.w.lengthSq() < 1e-4) continue;
+    const s = b._lead || (b._lead = { p: new THREE.Vector3(), q: new THREE.Quaternion() });
+    s.p.copy(c.pos); s.q.copy(c.q);
+    _led.push(b);
+    c.pos.addScaledVector(c.vel, a);
+    _dq.set(c.w.x * a * 0.5, c.w.y * a * 0.5, c.w.z * a * 0.5, 0).multiply(c.q);
+    c.q.set(c.q.x + _dq.x, c.q.y + _dq.y, c.q.z + _dq.z, c.q.w + _dq.w).normalize();
+  }
+}
+const _dq = new THREE.Quaternion();
+function back() {
+  for (const b of _led) { b.car.pos.copy(b._lead.p); b.car.q.copy(b._lead.q); }
+  _led.length = 0;
 }
 const flashEl = document.createElement('div');
 Object.assign(flashEl.style, { position: 'fixed', inset: 0, pointerEvents: 'none', opacity: 0,

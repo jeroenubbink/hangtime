@@ -497,7 +497,8 @@ export const LEVELS = {
     ],
     // Fly it: slow motion on the way down
     dive: true,
-    // (no nitro crates for now: landing it from the angle alone first. Back: crates: [-12, -6, 0, 6, 12].map(x => [x, 100]))
+    // (no nitro crates: the nitro up there is the rush you saved, near misses and all, on the way. They'd go back as
+    // crates: [-12, -6, 0, 6, 12].map(x => [x, 100]))
     lanes: [
       // Your way, as far as the crossing: they turn off there
       { road: 'main', side: 1, i: 0, speed: [18, 22], fill: [90, 230], gap: [60, 110], then: { road: 'first', side: 1, i: 0 } },
