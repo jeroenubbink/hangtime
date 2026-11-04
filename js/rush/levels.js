@@ -476,13 +476,15 @@ export const LEVELS = {
     ],
     // The ramp: five side by side, 30 to 50 degrees at the lip, their lips in a line 6 m past the end of the road
     ramps: [30, 35, 40, 45, 50].map((angle, i) => ({ x: -12 + i * 6, z: 64, len: 70, w: 6, angle, colour: ['#2fb3a8', '#3a8fd0', '#ff8a1e', '#ff5a3a', '#e8336a'][i] })),
-    lots: [{ rect: [-160, 160, -400, -52], colour: '#b8bcb8' }],
+    // (the plaza paved, either side of the skyway and its pavements: not over it)
+    lots: [[-400, -142.2], [-117.8, -52]].map(([c, d]) => ({ rect: [-160, 160, c, d], colour: '#b8bcb8' })),
     park: [-160, 160, -122, -52],
     // The sky decks: three towers stepping down away from you, 40, 26 and 12 m up, each with its rows of stacked
     // glass boxes. A row knocked over falls on the next, and off the deck's far edge onto the one below. Off the
     // 40 to 50 degree ramps at full speed you come down on the top one, a couple of seconds after the top of your flight.
+    // (each a little under the one in front: no gap between for a wreck to drop down, and the camera after it)
     blocks: [
-      ...[{ x: 0, z: -177.5, w: 44, d: 35, h: 40 }, { x: 0, z: -213, w: 44, d: 35, h: 26 }, { x: 0, z: -248.5, w: 44, d: 35, h: 12 }]
+      ...[{ x: 0, z: -177.5, w: 44, d: 35, h: 40 }, { x: 0, z: -212.75, w: 44, d: 35, h: 26 }, { x: 0, z: -248, w: 44, d: 35, h: 12 }]
         .map(b => ({ ...b, type: 'tower', bare: true, tank: false, fixed: true, deck: true })),
       // and the skyline round the plaza, well clear of your flight (rush, and you'll meet the ones at the back)
       ...[[-72, -175, 62], [-78, -240, 84], [-70, -305, 50], [72, -170, 55], [80, -235, 78], [70, -300, 66], [-25, -345, 90], [30, -350, 70]]
@@ -493,9 +495,9 @@ export const LEVELS = {
       ...[-203, -215].map(z => ({ deck: 1, x: 0, z, n: 5, high: 3, along: 'x', gap: 4 })),
       ...[-240, -252].map(z => ({ deck: 2, x: 0, z, n: 4, high: 2, along: 'x', gap: 4.5 })),
     ],
-    // Fly it: slow motion on the way down, nitro in the air (a crate in front of each ramp)
+    // Fly it: slow motion on the way down
     dive: true,
-    crates: [-12, -6, 0, 6, 12].map(x => [x, 100]),
+    // (no nitro crates for now: landing it from the angle alone first. Back: crates: [-12, -6, 0, 6, 12].map(x => [x, 100]))
     lanes: [
       // Your way, as far as the crossing: they turn off there
       { road: 'main', side: 1, i: 0, speed: [18, 22], fill: [90, 230], gap: [60, 110], then: { road: 'first', side: 1, i: 0 } },

@@ -12,7 +12,7 @@ import { Vehicle, contact, damageFrom, subdivide } from '../derby/vehicle.js';
 import { loadSceneryKit } from '../scenery.js';
 import { City, rng, EDGE } from './city.js';
 import { LEVELS as ALL_LEVELS } from './levels.js';
-import { Stacks } from './stacks.js';
+import { Stacks, BOX } from './stacks.js';
 import { ITEMS, drawIcon } from '../derby/pickups.js';
 import { Traffic } from './traffic.js';
 import { Props } from './props.js';
@@ -96,8 +96,8 @@ class Car extends Vehicle {
     this.scene.add(model);
     return model;
   }
-  soften() {
-    if (this.soft || !this.def.lazy) return;
+  soften(now) {
+    if ((this.soft && !now) || !this.def.lazy) return;
     this.soft = true;
     for (const m of this.model.userData.bodyMeshes) {
       const key = this.def.file + ':' + m.name;
@@ -106,6 +106,12 @@ class Car extends Vehicle {
       m.geometry = soft.get(key).clone();
       m.userData.orig = m.geometry.attributes.position.array.slice();
     }
+  }
+  // (a car from Tower Dive's glass dents in its plain mesh: torn in half like that, the halves are all spikes. The
+  // finer one first, then, dents and all lost: there's not much left of it to see)
+  split() {
+    if (this.stack) this.soften(true);
+    return super.split();
   }
   // A wreck keeps its colours, scorched darker (not the derby's charcoal: a pile-up should stay colourful)
   wreck() {
@@ -1048,7 +1054,7 @@ function endCrash() {
   startTour();
 }
 // This step for the replay: every vehicle, your inputs, and where the camera is looking
-const _rl = new THREE.Vector3();
+const _rl = new THREE.Vector3(), _ri = {};
 function record() {
   const list = [];
   const flags = v => (v.wrecked ? FLAGS.wrecked : 0) | (v.alive === false ? FLAGS.dead : 0) | (v.blown ? FLAGS.blown : 0) | (v.halved ? FLAGS.halved : 0) | (v.asleep ? FLAGS.asleep : 0);
@@ -1056,7 +1062,8 @@ function record() {
   for (const v of traffic.list) list.push({ id: v.id, kind: v.kind, paint: v.paint, len: v.len, car: v.car, flags: flags(v), held: v.held });
   for (const h of halves) list.push({ id: h.id, kind: 'half', paint: h.owner.paint, len: 2.3, car: h.car, flags: 0 });
   camera.getWorldDirection(_rl).multiplyScalar(10).add(camera.position);
-  G.rec.frame(G.t, G.state, playerInput, list, camera.position, _rl, G.crash?.on);
+  // (and Tower Dive's nitro, firing in the air: on a phone it's switched on by a tap, too quick to show as RUSH held)
+  G.rec.frame(G.t, G.state, Object.assign(_ri, playerInput, { nitro: G.boosting && G.air > 0 }), list, camera.position, _rl, G.crash?.on);
 }
 
 // ---------- Fixed step ----------
@@ -1833,7 +1840,9 @@ function liftOut(p, cap) {
 function liftOver(p, b, cap = Infinity) {
   if (!b || b.halved) return false;
   const c = b.car, big = b.len > 6;
-  const w = (b.def ? b.def.size[0] / 2 : 1) + 0.5, l = (b.len || 2.2) / 2 + 0.5, lo = -1.2, hi = big ? 3.6 : 1.9;
+  let w = (b.def ? b.def.size[0] / 2 : 1) + 0.5, l = (b.len || 2.2) / 2 + 0.5, lo = -1.2, hi = big ? 3.6 : 1.9;
+  // (a car in Tower Dive's glass: the box round it, which is bigger)
+  if (b.held) { w = BOX.w / 2 + 0.3; l = BOX.l / 2 + 0.3; lo = -1.1; hi = BOX.h - 0.6; }
   if (Math.abs(p.x - c.pos.x) > l + w || Math.abs(p.z - c.pos.z) > l + w) return false;
   _s.copy(p).sub(c.pos).applyQuaternion(_q.copy(c.q).invert());
   if (Math.abs(_s.x) > w || Math.abs(_s.z) > l || _s.y < lo || _s.y > hi) return false;
@@ -1849,6 +1858,23 @@ function liftOver(p, b, cap = Infinity) {
 }
 // Where the crash camera follows `S` from: behind it, the way it's going, and out to `side`, up a little
 const _b = new THREE.Vector3();
+function inBlock(p, m = 0.6) {
+  for (const b of city.near(p.x, p.z)) if (p.y < b.top && !(p.y < b.floor) && city.blockDist(b, p.x, p.z, _w) < m) return true;
+  return false;
+}
+const _rt = new THREE.Vector3();
+function roundTo(p, c) {
+  const a0 = Math.atan2(c.x - p.x, c.z - p.z), r = Math.hypot(c.x - p.x, c.z - p.z), h = c.y - p.y;
+  for (const up of [0, 6, 14]) {
+    for (let i = 1; i <= 15; i++) {
+      const a = a0 + Math.ceil(i / 2) * 0.4 * (i % 2 ? 1 : -1);
+      _rt.set(p.x + Math.sin(a) * r, p.y + h + up, p.z + Math.cos(a) * r);
+      if (!inBlock(_rt) && !blocked(_rt, p)) return c.copy(_rt);
+    }
+  }
+  // (nowhere round it: from straight over it)
+  return c.set(p.x + Math.sin(a0) * 2, p.y + h + 18, p.z + Math.cos(a0) * 2);
+}
 function behind(S, side) {
   const p = S.car.pos, v = S.car.vel, sp = Math.hypot(v.x, v.z), C = G.crash;
   const d = sp > 3 ? _f.set(v.x / sp, 0, v.z / sp) : C.dir || S.forward.clone().setY(0).normalize();
@@ -1951,6 +1977,8 @@ function updateCamera(dt, rawDt) {
     _c.y = Math.max(c.pos.y, city.groundHeight(_c.x, _c.z, c.pos.y + 2)) + 5.5 + 9 * k;
     clear(c.pos, _c);
     camera.position.lerp(_c, 1 - Math.exp(-rawDt * 6));
+    // (on Tower Dive the stacks are still coming down round you: up out of any car, or box, that's where it is)
+    if (city.level.dive) outside(camera.position);
     _l.copy(c.pos).addScaledVector(cam.dir, 12).setY(c.pos.y);
     camera.lookAt(_l);
     fov = 68;
@@ -2069,6 +2097,10 @@ function updateCamera(dt, rawDt) {
       const n = ks.get(S) || interest(S, all);
       // Behind and to one side of it, up a little
       _c.copy(behind(S, C.side));
+      // (unless that's inside a building, or there's a wall between: round it to where it can be seen, the nearest way
+      // round, and higher if nowhere at that height will do. Else it's pulled in, and ends up on top of it, or down a
+      // gap with it.)
+      if (inBlock(_c) || blocked(_c, p)) roundTo(p, _c);
       // Toward where it's headed (what it's about to hit, if anything), with a pull toward the pile
       _l.copy(p).addScaledVector(v, 0.35);
       if (n.at) _l.lerp(n.at.car.pos, 0.4);
@@ -2592,6 +2624,9 @@ function replay(R) {
         v.model.visible = !(e[8] & 8);
       }
       // (Tower Dive's boxed cars: where they stood, till they were let go)
+      // (and their glass: the boxes were recorded in the order they were built, so the nth is this run's nth box)
+      const boxes = stacks?.list.length === Object.keys(R.held || {}).length ? stacks : null;
+      Object.values(R.held || {}).forEach((h, i) => boxes?.show(i, h[7] == null || a.t < h[7]));
       for (const [id, h] of Object.entries(R.held || {})) {
         if (h[7] != null && a.t >= h[7]) continue;
         const v = cars[id];

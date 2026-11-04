@@ -30,7 +30,7 @@ export class Recorder {
       b.push([v.id, r2(p.x), r2(p.y), r2(p.z), r3(q.x), r3(q.y), r3(q.z), r3(q.w), v.flags]);
     }
     this.frames.push({ t: r3(t), s: state,
-      in: [r2(input.throttle), r2(input.brake), r2(input.steer), input.boost ? 1 : 0, input.handbrake ? 1 : 0],
+      in: [r2(input.throttle), r2(input.brake), r2(input.steer), input.boost ? 1 : 0, input.handbrake ? 1 : 0, input.nitro ? 1 : 0],
       cam: [cam.x, cam.y, cam.z, look.x, look.y, look.z].map(r2), on, b });
   }
   event(t, type, data = {}) { this.events.push({ t: r3(t), type, ...data }); }

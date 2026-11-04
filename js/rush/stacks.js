@@ -107,6 +107,16 @@ export class Stacks {
     return true;
   }
 
+  // (for the replay viewer: a box back, or gone, whichever its car was at the time)
+  show(i, on) {
+    if (!on) return this.hide(i);
+    const h = this.list[i].stack.home;
+    _m.compose(_p.set(h.x, h.y - RIDE, h.z), this.list[i].car.q, _s.set(1, 1, 1));
+    this.glass.setMatrixAt(i, _m);
+    this.frame.setMatrixAt(i, _m);
+    this.glass.instanceMatrix.needsUpdate = this.frame.instanceMatrix.needsUpdate = true;
+  }
+
   hide(i) {
     _m.makeScale(0, 0, 0);
     this.glass.setMatrixAt(i, _m);
