@@ -210,7 +210,7 @@ function startRun(pre) {
   for (let i = 0; i < 60; i++) player.car.step(DT, { ...NONE, brake: 1, stop: true });
   Object.assign(G, { t: 0, pre, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0,
     boosting: false, drifting: false, steer: 0, yaw: 0, drift: 0, geysers: [], air: 0, nearT: 0, oncoming: 0, best: 0, ended: false, slow: 1, spike: 0, tour: null, rec: null,
-    nitro: 0, dive: null, stacksDown: 0, tricks: null, arm: null, latch: false });
+    nitro: 0, dive: null, stacksDown: 0, tricks: null, arm: null, latch: false, launched: false });
   document.querySelector('#touch .rushb')?.classList.remove('latched');
   G.state = pre > PRE_COUNT ? 'intro' : 'count';
   G.preSteps = Math.round(PRE_ALL * 120);
@@ -854,6 +854,8 @@ function fall(v, ev) {
 function fly(dt) {
   const c = player.car, I = playerInput;
   c.vel.y -= 9.81 * (AIR_G - 1) * dt;
+  // (off the lip: a kick to the camera and a thump, once a run)
+  if (!G.launched && G.air > 0.15 && c.vel.y > 15) { G.launched = true; G.punch = Math.max(G.punch, 9); G.shake = Math.max(G.shake, 0.5); sound.boom(0.35); }
   // (rates in the car's own frame: pitch about its right, yaw about straight up; let go and it steadies)
   // (in the slow motion you turn as fast as ever: it's the world that's slowed)
   const k = G.dive ? 1 / DIVE_SLOW : 1;
