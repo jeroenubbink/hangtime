@@ -54,7 +54,7 @@ export class Stacks {
           c2.q.setFromAxisAngle(_up, yaw);
           c2.vel.set(0, 0, 0); c2.w.set(0, 0, 0); c2.speed = 0;
           for (const w of c2.wheels) { w.comp = 0.08; w.contact = true; }
-          Object.assign(v, { held: true, stack: { col, tier: h, box: k }, asleep: false });
+          Object.assign(v, { held: true, stack: { col, tier: h, box: k, home: c2.pos.clone() }, asleep: false });
           // (no shadow while it stands still in its box: there are a lot of them)
           v.model.traverse(o => { if (o.isMesh) o.castShadow = false; });
           _m.compose(_p.set(x, y0 + h * BOX.h, z), _q.setFromAxisAngle(_up, yaw), _s.set(1, 1, 1));

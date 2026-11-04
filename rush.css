@@ -193,3 +193,5 @@ body.touch #speedo { bottom: 120px; }
 }
 /* Tower Dive: the bar's your nitro once you've picked some up */
 #rush.nitro #rush-fill { background: linear-gradient(90deg, #3aa8ff, #9fe4ff); }
+/* (Tower Dive, on a phone: RUSH switched on for nitro in the air) */
+#touch button.latched { background: linear-gradient(180deg, #3aa8ff, #1d6fd0); color: #fff; box-shadow: 0 0 14px #3aa8ff; }

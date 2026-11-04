@@ -503,8 +503,9 @@ export const LEVELS = {
       ...busy('avenue').filter(l => l.i === 0),
       ...busy('skyway', [2.2, 4]).filter(l => l.i === 0),
     ],
-    // (from bot runs: a good landing hands-off is silver; gold takes the dive, nitro or flips, and most of the stacks)
-    medals: [80000, 220000, 500000],
+    // (from bot runs: a good landing hands-off makes silver, up to about 470k; gold takes more: heat off the run-up, and
+    // the dive, nitro or flips, as well as most of the stacks)
+    medals: [80000, 250000, 600000],
   },
   gas: {
     name: 'Last Chance Gas', blurb: 'A T-junction, and Fuel\'s Paradise straight across it. Thread the gap and light it up.',

@@ -208,7 +208,8 @@ function startRun(pre) {
   for (let i = 0; i < 60; i++) player.car.step(DT, { ...NONE, brake: 1, stop: true });
   Object.assign(G, { t: 0, pre, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0,
     boosting: false, drifting: false, steer: 0, yaw: 0, drift: 0, geysers: [], air: 0, nearT: 0, oncoming: 0, best: 0, ended: false, slow: 1, spike: 0, tour: null, rec: null,
-    nitro: 0, dive: null, stacksDown: 0, tricks: null, arm: null });
+    nitro: 0, dive: null, stacksDown: 0, tricks: null, arm: null, latch: false });
+  document.querySelector('#touch .rushb')?.classList.remove('latched');
   G.state = pre > PRE_COUNT ? 'intro' : 'count';
   G.preSteps = Math.round(PRE_ALL * 120);
   skipTo(pre);
@@ -253,7 +254,7 @@ function pickCrates() {
     k.m.visible = false;
     G.nitro = 1;
     sound.beep(true);
-    callout('NITRO<small>for the air: hold Shift</small>');
+    callout(`NITRO<small>for the air: ${document.body.classList.contains('touch') ? 'tap RUSH up there' : 'hold Shift'}</small>`);
     for (let i = 0; i < 30; i++) glow.emit(k.x, k.y, k.z, (Math.random() - 0.5) * 8, Math.random() * 6, (Math.random() - 0.5) * 8, { life: 0.5, size: 0.4, gravity: 6, colour: '#7fd0ff', alpha: 0.9 });
   }
 }
@@ -588,13 +589,7 @@ function inZone(p) {
 
 // Two bodies met (normal from B to A)
 function collided(A, B, h) {
-  // A boxed car touched: its glass goes and it's off, the way it was pushed
-  if (A.held || B.held) {
-    const [X, by] = A.held ? [A, B] : [B, A];
-    const d = _kick.set(by.car.vel.x, 0, by.car.vel.z);
-    if (d.lengthSq() < 1) d.set(X.car.pos.x - by.car.pos.x, 0, X.car.pos.z - by.car.pos.z);
-    stacks.release(X, d.normalize(), by, G.t, freed);
-  }
+  if (A.held) unbox(A, B); else if (B.held) unbox(B, A);
   const base = damageFrom(h.j);
   if (h.speed > 2.5 && (base > 0 || h.speed > 5)) {
     sparks(h.point, Math.min(70, 6 + Math.round(base * 2)), 9 + Math.min(10, base * 0.3));
@@ -807,12 +802,27 @@ function scatter(k) {
 }
 
 // ---------- Tower Dive ----------
+const _hp = new THREE.Vector3();
+// A boxed car touched by `by`: its glass goes and it's off, the way it was pushed
+function unbox(X, by) {
+  const d = _kick.set(by.car.vel.x, 0, by.car.vel.z);
+  if (d.lengthSq() < 1) d.set(X.car.pos.x - by.car.pos.x, 0, X.car.pos.z - by.car.pos.z);
+  if (d.lengthSq() < 1e-6) d.set(0, 0, -1);
+  stacks.release(X, d.normalize(), by, G.t, freed);
+}
 // A boxed car's let go (by `by`): it's part of your crash, one link on from what set it off; the first out of a
 // column topples it, and that's a stack down; a deck's last stack down clears it
 const DOWN = new THREE.Vector3(0, -1, 0);
 function freed(v, by, first) {
   if (!v.gen) v.gen = (by === player ? 0 : by?.gen || 0) + 1;
-  glassBurst(v.car.pos, 12);
+  // (its box's glass: panes off every side, flashing as they tumble down)
+  const q = v.car.pos;
+  for (let i = 0; i < 22; i++) {
+    const sx = Math.random() < 0.5 ? -1 : 1, side = Math.random() < 0.5;
+    glow.emit(q.x + (side ? sx * 1.35 : (Math.random() - 0.5) * 2.7), q.y + (Math.random() - 0.3) * 2, q.z + (side ? (Math.random() - 0.5) * 5.4 : sx * 2.7),
+      (side ? sx : 0) * (1 + Math.random() * 3), 1 + Math.random() * 3, (side ? 0 : sx) * (1 + Math.random() * 3),
+      { life: 0.8 + Math.random() * 0.8, size: 0.18 + Math.random() * 0.22, gravity: 12, colour: i % 3 ? '#dff8ff' : '#ffffff', alpha: 0.85 });
+  }
   if (camera.position.distanceTo(v.car.pos) < 60) sound.glass();
   if (!first) return;
   G.stacksDown++;
@@ -850,7 +860,7 @@ function fly(dt) {
   const T = G.tricks || (G.tricks = { pitch: 0, yaw: 0, n: 0 });
   T.pitch += c.w.dot(_r) * dt;
   T.yaw += c.w.dot(_up) * dt;
-  for (const [key, name, heat] of [['pitch', 'FLIP', 0.2], ['yaw', 'SPIN 360', 0.15]]) {
+  for (const [key, name, heat] of [['pitch', 'FLIP', 0.3], ['yaw', 'SPIN 360', 0.2]]) {
     if (Math.abs(T[key]) < Math.PI * 2 * 0.9) continue;
     T[key] -= Math.sign(T[key]) * Math.PI * 2;
     T.n++;
@@ -858,7 +868,7 @@ function fly(dt) {
     callout(`${T.n > 1 ? T.n + '× ' : ''}${name}<small>heat +${heat}</small>`);
     sound.beep(true);
   }
-  const thrust = arm.boost && I.boost && G.nitro > 0;
+  const thrust = (G.latch || (arm.boost && I.boost)) && G.nitro > 0;
   if (thrust) {
     _f.set(0, 0, -1).applyQuaternion(c.q);
     c.vel.addScaledVector(_f, THRUST * dt);
@@ -877,7 +887,8 @@ function fly(dt) {
   }
   if (!G.dive && G.air > 0.5 && c.vel.y < 3 && high > 10) {
     G.dive = { t: 0 };
-    callout(`SKYDIVE<small>let go, then ${document.body.classList.contains('touch') ? 'steer, gas and brake fly it' : '↑↓←→ fly it'}${G.nitro > 0 ? ' · rush: nitro' : ''}</small>`, 'big');
+    const touch = document.body.classList.contains('touch');
+    callout(`SKYDIVE<small>let go · ${touch ? '◀▶▲▼' : '↑↓←→'} fly${G.nitro > 0 ? (touch ? ' · tap RUSH: nitro' : ' · Shift: nitro') : ''}</small>`, 'big');
   }
 }
 // Down from a dive: hard enough, and that's your crash, right there, with a shock wave that sets off the stacks round
@@ -1056,6 +1067,7 @@ function landAir() {
   G.air = 0;
   G.tricks = null;
   G.arm = null;
+  if (G.latch) { G.latch = false; document.querySelector('#touch .rushb')?.classList.remove('latched'); }
 }
 function drive(dt) {
   const v = player, c = v.car, def = v.def, I = playerInput;
@@ -1235,12 +1247,16 @@ function step() {
     fence(all);
     stacks?.update(G.t, freed);
     for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
-      // (boxed cars don't touch each other: they stand still till something loose does)
+      // (boxed cars don't touch each other: they stand still till something loose does; and any touch lets one go,
+      // even one that only pushes it aside without a bump)
       if (all[i].held && all[j].held) continue;
+      const boxed = all[i].held ? all[i] : all[j].held ? all[j] : null;
+      if (boxed) _hp.copy(boxed.car.pos);
       // Until you crash the traffic is scripted: it doesn't crash into itself (unless you've had a go at it)
       if (!G.crash && !all[i].player && !all[j].player && !all[i].gen && !all[j].gen) continue;
       const h = contact(all[i], all[j]);
       if (h) collided(all[i], all[j], h);
+      else if (boxed?.held && boxed.car.pos.distanceToSquared(_hp) > 0) unbox(boxed, boxed === all[i] ? all[j] : all[i]);
     }
     for (const k of props.update(all.filter(b => !b.half))) {
       scatter(k);
@@ -1344,6 +1360,8 @@ for (const b of document.querySelectorAll('#touch button')) {
     sound.init();
     if (key) { keys.add(key); b.classList.add('down'); try { b.setPointerCapture(e.pointerId); } catch { /* synthetic */ } }
     if (tap) window.dispatchEvent(new KeyboardEvent('keydown', { code: tap }));
+    // (in the air off Tower Dive's ramp, RUSH is a switch: one thumb can't hold it and tip the nose as well)
+    if (key === 'ShiftLeft' && G.state === 'run' && city.level.dive && player.car.grounded < 2 && G.air > 0.2) { G.latch = !G.latch; b.classList.toggle('latched', G.latch); }
   });
   const up = () => { if (key) { keys.delete(key); b.classList.remove('down'); } };
   b.addEventListener('pointerup', up);
@@ -1815,9 +1833,9 @@ function roofsBetween(a, b) {
 // deck, white anywhere else
 const mark = (() => {
   // (seen through whatever's in the way: a stack, your own car)
-  const ring = new THREE.Mesh(new THREE.RingGeometry(2, 2.8, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, depthWrite: false, depthTest: false, fog: false }));
+  const ring = new THREE.Mesh(new THREE.RingGeometry(3, 4.2, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, depthWrite: false, depthTest: false, fog: false }));
   const N = 60, dots = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(N * 3), 3)),
-    new THREE.PointsMaterial({ color: '#ffffff', size: 4, sizeAttenuation: false, transparent: true, opacity: 0.7, depthWrite: false, depthTest: false, fog: false }));
+    new THREE.PointsMaterial({ color: '#ffffff', size: 6, sizeAttenuation: false, transparent: true, opacity: 0.7, depthWrite: false, depthTest: false, fog: false }));
   ring.renderOrder = dots.renderOrder = 50;
   ring.visible = dots.visible = false;
   scene.add(ring, dots);
@@ -2056,7 +2074,7 @@ function updateCamera(dt, rawDt) {
     const diving = !!G.dive;
     cam.diveK = (cam.diveK || 0) + ((diving ? 1 : 0) - (cam.diveK || 0)) * Math.min(1, rawDt * 3);
     if (cam.diveK > 0.01) { _v.copy(c.vel).setY(0); if (_v.lengthSq() > 1) cam.dir.lerp(_v.normalize(), cam.diveK).normalize(); }
-    const dist = 6.3 + speed * 0.012 - rushK * 0.9 + cam.diveK * 10, ht = 2.05 + speed * 0.004 - rushK * 0.3 + cam.diveK * 13;
+    const dist = 6.3 + speed * 0.012 - rushK * 0.9 + cam.diveK * 8, ht = 2.05 + speed * 0.004 - rushK * 0.3 + cam.diveK * 10;
     _c.copy(c.pos).addScaledVector(cam.dir, -dist);
     _c.y = c.pos.y + ht;
     clear(c.pos, _c);
