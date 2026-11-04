@@ -119,7 +119,8 @@ through them. Things to know:
   next, and off the deck's far edge onto the one below. Past the top of your flight comes the **skydive**: time
   slows right down and you fly the car like a rocket, as fast as ever in the slow motion. ↑ and ↓ tip the nose
   down and up, ← and → turn it, and the rush key fires the nitro the way the nose points (the gas and rush you were
-  holding up the ramp only count in the air once you've let go of them). A ring and a dotted line show where you'll
+  holding up the ramp only count in the air once you've let go of them; on a phone RUSH is a switch up there, tap it
+  for nitro and again to stop, so one thumb can tip the nose while it burns). A ring and a dotted line show where you'll
   come down if you do nothing more: orange into a stack, yellow on a deck, white in the street. Every full flip end
   over end and every full spin is heat. Come down hard and that's the crash, where you land, with a shock wave that
   sets off the stacks round about; then you aim your wreck as anywhere else. Too shallow (30°) and you hit the top
