@@ -59,6 +59,85 @@ const TOWN = [...[98, 126, 154, 182, 210].flatMap(x => [x, -x]).flatMap(x => Arr
 });
 const along = (list, from, at) => { let s = from; return list.map(r => { const m = s + r[0] / 2; s += r[0]; return at(r, m); }); };
 
+// A block of town behind the streets, 26 m square, standing at (x, z): its height and look picked by a steady hash of
+// where it is, the taller the further out
+const town = (x, z) => {
+  const r = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
+  return { x, z, w: 26, d: 26, h: 16 + r * 24 + Math.hypot(x, z) * 0.04, type: r < 0.3 ? 'store' : r < 0.42 ? 'hall' : r < 0.6 ? 'walkup' : 'tower', brick: Math.round(r * 9) % 2, tiers: r > 0.85, fixed: true };
+};
+
+// Dockside Drop's quay: the water's edge, the promenade between it and the road (grass round the trees, a path along
+// the water with benches looking out over it), and the jetty with the crane and the yacht
+const DS_EDGE = -22.8;
+const DS_JETTY = [-38, -18, -46, DS_EDGE];
+// (the beds broken for a path down to the water every 40 m, and at the jetty)
+const DS_BEDS = Array.from({ length: 22 }, (_, i) => -430 + i * 40).filter(x => x + 18 < DS_JETTY[0] - 2 || x - 18 > DS_JETTY[1] + 2);
+const DS_TOWN = [
+  ...[-1, 1].flatMap(sx => [54, 82, 110, 138, 166, 194, 222].flatMap(x => [62, 90, 118, 146, 174, 202, 230].map(z => [sx * x, z]))),
+  ...[54, 82].flatMap(x => [x, -x]).flatMap(x => Array.from({ length: 7 }, (_, i) => [x, 258 + i * 28])),
+].map(([x, z]) => town(x, z));
+
+// Gridlock Leap: the town round its square, out behind the streets (none in the square, or the shops round its car
+// park), and two rows back along the run-up
+const GL_TOWN = [
+  ...[[1, 1], [-1, 1], [-1, -1], [1, -1]].flatMap(([sx, sz]) => [54, 82, 110, 138, 166, 194, 222].flatMap(x => [62, 90, 118, 146, 174, 202, 230].map(z => [sx * x, sz * z])))
+    .filter(([x, z]) => !(x > 0 && z < 0) || x > 170 || z < -150).filter(([, z]) => z > -210),
+  ...[54, 82].flatMap(x => [x, -x]).flatMap(x => Array.from({ length: 7 }, (_, i) => [x, 258 + i * 28])),
+].map(([x, z]) => town(x, z));
+// and the building site beside the ramp, where the roadworks came from: fenced off along the pavement, with a gap to
+// get the plant in and out
+const GL_SITE = [12.2, 44, 144, 197];
+
+// Over the Edge: town round the open ground about the bridge, behind the streets, and up the run-up
+const BR_TOWN = [54, 82, 110, 138, 166, 194, 222].flatMap(x => [x, -x]).flatMap(x => [62, 90, 118, 146, 174, 202, 230, -126, -154, -182].map(z => [x, z]))
+  .filter(([x, z]) => Math.abs(x) > 144 || z > 70 || z < -76).concat([54, 82].flatMap(x => [x, -x]).flatMap(x => Array.from({ length: 7 }, (_, i) => [x, 258 + i * 28])))
+  .map(([x, z]) => town(x, z));
+
+// Market Cross's shopping: on each corner of the junction a car park, its row along the kerb (as it always was) and
+// two rows back to back behind the aisle, in twelve columns of 3.2 m bays; shops round its back and its far side; and
+// town behind them
+const MC_COLS = Array.from({ length: 12 }, (_, i) => 18 + i * 3.2);
+const MC_CORNERS = [-1, 1].flatMap(sx => [-1, 1].map(sz => [sx, sz]));
+// (the two new rows: how far from the cross street's middle, and which way they face, away from it or toward it;
+// some bays empty, the same ones every time)
+const MC_BAYS = MC_CORNERS.flatMap(([sx, sz]) => [[28.2, 1], [33.8, -1]].flatMap(([z, away]) => MC_COLS.map(x => ({ x: sx * x, z: sz * z, yaw: away * sz > 0 ? Math.PI : 0 }))));
+const MC_PARKED = MC_BAYS.filter((B, i) => Math.abs(Math.sin(i * 91.7 + 3.1)) > 0.42);
+// The shops: along the back of each car park, [width along x, height, type, sign], from the main road out; down its far
+// side, [depth along z, ...], from the cross street back. (Low ones, walk-ups and stores: a shopping street, not towers)
+const MC_SHOPS = [
+  [[[16, 14.9, 'walkup', 'Knead to Know'], [17, 19, 'store', 'AISLE BE BACK'], [16, 11.6, 'walkup', 'Petal to the Metal']], [[18, 18, 'store', 'TOYING AROUND'], [17.8, 14.9, 'walkup', 'Novel Ideas']]],
+  [[[16, 18, 'store', 'SOLE MATES'], [17, 14.9, 'walkup', 'Pizza My Heart'], [16, 21, 'store', 'FROCK & ROLL']], [[18, 11.6, 'walkup', 'Carat & Stick'], [17.8, 20, 'store', 'PILLS & THRILLS']]],
+  [[[16, 20, 'store', 'VINYL COUNTDOWN'], [17, 11.6, 'walkup', 'WOK THIS WAY'], [16, 18, 'store', 'REEL DEAL']], [[18, 14.9, 'walkup', 'LETTUCE EAT'], [17.8, 19, 'store', 'OHM SWEET OHM']]],
+  [[[16, 14.9, 'walkup', 'PAWS FOR THOUGHT'], [17, 22, 'store', 'MALL OR NOTHING'], [16, 18, 'store', 'TREBLE MAKERS']], [[18, 21, 'store', 'HAVING A BALL'], [17.8, 11.6, 'walkup', 'SCREWS LOOSE']]],
+];
+const MC_BLOCKS = MC_CORNERS.flatMap(([sx, sz], q) => [
+  ...along(MC_SHOPS[q][0], 13, (r, x) => shop(r, sx * x, sz * 61, r[0], 26, [0, -sz])),
+  ...along(MC_SHOPS[q][1], 12.2, (r, z) => shop(r, sx * 75, sz * z, 26, r[0], [-sx, 0])),
+  // (and the corner behind, where nobody'd see a sign)
+  { x: sx * 75, z: sz * 61, w: 26, d: 26, h: 24 + q * 3, type: 'tower', fixed: true },
+]);
+// The town behind: the corners filled out to 240 m or so, and two rows back along the run-up (the taller the further out)
+const MC_TOWN = [
+  ...MC_CORNERS.flatMap(([sx, sz]) => [54, 82, 110, 138, 166, 194, 222].flatMap(x => [62, 90, 118, 146, 174].map(z => [sx * x, sz * z])))
+    .filter(([x, z]) => Math.abs(x) > 100 || Math.abs(z) > 80),
+  ...[54, 82].flatMap(x => [x, -x]).flatMap(x => Array.from({ length: 8 }, (_, i) => [x, 202 + i * 28])),
+].map(([x, z]) => town(x, z));
+
+// Short Cut: a film shoot (your jump's the stunt), and its two junctions famous corners. Neon Corner, at the first:
+// tall blocks round it, screens and neon signs all up them, the biggest facing you as you come down; Clock Corner, at
+// the second: the clock tower on one corner (and a low block behind it), the old cinema on the other
+const SC_BLOCKS = [
+  { x: -19, z: -114.8, w: 28, d: 26, h: 16, type: 'store', fixed: true }, { x: 26.2, z: -114.8, w: 28, d: 26, h: 14, type: 'store', fixed: true },
+  { x: -19, z: -170, w: 28, d: 35.6, h: 40, type: 'tower', fixed: true }, { x: 26.2, z: -170, w: 28, d: 35.6, h: 34, type: 'tower', fixed: true },
+  { x: -22.5, z: -232.2, w: 21, d: 40, h: 22, type: 'hall', fixed: true }, { x: -8.5, z: -236, w: 7, d: 32, h: 12, type: 'hall', fixed: true },
+  { x: 26.2, z: -232.2, w: 28, d: 40, h: 18, type: 'hall', fixed: true },
+];
+// and the town round about, so it's town as far as you can see from up there (not over the walk-up by the site)
+const SC_TOWN = [
+  ...[54, 82, 110, 138, 166, 194, 222].flatMap(x => [x, -x]).flatMap(x => [25.2, -2.8, -30.8, -58.8, -86.8, -114.8, -170, -225.2, -253.2, -281.2, -309.2].map(z => [x, z])),
+  ...[54, 82].flatMap(x => [x, -x]).flatMap(x => Array.from({ length: 12 }, (_, i) => [x, 85.2 + i * 28])),
+].filter(([x, z]) => !(x < 0 && x > -80 && z > 0 && z < 60)).map(([x, z]) => town(x, z));
+
 // (a `draft` is still rough: only there with rush.html?drafts)
 export const LEVELS = {
   cross: {
@@ -71,12 +150,34 @@ export const LEVELS = {
       { name: 'main', x0: 0, z0: 420, x1: 0, z1: -175, right: 2, left: 2 },
       { name: 'cross', x0: -430, z0: 0, x1: 430, z1: 0, right: 2, left: 2 },
     ],
-    // The road north ends at a town hall
-    blocks: [{ x: 0, z: -192, w: 40, d: 30, h: 26, fixed: true }],
-    // Car parks along the cross street, either side of the junction: a row of cars nosed in to the kerb each side of
-    // the road, side on to a wreck coming off the junction to steer into
-    lots: [-1, 1].flatMap(sx => [-1, 1].map(sz => ({ rect: [sx > 0 ? 13 : -58, sx > 0 ? 58 : -13, sz > 0 ? 12.2 : -21, sz > 0 ? 21 : -12.2], colour: '#a9a59c' }))),
-    parked: [-1, 1].flatMap(sx => [-1, 1].flatMap(sz => Array.from({ length: 12 }, (_, i) => ({ kind: null, x: sx * (18 + i * 3.2), z: sz * 15.6, yaw: sz > 0 ? 0 : Math.PI })))),
+    // The road north ends at a town hall; the shops round the car parks, and the town behind
+    blocks: [{ x: 0, z: -192, w: 40, d: 30, h: 26, fixed: true }, ...MC_BLOCKS, ...MC_TOWN],
+    // Car parks on the corners of the junction, for the shops: a row of cars nosed in to the kerb each side of the cross
+    // street, side on to a wreck coming off the junction to steer into, and two more rows behind
+    lots: MC_CORNERS.map(([sx, sz]) => ({ rect: [sx > 0 ? 13 : -62, sx > 0 ? 62 : -13, sz > 0 ? 12.2 : -48, sz > 0 ? 48 : -12.2], colour: '#c9c2b4' })),
+    grounds: {
+      carpark: MC_CORNERS.map(([sx, sz]) => ({
+        rect: [sx * 13, sx * 58, sz * 12.2, sz * 43.6], bay: 3.2,
+        bays: [...MC_COLS.map(x => ({ x: sx * x, z: sz * 15.6, yaw: sz > 0 ? 0 : Math.PI })), ...MC_BAYS.filter(B => Math.sign(B.x) === sx && Math.sign(B.z) === sz)],
+        arrows: [], })),
+      // (green islands at the ends of the back rows, and planters along the shops)
+      lawns: MC_CORNERS.flatMap(([sx, sz]) => [[sx * 14.7, sz * 31, 2.8, 10.6, 1.2], [sx * 56.4, sz * 31, 2.8, 10.6, 1.2],
+        ...[22, 38].map(x => [sx * x, sz * 45.8, 7, 2.2, 1])]),
+    },
+    // (the kerb rows as they always were, then the rows behind, picked and painted from random numbers of their own: the
+    // traffic's the same as before they were here)
+    parked: [
+      ...[-1, 1].flatMap(sx => [-1, 1].flatMap(sz => Array.from({ length: 12 }, (_, i) => ({ kind: null, x: sx * (18 + i * 3.2), z: sz * 15.6, yaw: sz > 0 ? 0 : Math.PI })))),
+      ...MC_PARKED.map(B => ({ kind: null, own: true, ...B })),
+    ],
+    parkedSeed: 29,
+    // Trees on the islands, lamps down the aisles, and benches and bins along the shops
+    props: MC_CORNERS.flatMap(([sx, sz]) => [
+      ...[14.7, 56.4].flatMap((x, i) => [['tree', sx * x, sz * 28, i], ['tree', sx * x, sz * 34, i + 1]]),
+      ...[26, 42].map(x => ['lamp', sx * x, sz * 31, 0]),
+      ...[22, 38].flatMap((x, i) => [['tree', sx * x, sz * 45.8, i + 2], ['bench', sx * (x + 6), sz * 46.2, sz > 0 ? Math.PI : 0], ['bin', sx * (x - 5), sz * 46.4, 0]]),
+      ['bench', sx * 59.8, sz * 26, sx > 0 ? Math.PI / 2 : -Math.PI / 2], ['bin', sx * 59.8, sz * 21, 0],
+    ]),
     lanes: [
       // Your way: a few cars to get past, and a queue at the red light
       { road: 'main', side: 1, i: 0, speed: [19, 23], fill: [70, 330], gap: [45, 90], stop: 410.3, queue: 4 },
@@ -113,10 +214,22 @@ export const LEVELS = {
       { name: 'main', x0: 0, z0: 460, x1: 0, z1: 0, right: 2, left: 1 },
       { name: 'quay', x0: -460, z0: 0, x1: 460, z1: 0, right: 3, left: 3, median: 2, open: [-1] },
     ],
-    // Warehouses across the water
-    blocks: [-300, -200, -100, 0, 100, 200, 300].map((x, i) => ({ x: x + (i % 2) * 20, z: -150, w: 70, d: 30, h: 14 + (i % 3) * 6, fixed: true })),
-    // and a jetty out into it off to your left, with three tankers parked side by side at the end: something to aim for
-    water: { rect: [-470, 470, -170, -16.8], edge: -16.8, y: -1.6, floor: -5, below: (x, z) => z < -16.8, jetties: [[-38, -18, -46, -16.8]] },
+    // Warehouses across the water, and town up the hill behind the streets
+    blocks: [...[-300, -200, -100, 0, 100, 200, 300].map((x, i) => ({ x: x + (i % 2) * 20, z: -150, w: 70, d: 30, h: 14 + (i % 3) * 6, fixed: true })), ...DS_TOWN],
+    // and a jetty out into it off to your left, with three tankers parked side by side at the end under the crane:
+    // something to aim for. Moored on its far side, the yacht: a tanker going up beside it sinks it
+    water: { rect: [-470, 470, -170, DS_EDGE], edge: DS_EDGE, y: -1.6, floor: -5, below: (x, z) => z < DS_EDGE, jetties: [DS_JETTY] },
+    crane: { x: -28, z: -36 },
+    boat: { x: -13.6, z: -38, name: 'UNSINKABLE II', pts: 5000 },
+    // The promenade: beds of grass round the trees along the kerb, a path along the water, and benches on it facing out
+    grounds: {
+      paths: [{ pts: [[-470, DS_EDGE + 2.6], [470, DS_EDGE + 2.6]], w: 5.2, colour: '#d6cfbf' }, { pts: [[-470, -14.8], [470, -14.8]], w: 6, colour: '#c9c2b4' }],
+      lawns: DS_BEDS.map(x => [x, -15.6, 34, 3.6, 1.4]),
+    },
+    props: [
+      ...DS_BEDS.flatMap((x, i) => [['bench', x - 6, -20.6, 0], ['bench', x + 6, -20.6, 0], ['bin', x, -20.4, 0], ['bush', x - 12, -15.6, i], ['bush', x + 12, -15.6, i + 1],
+        ['tree', x - 3, -16.2, i + 2], ['lamp', x + 17, -21.6, Math.PI]]),
+    ],
     ramps: [{ x: 5.4, z: 70, len: 8, h: 0.9, w: 3.4 }],
     parked: [-32, -28, -24].map(x => ({ kind: 'tanker', x, z: -36 })),
     lanes: [
@@ -139,6 +252,8 @@ export const LEVELS = {
   jump: {
     name: 'Gridlock Leap', blurb: 'Your way\'s jammed solid to the lights, and the roadworks left a ramp. Land on the jam, shove it into the junction.',
     seed: 37,
+    // (a hot, hazy afternoon)
+    time: 'haze',
     bounds: [-440, 440, -210, 470],
     start: { x: 5.4, z: 390, speed: 28 },
     junction: [0, 0],
@@ -150,20 +265,30 @@ export const LEVELS = {
     // buses side by side in the middle. Keep your wreck going through the junction and over the grass to get there.
     park: [12.2, 136, -104, -12.2],
     // (and buildings behind the car park, and along the park's far end, so it's a square in the town, not the edge of it)
+    // (shops, looking out over it)
     blocks: [
       { x: 0, z: -192, w: 40, d: 30, h: 26, fixed: true },
-      ...[[30, 16], [58, 22], [86, 12], [114, 18]].map(([x, h], i) => ({ x, z: -122 - (i % 2) * 4, w: 26, d: 28, h, fixed: true })),
-      { x: 150, z: -96, w: 22, d: 40, h: 15, fixed: true }, { x: 152, z: -54, w: 24, d: 36, h: 21, fixed: true },
+      ...[[16, 'store', 'BOWL ME OVER'], [14.9, 'walkup', 'Pizza My Heart'], [19, 'store', 'ARCADE-IA'], [11.6, 'walkup', 'LETTUCE EAT']]
+        .map(([h, type, sign], i) => shop([26, h, type, sign], 30 + i * 28, -122 - (i % 2) * 4, 26, 28, [0, 1])),
+      shop([40, 14.9, 'walkup', 'Novel Ideas'], 150, -96, 22, 40, [-1, 0]), shop([36, 20, 'store', 'VINYL COUNTDOWN'], 152, -54, 24, 36, [-1, 0]),
+      ...GL_TOWN,
     ],
+    // (nothing of its own on the ground: there for the shops' signs)
+    grounds: {},
     // (and paths over the park: one from the junction, lined up on the buses, and one along it)
-    lots: [{ rect: [22, 126, -104, -78], colour: '#a9a59c' }, { rect: [72.4, 75.6, -78, -12.2], colour: '#c9b994' }, { rect: [12.2, 136, -46.6, -43.4], colour: '#c9b994' }],
+    lots: [{ rect: GL_SITE, colour: '#a8946c' }, { rect: [22, 126, -104, -78], colour: '#a9a59c' }, { rect: [72.4, 75.6, -78, -12.2], colour: '#c9b994' }, { rect: [12.2, 136, -46.6, -43.4], colour: '#c9b994' }],
     parked: [
       ...[32, 36.2, 40.4, 44.6, 48.8, 53, 57.2, 61.4, 86.6, 90.8, 95, 99.2, 103.4, 107.6, 111.8, 116].map(x => ({ kind: null, x, z: -82.4, yaw: Math.PI })),
       ...[70, 74, 78].map(x => ({ kind: 'bus', x, z: -84.6, yaw: Math.PI })),
     ],
     // Across both your lanes: a fast run off the lip comes down on the jam, a slower one runs into the back of it
     ramps: [{ x: 3.6, z: 150, len: 10, h: 1.0, w: 7.2 }],
+    fixtures: [
+      ['excavator', 22, 161, Math.PI / 2], ['cabin', 36, 170, 0], ['roller', 25, 170.5, 0], ['sand', 35, 152, 0.4],
+      ['skip', 19, 148, 0], ['pipes', 40.5, 160, Math.PI / 2], ['cabin', 37, 189, 0], ['sand', 21, 188, 1.2], ['worksign', 9.6, 198, 0], ['worksign', 9.6, 140, Math.PI],
+    ],
     props: [
+      ...[147, 150, 153, 165, 168, 171, 174, 177, 180, 183, 186, 189, 192, 195].map(z => ['barrier', 13.4, z, Math.PI / 2]),
       ...[160, 166, 172, 178, 184].flatMap(z => [['cone', 0.4, z, 0], ['cone', 7.6, z, 0]]),
       ['barrier', 0.5, 152, Math.PI / 2], ['barrier', 7.7, 152, Math.PI / 2],
       // The park: benches facing the paths, a lamp and a bin now and then, bushes in clumps, and trees only round its
@@ -218,8 +343,22 @@ export const LEVELS = {
     deck: { rect: [-12.2, 12.2, -29.6, 29.6], y: 0, piers: [-8, 0, 8].flatMap(x => [[x, -14], [x, 14]]) },
     // and open ground all round it
     park: [-130, 130, -62, 55],
-    blocks: [{ x: 0, z: -192, w: 40, d: 30, h: 26, fixed: true }],
-    props: [...rails(-12.05, -27, 27), ...rails(12.05, -27, 27)],
+    blocks: [{ x: 0, z: -192, w: 40, d: 30, h: 26, fixed: true }, ...BR_TOWN],
+    // Made a bridge you see coming: teal girders, a pylon at each corner, lamp standards along it (see gateway.js), and
+    // billboards on the banks facing you
+    gateway: {
+      name: 'VICTORIA BRIDGE', year: 1897,
+      pylons: [[-14.4, 31.6, 0], [14.4, 31.6, 0], [-14.4, -31.6, Math.PI], [14.4, -31.6, Math.PI]],
+      // (at the park's corners by the road, turned to you as you come out from between the buildings)
+      boards: [[-24, 45, 0.55, 0], [24, 45, -0.55, 1]],
+    },
+    // and paths along the tops of the banks, benches looking down on the road below
+    grounds: { paths: [-1, 1].flatMap(sz => [-1, 1].map(sx => ({ pts: [[sx * 30, sz * 39], [sx * 128, sz * 39]], w: 3, colour: '#cdbf9c' }))) },
+    props: [...rails(-12.05, -27, 27), ...rails(12.05, -27, 27),
+      ...[-22.5, -7.5, 7.5, 22.5].flatMap(z => [['lantern', -11.6, z, Math.PI / 2], ['lantern', 11.6, z, Math.PI / 2]]),
+      ...[-1, 1].flatMap(sz => [50, 74, 98].flatMap(x => [-x, x]).map(x => ['bench', x, sz * 37.2, sz > 0 ? 0 : Math.PI])),
+      ...[[-62, 44], [-88, 50], [-114, 43], [64, 45], [92, 51], [118, 42], [-58, -45], [-96, -50], [-120, -42], [70, -47], [100, -43], [124, -51]].map(([x, z], i) => ['tree', x, z, i]),
+    ],
     lanes: [
       // Your way: a long jam back from the lights across the bridge, with a bus and a lorry in it
       { road: 'main', side: 1, i: 0, speed: [19, 23], gap: [50, 100], stop: 485.3, queue: [null, null, 'van', null, null, 'bus', null, null, null, null, 'suv', null, null] },
@@ -260,12 +399,42 @@ export const LEVELS = {
     // The building site, with its kicker, and the backs of the buildings either side of it
     lots: [{ rect: [-12, 12, 28, 47.8], colour: '#b19c7c' }],
     ramps: [{ x: 3.6, z: 46, len: 9, h: 1.35, w: 7.2 }],
+    // (and at the end of the road, the studio)
     blocks: [{ x: 0, z: -312, w: 40, d: 30, h: 26, fixed: true },
-      { x: -38, z: 36, w: 46, d: 20, h: 17, type: 'walkup', brick: 1, fixed: true }],
+      { x: -38, z: 36, w: 46, d: 20, h: 17, type: 'walkup', brick: 1, fixed: true }, ...SC_BLOCKS, ...SC_TOWN],
     props: [
       ...[-5.4, -2.7, 0, 2.7, 5.4].map(x => ['barrier', x, 30, 0]),
-      ...[[-9, 44], [-9, 38], [-9, 32], [9.5, 42], [9.5, 34], [-4, 40], [-6, 35]].map(([x, z]) => ['cone', x, z, 0]),
+      ...[[9.5, 34], [-4, 40], [1, 30.5]].map(([x, z]) => ['cone', x, z, 0]),
+      // On the corner at the first junction, on your left: a fruit stand. You know what happens to fruit stands.
+      ['fruitstand', -2.6, -123.5, Math.PI / 2],
+      // (and a bench up from it, looking out at the street)
+      ['bench', -4, -104, -Math.PI / 2],
     ],
+    // (the pavement in front of it kept clear, so you see it coming; and across the road, round the camera crane)
+    clear: [[-8, 0, -128, -100], [7, 14, -128, -100]],
+    filmset: {
+      // The unit on the site: a trailer, the catering truck, the director's chairs looking at the ramp, a light on it, the
+      // clapperboard facing you, and signs; the camera crane on the first junction's corner, filming you coming, and a
+      // light by it. And the clock tower.
+      kit: [['trailer', -10.2, 41.5, Math.PI / 2], ['catering', -9.5, 31.5, 0], ['chairs', -4.5, 35.5, Math.PI / 2], ['lights', 10, 41, -Math.PI / 2],
+        ['clapper', -4.5, 46.2, 0], ['filmcrane', 9.8, -121.5, 0], ['lights', 10.2, -108, Math.PI], ['clocktower', -8.5, -216.2, 0]],
+      signs: [[-11, 49, 0], [11.2, 49, 0]],
+      screens: [
+        [-19, 29, -151.9, 0, 20, 11, [1, 0, 4]], [26.2, 25, -151.9, 0, 16, 9, [2, 3]],
+        [-19, 22, -103, 0, 16, 8, [3, 5]], [26.2, 20, -103, 0, 14, 7, [0, 4]],
+        [-19, 9.5, -128.1, Math.PI, 14, 7, [5, 0]], [26.2, 9, -128.1, Math.PI, 14, 7, [1, 2]],
+        [-4.7, 9.5, -110, Math.PI / 2, 10, 6, [3]], [11.9, 8.5, -110, -Math.PI / 2, 10, 6, [4]],
+        [-4.7, 24, -172, Math.PI / 2, 12, 7, [2, 4]], [11.9, 20, -172, -Math.PI / 2, 12, 7, [0, 5]],
+        [11.9, 10, -238, -Math.PI / 2, 10, 6, [5]],
+      ],
+      blades: [[-4.2, 9, -123, Math.PI / 2, 'HOTEL', '#ff4fd8'], [11.4, 9, -103.5, -Math.PI / 2, 'KARAOKE', '#3ff5ea', 9],
+        [-4.2, 12, -157, Math.PI / 2, 'PIZZA', '#ffb12e'], [11.4, 12, -157, -Math.PI / 2, 'BAR', '#7fd0ff', 6],
+        [11.4, 10.5, -215.5, -Math.PI / 2, 'GRAND', '#ffd84a', 11]],
+      clock: [-8.5, -216.2],
+      marquee: { x: 26.2, z: -212.2, yaw: 0 },
+      studio: { x: 0, z: -297, yaw: 0, y: 26 },
+      clapper: [-4.5, 46.2, 0],
+    },
     lanes: [
       // Your way is clear all the way to the corner; only oncoming traffic, and (below) a few coming round the
       // corner across your way, to time
@@ -610,10 +779,13 @@ export const LEVELS = {
     // The forecourt, under its canopy, with the shop at the back
     lots: [{ rect: [-21, 21, -52, -7.3], colour: '#c4bfb4' }],
     station: { x: 0, z: -30, w: 30, d: 24, h: 5.4 },
+    // On the pavement on your right, just after the start: how far to go
+    roadsign: { x: 9.4, z: 345, to: -7.3 },
     blocks: [{ x: 0, z: -59, w: 30, d: 13, h: 6, fixed: true, shop: true },
-      // and the backs of the next street
-      ...[-66, -38, 38, 66].map((x, i) => ({ x, z: -32.6, w: 26, d: 40, h: 11 + (i % 2) * 3.3, type: 'walkup', brick: i % 2, tank: i < 2, fixed: true })),
-      ...[-75, -45, -15, 15, 45, 75].map((x, i) => ({ x, z: -92, w: 28, d: 26, h: [18, 26, 14.5, 22, 30, 16][i], type: i % 3 === 2 ? 'walkup' : 'tower', brick: i % 2, fixed: true }))],
+      // and the backs of the next street, shoulder to shoulder with the forecourt and run back to the towers behind, so
+      // the station sits in a tight pocket of town and not on a patch of waste ground
+      ...[[-66.5, 27], [-37, 30], [37, 30], [66.5, 27]].map(([x, w], i) => ({ x, z: -40.6, w, d: 56, h: 11 + (i % 2) * 3.3, type: 'walkup', brick: i % 2, tank: i < 2, fixed: true })),
+      ...[-75, -45, -15, 15, 45, 75].map((x, i) => ({ x, z: -82, w: 29, d: 26, h: [18, 26, 14.5, 22, 30, 16][i], type: i % 3 === 2 ? 'walkup' : 'tower', brick: i % 2, fixed: true }))],
     props: [
       ...[-6, 6].flatMap(x => [-24, -34].map(z => ['pump', x, z, 0])),
       ['pump', -1.3, -44, 0], ['pump', 1.3, -44, 0],

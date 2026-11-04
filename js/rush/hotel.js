@@ -15,7 +15,7 @@ export function grounds(city, G) {
   if (G.stream) stream(group, flat, marks, G.stream);
   for (const P of G.paths || []) flat.strip(P.pts, P.w, P.y ?? 0.17, P.colour || '#cdbf9c');
   if (G.loop) drive(flat, marks, G.loop);
-  if (G.carpark) carpark(flat, marks, G.carpark);
+  for (const C of [].concat(G.carpark || [])) carpark(flat, marks, C);
   for (const [x, z, w, d, r = 2] of G.lawns || []) {
     const y = city.inPark(x, z) ? 0.17 : 0.225;
     flat.poly(rounded(x, z, w + 0.6, d + 0.6, r + 0.3), y - 0.005, '#c9c2b4');
@@ -163,15 +163,15 @@ function drive(flat, marks, D) {
   }
 }
 
-// The car park: tarmac over `rect`, a white line between every bay (`bays`: [{ x, z, yaw }], 2.9 m by 5.6 m), and a
-// green island at each end of a row of them
+// The car park: tarmac over `rect`, a white line between every bay (`bays`: [{ x, z, yaw }], `bay` wide (2.9 m) by
+// 5.6 m), and a green island at each end of a row of them
 function carpark(flat, marks, C) {
-  const [x0, x1, z0, z1] = C.rect;
+  const [x0, x1, z0, z1] = C.rect, hw = (C.bay || 2.9) / 2;
   flat.poly([[x0, z0], [x1, z0], [x1, z1], [x0, z1]], 0.215, '#55575f');
   for (const B of C.bays) {
     const dz = B.yaw ? 1 : -1;     // (toward the aisle: behind the car)
-    for (const s of [-1.45, 1.45]) marks.quad([B.x + s - 0.06, B.z - 2.8], [B.x + s + 0.06, B.z - 2.8], [B.x + s + 0.06, B.z + 2.8], [B.x + s - 0.06, B.z + 2.8], 0.23, '#eeeeea');
-    marks.quad([B.x - 1.45, B.z - dz * 2.8 - 0.06 * dz], [B.x + 1.45, B.z - dz * 2.8 - 0.06 * dz], [B.x + 1.45, B.z - dz * 2.8 + 0.06 * dz], [B.x - 1.45, B.z - dz * 2.8 + 0.06 * dz], 0.23, '#eeeeea');
+    for (const s of [-hw, hw]) marks.quad([B.x + s - 0.06, B.z - 2.8], [B.x + s + 0.06, B.z - 2.8], [B.x + s + 0.06, B.z + 2.8], [B.x + s - 0.06, B.z + 2.8], 0.23, '#eeeeea');
+    marks.quad([B.x - hw, B.z - dz * 2.8 - 0.06 * dz], [B.x + hw, B.z - dz * 2.8 - 0.06 * dz], [B.x + hw, B.z - dz * 2.8 + 0.06 * dz], [B.x - hw, B.z - dz * 2.8 + 0.06 * dz], 0.23, '#eeeeea');
   }
   // (arrows down the aisle)
   for (const x of C.arrows || []) {

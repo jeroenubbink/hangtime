@@ -119,6 +119,10 @@ export class City {
     this.deck = level.deck || null;
     this.blocks = [];
     this.grid = new Map();
+    // (and what only the camera keeps clear of: a crane's steel, a water tank on a roof; see screen())
+    this.screens = new Map();
+    // (what floats, a boat: ground over the water while its `top` is up, see groundHeight)
+    this.floats = [];
     this.rand = rng(level.seed || 7);
     this.lit = [];
     this.buildRoads();
@@ -200,7 +204,12 @@ export class City {
     // (for something already down below the quay's top (its middle lower than anything lying on it), going in over the edge, the quay's edge is water too: else the
     // end of it that's still over the quay is pushed out of it, and throws it metres out across the harbour)
     // (from the ground there, not from 0: a quay needn't stand at street level)
-    if (this.water && (this.water.below(x, z) || (y - this.base(x, z) < 0.45 && this.water.beside(x, z)))) return this.water.floor;
+    if (this.water && (this.water.below(x, z) || (y - this.base(x, z) < 0.45 && this.water.beside(x, z)))) {
+      // (a boat's deck, from above it)
+      let f = -Infinity;
+      if (y < Infinity) for (const b of this.floats) if (y > b.top - 0.6 && b.top > f && this.blockDist(b, x, z, _g) < 0) f = b.top;
+      return f > -Infinity ? f : this.water.floor;
+    }
     if (this.inDeck(x, z)) {
       const top = this.deck.y + (this.isRoad(x, z, false) ? 0 : CURB), [a, b, c, d] = this.deck.rect;
       // (its middle up at the deck: one coming up beside it from below, a long lorry with its end in under the deck,
@@ -262,12 +271,22 @@ export class City {
   // Buildings near (x, z)
   near(x, z) { return this.grid.get(Math.floor(x / CELL) + ',' + Math.floor(z / CELL)) || EMPTY; }
   // Something solid (a building, a wall) over [x0, x1] x [z0, z1], in every cell near it
-  addToGrid(b, x0, x1, z0, z1) {
+  addToGrid(b, x0, x1, z0, z1, grid = this.grid) {
     for (let i = Math.floor(x0 / CELL) - 1; i <= Math.floor(x1 / CELL) + 1; i++) for (let k = Math.floor(z0 / CELL) - 1; k <= Math.floor(z1 / CELL) + 1; k++) {
       const key = i + ',' + k;
-      if (!this.grid.has(key)) this.grid.set(key, []);
-      this.grid.get(key).push(b);
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push(b);
     }
+  }
+  // Something in the way of the view but not of the cars, `b`: { x, z, w, d, floor, top }, square to the axes
+  screen(b) {
+    Object.assign(b, { ca: 1, sa: 0 });
+    this.addToGrid(b, b.x - b.w / 2, b.x + b.w / 2, b.z - b.d / 2, b.z + b.d / 2, this.screens);
+  }
+  // Buildings near (x, z), and what only the camera keeps out of
+  seen(x, z) {
+    const s = this.screens.get(Math.floor(x / CELL) + ',' + Math.floor(z / CELL));
+    return s ? this.near(x, z).concat(s) : this.near(x, z);
   }
   // Signed distance from (x, z) to a block's footprint, and the outward normal
   blockDist(b, x, z, n) {
@@ -535,6 +554,7 @@ export class City {
     pave.receiveShadow = true;
     this.group.add(pave);
     this.group.add(buildingMesh(this.blocks, rand, L.palette));
+    for (const b of this.blocks) if (b.tankAt) { const [x, z, y] = b.tankAt; this.screen({ x, z, w: 3.2, d: 3.2, floor: y, top: y + 5.2 }); }
     for (const b of this.blocks) if (b.deck) this.group.add(deckMesh(b));
   }
 
@@ -982,6 +1002,7 @@ function buildingMesh(blocks, rand, palette = TOWER) {
       const lx = (rand() - 0.5) * Math.max(0, rw - 5), lz = (rand() - 0.5) * Math.max(0, rd - 5);
       const [x, z] = W(lx, lz);
       if (b.tank) {
+        b.tankAt = [x, z, roofY];
         for (const [i, k] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) details.push([new THREE.BoxGeometry(0.16, 1.8, 0.16).translate(x + i * 0.9, roofY + 0.9, z + k * 0.9), '#4a4440']);
         details.push([new THREE.CylinderGeometry(1.35, 1.35, 2.4, 12).translate(x, roofY + 3, z), '#8a6a4a']);
         details.push([new THREE.ConeGeometry(1.5, 0.9, 12).translate(x, roofY + 4.65, z), '#5a4a3e']);

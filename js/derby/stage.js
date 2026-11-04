@@ -86,7 +86,7 @@ export function createStage(canvas) {
   }
 
   let time = 'day';
-  // (a game can bring its own take on a time of day, `t`)
+  // (`t`: a time of the game's own, that isn't one of these)
   function setTime(key, t = TIMES[key] || TIMES.day) {
     time = key;
     setSky(...t.sky);

@@ -226,12 +226,13 @@ export class Traffic {
     // Parked vehicles stand on a short lane of their own, at its red light. (With `parkedSeed`, they're picked and
     // painted from random numbers of their own, not the traffic's: cars parked in a level that's already being learned
     // leave its traffic as it was.)
-    const own = level.parkedSeed != null ? rng(level.parkedSeed) : null;
+    // (or only the ones marked `own`, when some of them were there first)
+    const own = level.parkedSeed != null ? rng(level.parkedSeed) : null, some = level.parked?.some(P => P.own);
     for (const P of level.parked || []) {
       const fx = -Math.sin(P.yaw || 0), fz = -Math.cos(P.yaw || 0), len = TRAFFIC[P.kind || 'saloon'].size[1];
       this.lanes.push(new Lane(city, { path: [[P.x - fx * 6, P.z - fz * 6], [P.x + fx * 6, P.z + fz * 6]], speed: [0, 0], gap: [0, 0],
         stop: 6 + len / 2 + 1, queue: [P.kind || null], parked: true, hp: P.hp }, this.lanes.length));
-      if (own) this.lanes[this.lanes.length - 1].rand = own;
+      if (own && (!some || P.own)) this.lanes[this.lanes.length - 1].rand = own;
     }
     this.list = [];
     this.input = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false };

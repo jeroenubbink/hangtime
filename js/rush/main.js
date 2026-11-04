@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { loadCarKits, kitScene, buildCarModel, paintOf, WHEELS, HULL } from '../car.js';
 import { Sound } from '../audio.js';
 import * as store from '../store.js';
-import { createStage, TIMES } from '../derby/stage.js';
+import { createStage, TIMES as STAGE_TIMES } from '../derby/stage.js';
 import { Puffs, Debris } from '../derby/fx.js';
 import { Vehicle, contact, damageFrom, subdivide } from '../derby/vehicle.js';
 import { loadSceneryKit } from '../scenery.js';
@@ -18,9 +18,15 @@ import { ITEMS, drawIcon } from '../derby/pickups.js';
 import { Traffic } from './traffic.js';
 import { Props } from './props.js';
 import { buildStation as stationModel, DEBRIS_COLOURS } from './station.js';
+import { crane, Boat } from './harbour.js';
+import { fixtures } from './fixtures.js';
+import { gateway } from './gateway.js';
+import { roadsign } from './roadsign.js';
+import { filmset } from './filmset.js';
 import { RIDES, TRAFFIC, TRAFFIC_PAINTS } from './roster.js';
 import { Recorder, FLAGS, canSend, send } from './replay.js';
 import { Guides } from './guides.js';
+import { Oranges } from './oranges.js';
 import { t, tl, translatePage, langButton } from '../i18n.js';
 import './nl.js';
 
@@ -33,7 +39,7 @@ const files = new Set([...Object.values(RIDES), ...Object.values(TRAFFIC)].flatM
 await Promise.all([
   ...[...files, ...Object.values(DEBRIS)].map(f => loadCarKits([f]).catch(() => console.info('No model', f))),
   loadSceneryKit().catch(e => console.warn('Scenery not loaded:', e)), loadSceneryKit('derby').catch(() => {}),
-  loadSceneryKit('hotel').catch(() => {}),
+  loadSceneryKit('hotel').catch(() => {}), loadSceneryKit('docks').catch(() => {}), loadSceneryKit('works').catch(() => {}), loadSceneryKit('bridge').catch(() => {}), loadSceneryKit('film').catch(() => {}),
 ]);
 $('loading').remove();
 
@@ -66,6 +72,7 @@ const AIM = 20, AIM_SLOW = 0.3, AIM_TURN = 3.5, AIM_PUSH = 14, AIM_TOP = 24;
 const REACH = 11;
 const DIVE_SLOW = 0.32, PITCH = 2.6, YAW = 2.2, NITRO = 2.5, THRUST = 26, AIR_G = 1.8, SLAM = 16;
 const BLOWN = 1.5;   // seconds watching your car blow, from behind where you aimed it, before the crash cam takes over
+const BOAT_SHOT = 5;  // seconds (the simulation's) of the yacht going down that the camera stops to watch
 
 // ---------- Stage ----------
 const stage = createStage($('view'));
@@ -83,15 +90,20 @@ const DRAFTS = new URLSearchParams(location.search).has('drafts');
 const LEVELS = Object.fromEntries(Object.entries(ALL_LEVELS).filter(([, L]) => DRAFTS || !L.draft));
 
 // ---------- Settings & records ----------
+// The times of day: the stage's, and Gridlock Leap's own, a hot hazy afternoon, the far end of the street lost in it
+const TIMES = { ...STAGE_TIMES,
+  haze: { label: 'Haze', sky: ['#9fb6c8', '#d3d6cf', '#ece4cf'], fog: ['#ddd6c3', 40, 430], hemi: ['#f2ead8', '#8a7a5e', 1.7],
+    sun: ['#fff1cf', 1.6, [70, 95, 55]], orb: '#fff6de', stars: 0, lamps: 0 },
+};
 const settings = Object.assign({ level: 'cross', car: 'comet', time: 'day' }, store.load('rush.settings', {}));
 const records = Object.assign({ best: {}, medals: {} }, store.load('rush.records', {}));
 if (!LEVELS[settings.level]) settings.level = 'cross';
 if (!RIDES[settings.car]) settings.car = 'comet';
-if (!['day', 'sunset'].includes(settings.time)) settings.time = 'day';
+if (!TIMES[settings.time]) settings.time = 'day';
 // The time of day's picked for each level: until it is, the one the level suggests for its mood (Tower Dive's at
 // sunset), or the one that was picked for them all before there was a pick each
 // (a draft's kept too, when it isn't shown: it's still there the next time it is)
-settings.times = Object.fromEntries(Object.entries(settings.times || {}).filter(([k, t]) => ALL_LEVELS[k] && ['day', 'sunset'].includes(t)));
+settings.times = Object.fromEntries(Object.entries(settings.times || {}).filter(([k, t]) => ALL_LEVELS[k] && TIMES[t]));
 const timeFor = key => settings.times[key] || LEVELS[key].time || settings.time;
 let time = 'day';
 // The guide lines are for testing only: rush.html?guides
@@ -99,14 +111,15 @@ const GUIDES = new URLSearchParams(location.search).has('guides');
 const saveSettings = () => store.save('rush.settings', settings);
 // Rushtime's own day and sunset: teal and orange, a cool sky and shade with a warm sun on the cars (and `grade`, how
 // far the picture's split, teal in the shadows and orange in the light)
-const LOOKS = {
+const LOOKS = { ...TIMES,
   day: { ...TIMES.day, sky: ['#1d7fa6', '#6cc2cc', '#f0dcc0'], fog: ['#c2dcd8', 160, 700], hemi: ['#a6d6dc', '#7a5a3c', 1.5],
     sun: ['#fff0dc', 2.3, [60, 110, 40]], orb: '#fff2d8', grade: 1 },
   sunset: { ...TIMES.sunset, sky: ['#1f3460', '#b8678e', '#ffae66'], hemi: ['#ffc4a8', '#2f3c50', 1.1], grade: 0.5 },
+  haze: { ...TIMES.haze, grade: 0.4 },
 };
 
 // ---------- World ----------
-let city = null, props = null, traffic = null, debris = null, player = null, guides = null, stacks = null, standIns = null;
+let city = null, props = null, traffic = null, debris = null, oranges = null, player = null, guides = null, stacks = null, standIns = null;
 const crates = [];
 let halves = [];
 const G = { state: 'menu', t: 0, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0 };
@@ -195,11 +208,25 @@ function loadLevel(key) {
   props?.dispose();
   city = new City(scene, LEVELS[key]);
   city.key = key;
+  // (Dockside Drop's crane over the jetty, and the yacht beside it)
+  if (city.level.crane) city.group.add(crane(city, city.level.crane));
+  // (and Gridlock Leap's building site)
+  if (city.level.fixtures) city.group.add(fixtures(city, city.level.fixtures));
+  // (and Over the Edge's bridge, dressed up)
+  if (city.level.gateway) city.group.add(gateway(city, city.level.gateway));
+  // (and Last Chance's sign up ahead, saying how far to the station)
+  if (city.level.roadsign) city.group.add(roadsign(city, city.level.roadsign));
+  // (and Short Cut's film shoot, and its two famous corners)
+  if (city.level.filmset) city.group.add(filmset(city, city.level.filmset));
+  G.boat?.dispose();
+  G.boat = city.level.boat ? new Boat(scene, city, city.level.boat) : null;
   guides?.dispose();
   guides = GUIDES ? new Guides(scene, city) : null;
   // (asked from half a metre up, about where a car's middle would be: a small piece lying on the quay has its middle
   // lower than the quay's edge takes for gone over it, see groundHeight, and would drop through the stone)
   debris = new Debris(scene, (x, z, y) => city.groundHeight(x, z, y + 0.5));
+  oranges?.dispose();
+  oranges = new Oranges(scene, (x, z, y) => city.groundHeight(x, z, y));
   time = timeFor(key);
   setLook(time);
 }
@@ -233,6 +260,7 @@ function startRun(pre) {
   const L = city.level;
   clearRun();
   dress(L);
+  G.boat?.reset();
   // Scripted: the same traffic every time, so a junction can be learned. The traffic always gets exactly
   // PRE_ALL seconds of driving before GO, however much of the intro you watch.
   G.rand = rng(L.seed * 7919 + 17);
@@ -441,19 +469,23 @@ function scoreEvent(v, pts, label, big = false, type = 'dent') {
 const DAMAGE = {
   fall: [t('Sky falls'), '#7fe0ff'],
   dent: [t('Dents'), '#ffd23a'], wreck: [t('Wrecked'), '#ff8a1e'], split: [t('Torn in half'), '#ff3d7a'],
-  blast: [t('Blast'), '#ff2a2a'], splash: [t('Splashdown'), '#2ee6ff'], prop: [t('Street furniture'), '#9be36b'],
+  blast: [t('Blast'), '#ff2a2a'], splash: [t('Splashdown'), '#2ee6ff'], sunk: [t('Sunk'), '#3a7bff'], prop: [t('Street furniture'), '#9be36b'],
+  squeezed: [t('Squeezed'), '#ff9a1f'],
 };
 const NAMES = Object.fromEntries(Object.entries({ hatch: 'Hatchback', coupe: 'Coupé', cab: 'Taxi', saloon: 'Saloon', suv: 'SUV', pickup: 'Pickup',
   police: 'Police car', van: 'Van', garbage: 'Garbage truck', bus: 'Bus', tanker: 'Fuel tanker', lorry: 'Box lorry', flatbed: 'Flatbed' }).map(([k, n]) => [k, t(n)]));
 function tally(v, type, p, pos) {
   const C = G.crash;
-  const key = v || 'props';
+  // (`v`: a vehicle, the yacht, something with a row of its own in the ledger (`own`), or null for street furniture)
+  const key = v || 'props', boat = v && v === G.boat, own = v?.own;
   let e = C.ledger.get(key);
-  if (!e) C.ledger.set(key, e = v ? { name: NAMES[v.kind] || v.kind, colour: v.colour, gen: v.gen, by: {}, total: 0 } : { name: DAMAGE.prop[0], colour: '#9be36b', gen: 0, by: {}, total: 0 });
+  if (!e) C.ledger.set(key, e = boat ? { name: t(v.B.name), colour: '#f4f2ec', gen: 0, by: {}, total: 0 }
+    : own ? { name: t(own), colour: v.colour, gen: 0, by: {}, total: 0 }
+    : v ? { name: NAMES[v.kind] || v.kind, colour: v.colour, gen: v.gen, by: {}, total: 0 } : { name: DAMAGE.prop[0], colour: '#9be36b', gen: 0, by: {}, total: 0 });
   e.by[type] = (e.by[type] || 0) + p;
   e.total += p;
-  G.rec?.event(G.t, 'score', { id: v ? v.id : 'props', what: type, pts: p, at: [pos.x, pos.y, pos.z].map(n => Math.round(n * 10) / 10) });
-  if (!v) C.spots.push({ pos: pos.clone(), p });
+  G.rec?.event(G.t, 'score', { id: boat ? 'boat' : v ? v.id : 'props', what: type, pts: p, at: [pos.x, pos.y, pos.z].map(n => Math.round(n * 10) / 10) });
+  if (!v || own) C.spots.push({ pos: pos.clone(), p });
   let inc = C.incidents.find(i => !i.el && i.pos.distanceTo(pos) < 9);
   if (!inc) C.incidents.push(inc = { pos: pos.clone(), at: C.rt, total: 0, by: {}, n: 0 });
   inc.n++;
@@ -637,8 +669,49 @@ function blast(X, p, R, big) {
   startle(p, 70);
   // (a blast beside the petrol station sets it off)
   if (canLight(X) && atStation(p, 4)) ignite(p, X);
+  // (and a tanker going up beside the yacht sends it down)
+  if (X.def.explosive && G.boat && G.boat.dist(p) < SINK && G.boat.sink()) sunk(X);
   if (G.crash) spike(0.2, 1.1);
   G.shake = Math.max(G.shake, player && player.car.pos.distanceTo(p) < 40 ? 1 : 0.4);
+}
+
+// Down goes the yacht: its own score, its own line in the wreck report and its own heap on the tour
+const SINK = 22;
+// Short Cut's fruit stand, gone through: oranges everywhere, and it's worth something (paid once the crash has begun, if
+// you went through it before)
+const STAND = { own: 'Orange stand', id: 'stand', colour: '#ff9a1f' }, STAND_PTS = 5000;
+function squeezed(k) {
+  const p = k.prop, at = new THREE.Vector3(p.x, p.y + 1, p.z), v = k.vehicle.car.vel;
+  G.rec?.event(G.t, 'squeezed', { by: k.vehicle.id });
+  oranges.burst(p.x, p.y, p.z, v);
+  for (let i = 0; i < 40; i++) {
+    const a = Math.random() * Math.PI * 2, u = 1 + Math.random() * 5;
+    glow.emit(at.x, at.y, at.z, Math.cos(a) * u + v.x * 0.2, 1 + Math.random() * 5, Math.sin(a) * u + v.z * 0.2,
+      { life: 0.4 + Math.random() * 0.5, size: 0.15 + Math.random() * 0.25, gravity: 10, colour: i % 2 ? '#ffb347' : '#ff8a1a', alpha: 0.9 });
+  }
+  sound.splash();
+  if (!(k.vehicle === player || k.vehicle.gen > 0)) return;
+  if (G.state === 'run') { G.standAt = at; (G.unpaid ||= []).push(STAND); }
+  else if (G.state === 'crash' && !G.ended) fruit(at);
+}
+function fruit(at) {
+  G.score += STAND_PTS;
+  G.crash.quiet = 0;
+  tally(STAND, 'squeezed', STAND_PTS, at);
+  callout(`${t('FRESH SQUEEZED')}<small>+${STAND_PTS.toLocaleString()}</small>`, 'big');
+}
+function sunk(X) {
+  const B = G.boat, p = B.spot;
+  G.rec?.event(G.t, 'sunk', { by: X.id });
+  if (G.crash) G.crash.boatFrom = X.car.pos.clone();
+  splash(p, 70);
+  sound.splash();
+  if (G.state !== 'crash' || G.ended) return;
+  const pts = B.B.pts;
+  G.score += pts;
+  G.crash.quiet = 0;
+  tally(B, 'sunk', pts, p);
+  callout(`${t('SHIP SUNK')}<small>+${pts.toLocaleString()}</small>`, 'big');
 }
 
 // The crash zone: around where you crashed, and the junction
@@ -720,6 +793,7 @@ function pillars(S) {
 function dress(L) {
   props?.dispose();
   props = new Props(scene, city, [...(L.props || []), ...pillars(L.station)]);
+  oranges?.clear();
   buildStation(L.station);
 }
 // (its materials and textures are made once and kept: see station.js)
@@ -1013,7 +1087,7 @@ function startCrash(h, other, fromAir = false) {
   G.crash = { t: 0, rt: 0, quiet: 0, focus: h.point.clone(), origin: h.point.clone(), subject: player, side: 1, ang: 0, dist: 13, cutT: 0, lastSpike: G.t,
     incidents: [], ledger: new Map(), spots: [], popSum: 0, popN: 0,
     aim: { t: 0, yaw, meter: 0, tagged: new Set(), was: true, done: false } };
-  for (const u of G.unpaid || []) paid(u);
+  for (const u of G.unpaid || []) u === STAND ? fruit(G.standAt) : paid(u);
   G.unpaid = null;
   // Start the camera low beside the impact, looking across the way you came in
   G.crash.ang = Math.atan2(-f.x, -f.z) + (Math.random() < 0.5 ? 1 : -1) * (0.9 + Math.random() * 0.5);
@@ -1376,11 +1450,13 @@ function step() {
       sound.thud(4);
       sparks(_pp.set(k.prop.x, k.prop.y + 1, k.prop.z), 8);
       if (k.prop.kind === 'hydrant') G.geysers.push({ p: new THREE.Vector3(k.prop.x, k.prop.y, k.prop.z), t: 7 });
+      if (k.prop.kind === 'fruitstand') squeezed(k);
       if (k.vehicle === player && G.state === 'run') G.shake = Math.max(G.shake, 0.35);
       if (G.state === 'crash' && (k.vehicle.gen > 0 || k.vehicle === player)) { G.score += 30; G.crash.quiet = 0; tally(null, 'prop', 30, _pp.set(k.prop.x, k.prop.y, k.prop.z)); }
       if ((k.prop.kind === 'pump' || k.prop.kind === 'pillar') && canLight(k.vehicle) && k.vehicle.car.vel.length() > 8) ignite(k.vehicle.car.pos, k.vehicle);
     }
     station(all);
+    G.boat?.update(DT, (p, n) => splash(p, n));
     if (G.state === 'run') {
       G.oncoming = oncoming();
       nearMisses();
@@ -1555,7 +1631,7 @@ function interest(v, all) {
 // last moment, within WIDE_REACH of it, in incidents (whatever's within 7 m of the busiest). Two or more incidents
 // that each amount to something: returns the middle of them (weighted by how much is going on) and how far out they
 // go (and where each one is). One (however busy): null, the usual shot does that.
-const WIDE_REACH = 40, WIDE_MAX = 16;
+const WIDE_REACH = 40, WIDE_MAX = 16, WIDE_HOLD = 8;
 const _wc = new THREE.Vector3();
 function together(all, ks, anchor) {
   const pts = [];
@@ -1614,6 +1690,8 @@ function heaps() {
   const C = G.crash, items = [];
   for (const [v, e] of C.ledger) {
     if (v === 'props') continue;
+    // (the yacht: a heap of its own, where it went down)
+    if (v === G.boat) { items.push({ pos: v.spot, pts: e.total, by: e.by, boat: true }); continue; }
     const hs = halves.filter(h => h.owner === v);
     // (not one that's driven on out of it and gone: there's nothing left there to see)
     if (!hs.length && !traffic.list.includes(v)) continue;
@@ -1625,8 +1703,9 @@ function heaps() {
   // (one on a bridge and one under it are as good as far apart, and so are one up on a roof and one down in the street:
   // together, their middle's in the building between)
   const D = city.deck, over = y => !D || y > D.y - 1.6;
-  const apart = (a, b) => Math.hypot(a.x - b.x, a.z - b.z) + (over(a.y) !== over(b.y) || Math.abs(a.y - b.y) > 6 ? 1000 : 0);
-  let gs = items.map(i => ({ items: [i], x: i.pos.x, y: i.pos.y, z: i.pos.z }));
+  // (and the yacht's never one with anything else)
+  const apart = (a, b) => Math.hypot(a.x - b.x, a.z - b.z) + (over(a.y) !== over(b.y) || Math.abs(a.y - b.y) > 6 || a.boat !== b.boat ? 1000 : 0);
+  let gs = items.map(i => ({ items: [i], x: i.pos.x, y: i.pos.y, z: i.pos.z, boat: !!i.boat }));
   for (;;) {
     let bi = -1, bj = -1, bd = Infinity;
     for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++) {
@@ -1642,10 +1721,10 @@ function heaps() {
     gs.splice(bj, 1);
   }
   // Street furniture on its own goes with the nearest vehicles (if any are near), the rest of it in one heap
-  const cars = gs.filter(g => g.items.some(i => i.v)), loose = [];
+  const cars = gs.filter(g => g.items.some(i => i.v || i.boat)), loose = [];
   for (const g of gs) {
     if (cars.includes(g)) continue;
-    const to = cars.reduce((a, o) => { const d = apart(o, g); return d < 30 && d < a.d ? { o, d } : a; }, { o: null, d: Infinity }).o;
+    const to = cars.filter(o => !o.boat).reduce((a, o) => { const d = apart(o, g); return d < 30 && d < a.d ? { o, d } : a; }, { o: null, d: Infinity }).o;
     if (to) to.items.push(...g.items); else loose.push(...g.items);
   }
   gs = cars;
@@ -1660,7 +1739,7 @@ function heaps() {
     }
     g.c.divideScalar(items.length);
     for (const i of items) { g.r = Math.max(g.r, Math.hypot(i.pos.x - g.c.x, i.pos.z - g.c.z)); g.top = Math.max(g.top, i.pos.y); }
-    g.c.y = city.groundHeight(g.c.x, g.c.z, g.top + 1) + 1;
+    g.c.y = items.some(i => i.boat) ? city.water.y + 1.5 : city.groundHeight(g.c.x, g.c.z, g.top + 1) + 1;
     outOfBlocks(g.c);
     g.D = clamp(11 + g.r * 1.4, 14, 42);
     g.wrecked = g.cars.filter(i => i.v.wrecked).length;
@@ -1679,6 +1758,7 @@ function heapName(g, top, used) {
   const C = G.crash, n = g.cars.length, by = t => (g.by[t] || 0) / g.pts;
   const far = Math.hypot(g.c.x - C.origin.x, g.c.z - C.origin.z) > 35;
   const out = [];
+  if (g.items.some(i => i.boat)) out.push(['Abandon Ship', 'Not So Unsinkable', 'Davy Jones', 'Man Overboard', 'Sleeping with the Fishes']);
   if (top && n >= 8) out.push(['The Big Pile', 'Mount Crumple', 'Rush Hour Lasagne', 'The Insurance Claim', 'Scrapheap Summit']);
   if (top && n >= 3) out.push(['The Pile', 'The Car Salad', 'Knotted Up', 'Stacked Deck', 'Some Assembly Required']);
   if (by('splash') > 0.3) out.push(n > 1 ? ['The Deep End', 'Swimming Lessons', 'Park and Swim', 'Sunk Costs', 'Car Wash Deluxe']
@@ -1872,7 +1952,7 @@ function blocked(from, to) {
   for (let i = 1; i < 10; i++) {
     _s.lerpVectors(from, to, i / 10);
     if (deck && city.inDeck(_s.x, _s.z) && _s.y < D.y + 0.2 && _s.y > D.y - 1.6) return true;
-    for (const b of city.near(_s.x, _s.z)) if (_s.y < b.top && !(_s.y < b.floor) && city.blockDist(b, _s.x, _s.z, _w) < 0) return true;
+    for (const b of city.seen(_s.x, _s.z)) if (!b.thin && solid(b, _s, 0)) return true;
     for (const q of props.near(_s.x, _s.z)) {
       if (q.alive && q.h >= 3 && _s.y < q.y + q.h + 0.4 && Math.hypot(q.x - _s.x, q.z - _s.z) < (q.kind === 'tree' ? 2.4 : 0.6)) return true;
     }
@@ -1886,7 +1966,7 @@ const _c = new THREE.Vector3(), _l = new THREE.Vector3();
 function clear(from, p) {
   for (let i = 0; i < 12; i++) {
     let inside = false;
-    for (const b of city.near(p.x, p.z)) if (p.y < b.top && !(p.y < b.floor) && city.blockDist(b, p.x, p.z, _w) < 0.6) { inside = true; break; }
+    for (const b of city.seen(p.x, p.z)) if (solid(b, p, 0.6)) { inside = true; break; }
     if (!inside) break;
     p.lerp(from, 0.2);
   }
@@ -1942,11 +2022,42 @@ function liftOver(p, b, cap = Infinity) {
   p.copy(_s.applyQuaternion(c.q).add(c.pos));
   return true;
 }
+// The yacht going down: from out over the water past it, the blast that did it behind, round toward the shore (where
+// its name is), drifting in a little; then a cut back to the crash cam
+const _bs = new THREE.Vector3();
+function boatShot(rawDt) {
+  const C = G.crash, b = G.boat.B, f = C.boatFrom, W = city.water.y;
+  if (!C.boatCam) {
+    let dx = b.x - f.x, dz = b.z - f.z;
+    const l = Math.hypot(dx, dz) || 1;
+    dx /= l; dz /= l;
+    // (square to that, the way that's toward the shore: the water's on the -z side of it)
+    const k = dx < 0 ? 1 : -1, px = dz * k, pz = -dx * k;
+    C.boatCam = { p: new THREE.Vector3(b.x + dx * 16 + px * 14, W + 7, b.z + dz * 16 + pz * 14), l: new THREE.Vector3(b.x * 0.75 + f.x * 0.25, W + 1.5, b.z * 0.75 + f.z * 0.25) };
+    camera.position.copy(C.boatCam.p);
+  }
+  const k = G.boat.sunk.t / BOAT_SHOT;
+  _bs.copy(C.boatCam.p).lerp(C.boatCam.l, 0.18 * k);
+  camera.position.lerp(_bs, 1 - Math.exp(-rawDt * 4));
+  clear(C.boatCam.l, camera.position);
+  outside(camera.position);
+  camera.up.set(0, 1, 0);
+  camera.lookAt(C.boatCam.l);
+  C.on = 'boat';
+  // (and once it's done, straight to wherever the crash cam is, not a swoop across the harbour)
+  C.cutNow = true;
+}
 // Where the crash camera follows `S` from: behind it, the way it's going, and out to `side`, up a little
 const _b = new THREE.Vector3();
 function inBlock(p, m = 0.6) {
-  for (const b of city.near(p.x, p.z)) if (p.y < b.top && !(p.y < b.floor) && city.blockDist(b, p.x, p.z, _w) < m) return true;
+  for (const b of city.seen(p.x, p.z)) if (solid(b, p, m)) return true;
   return false;
+}
+// Whether `p` is in `b` (a building, or what only the camera keeps out of, see City.screen), or within `m` of it; and
+// with any room, as far from it as it asks (a crane's steel, close up, is all you'd see)
+function solid(b, p, m) {
+  const pad = m > 0 ? b.pad || 0 : 0;
+  return p.y < b.top + pad && !(p.y < b.floor - pad) && city.blockDist(b, p.x, p.z, _w) < m + pad;
 }
 const _rt = new THREE.Vector3();
 function roundTo(p, c) {
@@ -2070,11 +2181,16 @@ function updateCamera(dt, rawDt) {
     _c.y = Math.max(c.pos.y, city.groundHeight(_c.x, _c.z, c.pos.y + 2)) + 5.5 + 9 * k;
     clear(c.pos, _c);
     camera.position.lerp(_c, 1 - Math.exp(-rawDt * 6));
+    // (and on its way there, never in one either)
+    clear(c.pos, camera.position);
     // (on Tower Dive the stacks are still coming down round you: up out of any car, or box, that's where it is)
     if (city.level.dive) outside(camera.position);
     _l.copy(c.pos).addScaledVector(cam.dir, 12).setY(c.pos.y);
     camera.lookAt(_l);
     fov = 68;
+  } else if (G.crash && G.state !== 'run' && G.boat?.sunk && G.boat.sunk.t < BOAT_SHOT && G.crash.boatFrom) {
+    boatShot(rawDt);
+    fov = 50;
   } else if (G.crash && G.state !== 'run') {
     // Crash cam: it follows the action. First your car, wherever it goes; then whatever's most worth
     // watching (something about to hit, or a wreck still flying), held at least SHOT seconds unless it comes
@@ -2096,8 +2212,10 @@ function updateCamera(dt, rawDt) {
     // (each shot held a while, wide or not: none in for under 2 s, out again, and in again)
     C.wideT = (C.wideT || 0) + rawDt;
     const T = together(all, ks, C.wide ? C.wide.at : C.subject ? C.subject.car.pos : C.focus);
-    if (T && (C.wide || (C.wideT > 2 && C.cutT > 2))) { if (!C.wide) { C.wide = { at: T.at.clone(), r: T.r }; C.wideT = 0; } C.wideOff = 0; }
-    else if (C.wide && (C.wideOff = (C.wideOff || 0) + rawDt) > 1.5 && C.wideT > SHOT) {
+    // (but never for long: past WIDE_HOLD it's back in, for a full shot, however much is still going on)
+    if (T && (C.wide ? C.wideT <= WIDE_HOLD : C.wideT > 2 && C.cutT > (C.wideBack || 2))) { if (!C.wide) { C.wide = { at: T.at.clone(), r: T.r }; C.wideT = 0; C.wideBack = 0; } C.wideOff = 0; }
+    else if (C.wide && ((C.wideOff = (C.wideOff || 0) + rawDt) > 1.5 && C.wideT > SHOT || C.wideT > WIDE_HOLD)) {
+      if (C.wideT > WIDE_HOLD) C.wideBack = SHOT;
       C.wide = null;
       C.wideT = 0;
       // (back in on whatever's most worth watching now, held a full shot: not on the one it had before it went wide,
@@ -2537,7 +2655,8 @@ function renderMenu() {
   }
   const tod = $('tod');
   tod.innerHTML = '';
-  for (const k of ['day', 'sunset']) {
+  // (day, sunset, and the level's own if it has one of its own)
+  for (const k of new Set(['day', 'sunset', city.level.time || 'day'])) {
     const b = document.createElement('button');
     b.className = k === time ? 'active' : '';
     b.textContent = t(LOOKS[k].label);
@@ -2658,6 +2777,7 @@ function tick(raw, draw = true) {
   effects(dt, raw);
   for (const k of crates) { k.m.rotation.y += raw * 1.6; k.m.position.y = k.y + Math.sin(G.t * 2.4 + k.x) * 0.2; }
   debris.update(dt);
+  oranges.update(dt);
   smoke.update(dt, camera, renderer.domElement.height);
   glow.update(dt, camera, renderer.domElement.height);
   // Rush on screen: blur, wider view, streaks
@@ -2746,6 +2866,8 @@ function replay(R) {
     } else cars[id] = new Car(city, scene, 0, trafficDef(b.kind), b.paint);
   }
   const F = R.frames, _q = new THREE.Quaternion(), _p = new THREE.Vector3(), look = new THREE.Vector3();
+  // (and the yacht, afloat till it went down)
+  const sank = R.events?.find(e => e.type === 'sunk')?.t;
   return {
     frames: F.length, start: F[0].t, end: F[F.length - 1].t,
     seek(t, view) {
@@ -2773,6 +2895,8 @@ function replay(R) {
         v.pose();
         v.model.visible = true;
       }
+      G.boat?.reset();
+      if (G.boat && sank != null && t > sank) { G.boat.sink(); G.boat.update(t - sank, () => {}); }
       const c = view || a.cam.map((n, i) => n + (b.cam[i] - n) * k);
       camera.position.set(c[0], c[1], c[2]);
       camera.up.set(0, 1, 0);
@@ -2785,7 +2909,7 @@ function replay(R) {
     },
   };
 }
-G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, get standIns() { return standIns; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay, renderer, blowUp };
+G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, get standIns() { return standIns; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay, renderer, blowUp, heaps, report, startCrash };
 toMenu();
 if (!store.load('rush.seenHelp', false)) showScreen('help');
 requestAnimationFrame(frame);
