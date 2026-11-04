@@ -102,6 +102,8 @@ export class City {
     this.roads = level.roads.map(road);
     this.base = level.height || (() => 0);
     this.ramps = (level.ramps || []).map(arc);
+    // (everything the ramps cover, to look no further for most of the town)
+    this.rampBox = this.ramps.reduce((b, r) => [Math.min(b[0], r.x - r.w / 2), Math.max(b[1], r.x + r.w / 2), Math.min(b[2], r.z - r.len), Math.max(b[3], r.z)], [Infinity, -Infinity, Infinity, -Infinity]);
     // Where two big ramps meet side by side, a fin between them (see contain): { x, a, b }, a on its left
     this.fins = [];
     for (const a of this.ramps) for (const b of this.ramps) {
@@ -204,7 +206,8 @@ export class City {
       return this.base(x, z) + (this.isRoad(x, z, true) ? 0 : CURB);
     }
     let h = this.base(x, z) + (this.isRoad(x, z) ? 0 : CURB);
-    for (const r of this.ramps) {
+    const [ra, rb, rc, rd] = this.rampBox;
+    if (x >= ra && x <= rb && z >= rc && z <= rd) for (const r of this.ramps) {
       if (Math.abs(x - r.x) > r.w / 2) continue;
       const t = (r.z - z) / r.len;   // 0 at the foot, 1 at the lip (ramps face -z)
       if (t <= 0 || t >= 1) continue;

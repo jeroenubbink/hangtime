@@ -6,7 +6,8 @@ import * as THREE from 'three';
 
 export const BOX = { w: 2.7, l: 5.4, h: 2.3 };     // a box, outside: wide, long, high
 const RIDE = 0.9;
-const LOD = 260;                                   // a car's middle over its box's floor
+const LOD = 260;
+const CELL = 8;                                   // a car's middle over its box's floor
 const KINDS = ['hatch', 'coupe', 'saloon', 'cab', 'suv', 'police', 'hatch', 'saloon'];
 const _q = new THREE.Quaternion(), _up = new THREE.Vector3(0, 1, 0), _m = new THREE.Matrix4(), _s = new THREE.Vector3(), _p = new THREE.Vector3();
 
@@ -55,8 +56,11 @@ export class Stacks {
           c2.vel.set(0, 0, 0); c2.w.set(0, 0, 0); c2.speed = 0;
           for (const w of c2.wheels) { w.comp = 0.08; w.contact = true; }
           Object.assign(v, { held: true, stack: { col, tier: h, box: k, home: c2.pos.clone() }, asleep: false });
-          // (no shadow while it stands still in its box: there are a lot of them)
+          // (no shadow while it stands still in its box, and its dents in its own plain mesh, not a finer one made when
+          // it's first hit: there are a lot of them, and they all get hit at once)
           v.model.traverse(o => { if (o.isMesh) o.castShadow = false; });
+          v.soft = true;
+          for (const m of v.model.userData.bodyMeshes) m.userData.orig = m.geometry.attributes.position.array.slice();
           _m.compose(_p.set(x, y0 + h * BOX.h, z), _q.setFromAxisAngle(_up, yaw), _s.set(1, 1, 1));
           this.glass.setMatrixAt(k, _m);
           this.frame.setMatrixAt(k, _m);
@@ -68,6 +72,13 @@ export class Stacks {
       }
     });
     scene.add(this.glass, this.frame);
+    // (by CELL m square, for finding the boxes near something loose: they never move while they're boxed)
+    this.grid = new Map();
+    for (const v of this.list) {
+      const key = Math.floor(v.car.pos.x / CELL) + ',' + Math.floor(v.car.pos.z / CELL);
+      if (!this.grid.has(key)) this.grid.set(key, []);
+      this.grid.get(key).push(v);
+    }
     this.pending = [];     // [{ v, at, dir, by }]: boxes over a fallen one, about to go
     this.down = 0;         // columns that have started to fall
   }
@@ -111,6 +122,14 @@ export class Stacks {
       this.pending.splice(i, 1);
       this.release(P.v, P.dir, P.by, t, onRelease);
     }
+  }
+
+  // The boxes (held or not) in the cells round p: everything boxed that something at p could be touching
+  around(p) {
+    const cx = Math.floor(p.x / CELL), cz = Math.floor(p.z / CELL), out = this._near || (this._near = []);
+    out.length = 0;
+    for (let i = -1; i <= 1; i++) for (let k = -1; k <= 1; k++) { const c = this.grid.get(cx + i + ',' + (cz + k)); if (c) out.push(...c); }
+    return out;
   }
 
   // Far off, a box is just glass: its car shows from LOD m in (there are a lot of them)

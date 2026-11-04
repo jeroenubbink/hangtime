@@ -484,7 +484,7 @@ export const LEVELS = {
     blocks: [{ x: 0, z: -177.5, w: 44, d: 35, h: 40 }, { x: 0, z: -213, w: 44, d: 35, h: 26 }, { x: 0, z: -248.5, w: 44, d: 35, h: 12 }]
       .map(b => ({ ...b, type: 'tower', bare: true, tank: false, fixed: true, deck: true })),
     stacks: [
-      ...[-166, -176, -186].map(z => ({ deck: 0, x: 0, z, n: 5, high: 4, along: 'x', gap: 4 })),
+      ...[-166, -176, -186].map(z => ({ deck: 0, x: 0, z, n: 4, high: 4, along: 'x', gap: 4.6 })),
       ...[-203, -215].map(z => ({ deck: 1, x: 0, z, n: 5, high: 3, along: 'x', gap: 4 })),
       ...[-240, -252].map(z => ({ deck: 2, x: 0, z, n: 4, high: 2, along: 'x', gap: 4.5 })),
     ],
@@ -503,9 +503,9 @@ export const LEVELS = {
       ...busy('avenue').filter(l => l.i === 0),
       ...busy('skyway', [2.2, 4]).filter(l => l.i === 0),
     ],
-    // (from bot runs: a good landing hands-off makes silver, up to about 470k; gold takes more: heat off the run-up, and
-    // the dive, nitro or flips, as well as most of the stacks)
-    medals: [80000, 250000, 600000],
+    // (from bot runs: a good landing hands-off makes silver, 200-350k; the best with nitro and flips came to 545k, so
+    // gold takes that and some heat off the run-up as well)
+    medals: [70000, 200000, 550000],
   },
   gas: {
     name: 'Last Chance Gas', blurb: 'A T-junction, and Fuel\'s Paradise straight across it. Thread the gap and light it up.',

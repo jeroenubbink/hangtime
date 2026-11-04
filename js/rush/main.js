@@ -51,6 +51,8 @@ const AIM = 20, AIM_SLOW = 0.3, AIM_TURN = 3.5, AIM_PUSH = 14, AIM_TOP = 24;
 // ramp, NITRO seconds of it) pushes you the way the nose points (m/s²). Gravity in the air is AIR_G times as strong,
 // so a flight off a 50° lip at full speed stays over the town. Come down hard (SLAM m/s and up) and it's a crash
 // where you land, with a shock wave that sets off the stacks round about.
+// (two vehicles further apart than REACH m can't be touching: a bus end to end with a bus, and some)
+const REACH = 11;
 const DIVE_SLOW = 0.32, PITCH = 2.6, YAW = 2.2, NITRO = 2.5, THRUST = 26, AIR_G = 1.8, SLAM = 16;
 const BLOWN = 1.5;   // seconds watching your car blow, from behind where you aimed it, before the crash cam takes over
 
@@ -561,8 +563,9 @@ function blast(X, p, R, big) {
     if (d > R) continue;
     const k = 1 - d / R;
     const dir = B.car.pos.clone().sub(p).setY(0).normalize();
-    // (a boxed car's glass goes, and it's off)
+    // (a boxed car's glass goes, and it's off; one lying still is woken)
     if (B.held) stacks.release(B, dir, X, G.t, freed);
+    B.rest = false;
     // (the forecourt's cars make their own way up, see launch(): no kicks on top until they're back down)
     if (!B.launch || (B.launchT != null && G.t - B.launchT > 3.5)) B.car.vel.addScaledVector(dir, 14 * k * big).add(_kick.set(0, 5 + 6 * k * big, 0));
     B.car.w.add(_kick.set(G.rand() - 0.5, G.rand() - 0.5, G.rand() - 0.5).multiplyScalar(5 * k));
@@ -803,6 +806,13 @@ function scatter(k) {
 
 // ---------- Tower Dive ----------
 const _hp = new THREE.Vector3();
+// A car off the stacks that's come to rest stops being simulated (there can be a hundred of them) till something
+// touches it, or a blast reaches it
+function settle(v) {
+  const c = v.car, still = c.vel.lengthSq() < 0.05 && c.w.lengthSq() < 0.05;
+  v.stillT = still ? (v.stillT || 0) + DT : 0;
+  if (v.stillT > 0.5) { v.rest = true; v.stillT = 0; c.vel.set(0, 0, 0); c.w.set(0, 0, 0); }
+}
 // A boxed car touched by `by`: its glass goes and it's off, the way it was pushed
 function unbox(X, by) {
   const d = _kick.set(by.car.vel.x, 0, by.car.vel.z);
@@ -1232,10 +1242,11 @@ function step() {
   }
   {
     for (const v of traffic.list) {
-      if (v.asleep || v.halved || v.held) continue;
+      if (v.asleep || v.halved || v.held || v.rest) continue;
       v.car.wallHit = null;
       const ev = v.car.step(DT, v.wrecked || !v.alive ? NONE : v.input || NONE);
       if (stacks) fall(v, ev);
+      if (v.stack) settle(v);
       if (v.car.wallHit) wallHit(v, v.car.wallHit);
       water(v);
       if (v.boomT != null && (v.boomT -= DT) <= 0) blowUp(v);
@@ -1246,17 +1257,41 @@ function step() {
     const all = bodies();
     fence(all);
     stacks?.update(G.t, freed);
-    for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
-      // (boxed cars don't touch each other: they stand still till something loose does; and any touch lets one go,
-      // even one that only pushes it aside without a bump)
-      if (all[i].held && all[j].held) continue;
-      const boxed = all[i].held ? all[i] : all[j].held ? all[j] : null;
-      if (boxed) _hp.copy(boxed.car.pos);
+    // (boxed cars don't touch each other: they stand still till something loose does, so each loose one is only tried
+    // against the boxes near it; see the end)
+    const loose = stacks ? all.filter(b => !b.held) : all;
+    // (with a hundred cars loose off the stacks, sorted along x and only tried against what's within reach that way)
+    if (stacks) loose.sort((a, b) => a.car.pos.x - b.car.pos.x);
+    for (let i = 0; i < loose.length; i++) for (let j = i + 1; j < loose.length; j++) {
+      const A = loose[i], B2 = loose[j];
+      if (stacks) {
+        if (B2.car.pos.x - A.car.pos.x > REACH) break;
+        if (Math.abs(B2.car.pos.z - A.car.pos.z) > REACH || (A.rest && B2.rest)) continue;
+        // (one lying still, the other loose: if it's touched, or even moved, it's woken)
+        const still = A.rest ? A : B2.rest ? B2 : null;
+        if (still) {
+          _hp.copy(still.car.pos);
+          const h = contact(A, B2);
+          if (h || still.car.pos.distanceToSquared(_hp) > 0) still.rest = false;
+          if (h) collided(A, B2, h);
+          continue;
+        }
+      }
       // Until you crash the traffic is scripted: it doesn't crash into itself (unless you've had a go at it)
-      if (!G.crash && !all[i].player && !all[j].player && !all[i].gen && !all[j].gen) continue;
-      const h = contact(all[i], all[j]);
-      if (h) collided(all[i], all[j], h);
-      else if (boxed?.held && boxed.car.pos.distanceToSquared(_hp) > 0) unbox(boxed, boxed === all[i] ? all[j] : all[i]);
+      if (!G.crash && !A.player && !B2.player && !A.gen && !B2.gen) continue;
+      const h = contact(A, B2);
+      if (h) collided(A, B2, h);
+    }
+    // (and any touch lets a boxed one go, even one that only pushes it aside without a bump)
+    if (stacks) for (const L of loose) {
+      if (!G.crash && !L.player && !L.gen) continue;
+      for (const X of stacks.around(L.car.pos)) {
+        if (!X.held) continue;
+        _hp.copy(X.car.pos);
+        const h = contact(L, X);
+        if (h) collided(L, X, h);
+        else if (X.held && X.car.pos.distanceToSquared(_hp) > 0) unbox(X, L);
+      }
     }
     for (const k of props.update(all.filter(b => !b.half))) {
       scatter(k);
@@ -2452,7 +2487,8 @@ function tick(raw, draw = true) {
       else if ((A.t += raw) >= AIM) detonate(A.meter >= 1);
       A.was = playerInput.handbrake;
     }
-    scale = !A.done ? (t < 0.6 ? 0.14 : Math.min(AIM_SLOW, 0.14 + (t - 0.6) * 0.4)) : Math.min(1, AIM_SLOW + (t - A.endT) * 0.5);
+    // (on Tower Dive not all the way: a hundred cars coming down off the decks take their time, and some doing)
+    scale = !A.done ? (t < 0.6 ? 0.14 : Math.min(AIM_SLOW, 0.14 + (t - 0.6) * 0.4)) : Math.min(city.level.dive ? 0.8 : 1, AIM_SLOW + (t - A.endT) * 0.5);
     if (G.spike > 0) { G.spike -= raw; scale = Math.min(scale, G.spikeK); }
     // (and once it's over, everything stops dead for the tour of the wreckage)
     if (G.ended) scale = 0;
