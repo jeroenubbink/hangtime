@@ -481,8 +481,13 @@ export const LEVELS = {
     // The sky decks: three towers stepping down away from you, 40, 26 and 12 m up, each with its rows of stacked
     // glass boxes. A row knocked over falls on the next, and off the deck's far edge onto the one below. Off the
     // 40 to 50 degree ramps at full speed you come down on the top one, a couple of seconds after the top of your flight.
-    blocks: [{ x: 0, z: -177.5, w: 44, d: 35, h: 40 }, { x: 0, z: -213, w: 44, d: 35, h: 26 }, { x: 0, z: -248.5, w: 44, d: 35, h: 12 }]
-      .map(b => ({ ...b, type: 'tower', bare: true, tank: false, fixed: true, deck: true })),
+    blocks: [
+      ...[{ x: 0, z: -177.5, w: 44, d: 35, h: 40 }, { x: 0, z: -213, w: 44, d: 35, h: 26 }, { x: 0, z: -248.5, w: 44, d: 35, h: 12 }]
+        .map(b => ({ ...b, type: 'tower', bare: true, tank: false, fixed: true, deck: true })),
+      // and the skyline round the plaza, well clear of your flight (rush, and you'll meet the ones at the back)
+      ...[[-72, -175, 62], [-78, -240, 84], [-70, -305, 50], [72, -170, 55], [80, -235, 78], [70, -300, 66], [-25, -345, 90], [30, -350, 70]]
+        .map(([x, z, h]) => ({ x, z, w: 30, d: 30, h, type: 'tower', tiers: true, fixed: true })),
+    ],
     stacks: [
       ...[-166, -176, -186].map(z => ({ deck: 0, x: 0, z, n: 4, high: 4, along: 'x', gap: 4.6 })),
       ...[-203, -215].map(z => ({ deck: 1, x: 0, z, n: 5, high: 3, along: 'x', gap: 4 })),
