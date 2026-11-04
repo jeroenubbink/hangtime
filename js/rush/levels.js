@@ -497,7 +497,8 @@ export const LEVELS = {
       { road: 'main', side: 1, i: 1, speed: [20, 24], fill: [110, 230], gap: [70, 120], then: { road: 'first', side: -1, i: 0 } },
       // and toward you, out of the crossing
       { road: 'first', side: -1, i: 1, speed: [16, 20], gap: [3, 6], spawn: true, then: { road: 'main', side: -1, i: 0 } },
-      ...busy('first').filter(l => !(l.side === -1 && l.i === 1)),
+      // (the crossing on the run-up: one lane each way, with gaps to thread at full speed, for near misses)
+      ...busy('first', [3.4, 6]).filter(l => l.i === 0),
       // (one lane each way under your flight: busy, but not so many cars on top of all the stacked ones)
       ...busy('avenue').filter(l => l.i === 0),
       ...busy('skyway', [2.2, 4]).filter(l => l.i === 0),

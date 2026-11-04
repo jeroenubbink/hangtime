@@ -78,6 +78,7 @@ export class Stacks {
   release(v, dir, by, t, onRelease) {
     if (!v.held) return false;
     v.held = false;
+    v.model.visible = true;
     v.model.traverse(o => { if (o.isMesh) o.castShadow = true; });
     const S = v.stack, c = v.car;
     this.hide(S.box);

@@ -868,6 +868,13 @@ function fly(dt) {
   G.airSpeed = c.vel.length();
   // Past the top of the flight and well up: the dive, in slow motion
   const high = c.pos.y - city.groundHeight(c.pos.x, c.pos.z, c.pos.y);
+  // (down on its roof or its side, no wheels on the ground: that's a landing too)
+  if (G.air > 1 && high < 1.6) {
+    const vy = c.vel.y, sp = c.vel.length();
+    landAir();
+    slam(vy, sp);
+    return;
+  }
   if (!G.dive && G.air > 0.5 && c.vel.y < 3 && high > 10) {
     G.dive = { t: 0 };
     callout(`SKYDIVE<small>let go, then ${document.body.classList.contains('touch') ? 'steer, gas and brake fly it' : '↑↓←→ fly it'}${G.nitro > 0 ? ' · rush: nitro' : ''}</small>`, 'big');
@@ -877,25 +884,33 @@ function fly(dt) {
 // about (wider the faster you came down)
 function slam(vy, sp) {
   const c = player.car;
-  if (sp < SLAM || -vy < 6) { G.dive = null; return; }
-  const p = c.pos.clone(), R = clamp(5 + -vy * 0.3, 6, 16);
-  startCrash({ point: p, speed: sp }, null);
+  // (a soft one on a deck: drive on into the stacks if you like; anywhere else, down in the street, that's it)
+  const deck = city.groundHeight(c.pos.x, c.pos.z, c.pos.y) > 8, upright = _kick.set(0, 1, 0).applyQuaternion(c.q).y > 0.2;
+  if ((sp < SLAM || -vy < 6) && deck && upright) { G.dive = null; return; }
+  startCrash({ point: c.pos.clone(), speed: sp }, null, true);
   callout(`SLAM<small>${Math.round(sp * KMH)} km/h</small>`, 'big');
+}
+// The shock of coming down out of the air into anything (a deck, a stack, a deck's edge, the street): dust, a ring on
+// the ground, and every boxed car within R set off, thrown outward
+function shock(p, R) {
   wave(p, R);
   for (let i = 0; i < 40; i++) puff(p, '#c9c6bf', 2 + Math.random() * 2, 2, 3 + Math.random() * 3, 0.6, 2);
   for (const v of stacks?.near(p, R, 8) || []) {
     const d = _kick.set(v.car.pos.x - p.x, 0, v.car.pos.z - p.z);
     if (d.lengthSq() < 0.01) d.set(1, 0, 0);
+    const k = 1 - v.car.pos.distanceTo(p) / R;
     stacks.release(v, d.normalize(), player, G.t, freed);
-    v.car.vel.addScaledVector(d, 4 * (1 - v.car.pos.distanceTo(p) / R));
+    v.car.vel.addScaledVector(d, 4 * Math.max(0, k));
   }
 }
 
 // ---------- The crash ----------
-function startCrash(h, other) {
+function startCrash(h, other, fromAir = false) {
   if (G.state !== 'run') return;
   // (out of a dive, how fast you were flying: the hit itself has taken most of it by now)
   const kmh = Math.round(Math.max(player.car.vel.length(), G.dive ? G.airSpeed || 0 : 0) * KMH);
+  // (off Tower Dive's ramp, into anything at all: see shock)
+  fromAir = city.level.dive && (fromAir || !!G.dive || G.air > 0.5);
   // (on Tower Dive, crashing out of the air still counts the air: on the others, as ever, only coming down does)
   if (city.level.dive) landAir();
   G.state = 'crash';
@@ -922,6 +937,7 @@ function startCrash(h, other) {
   G.punch = 10;
   sound.crash();
   callout(`IMPACT ${kmh} km/h${bonus > 0 ? `<small>heat +${bonus.toFixed(1)}</small>` : ''}`, 'big');
+  if (fromAir) shock(h.point, clamp(4 + kmh / 40, 6, 14));
   $('crashbox').classList.remove('hidden');
 }
 
@@ -1071,8 +1087,10 @@ function drive(dt) {
     G.yaw = c.w.y;
     return;
   }
+  // (down off the big ramp, whether or not it got as far as a dive)
+  const flight = city.level.dive && G.air > 1;
   landAir();
-  if (G.dive) { slam(vy0, sp0); if (G.state !== 'run') return; }
+  if (G.dive || flight) { slam(vy0, sp0); if (G.state !== 'run') return; }
   const sp = Math.abs(vF);
   // Engine and brakes
   const top = boosting ? def.rushTop : def.top;
@@ -1237,8 +1255,8 @@ function step() {
     if (G.state === 'run') {
       G.oncoming = oncoming();
       nearMisses();
-      // (upside down: a crash; not in a dive, where you fly it any way up you like)
-      if (!G.dive && new THREE.Vector3(0, 1, 0).applyQuaternion(c.q).y < 0.2) startCrash({ point: c.pos.clone(), speed: c.vel.length() }, null);
+      // (upside down: a crash; not in the air off Tower Dive's ramp, where you fly it any way up you like)
+      if (!(city.level.dive && c.grounded < 2) && new THREE.Vector3(0, 1, 0).applyQuaternion(c.q).y < 0.2) startCrash({ point: c.pos.clone(), speed: c.vel.length() }, null);
     }
   }
   if (G.rec && !G.ended) record();
