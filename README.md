@@ -113,7 +113,8 @@ through them. Things to know:
   **Tower Dive** (see below).
 - **Tower Dive** (a draft): the biggest ramp in town, five ramps side by side, 30° to 50° at the lip (white fins
   between them keep you in yours), with a nitro crate in front of each. Off the 35° to 45° ones at full speed you
-  come down on the first of three **sky decks**, tower roofs 40, 26 and 12 m up stepping down away from you, with
+  come down on the first of three **sky decks**, tower roofs 40, 26 and 12 m up stepping down away from you in a
+  ring of taller towers, with
   rows of cars stacked in glass boxes, three or four high. A boxed car doesn't move till something loose touches it;
   then its glass goes and it falls the way it was pushed, the one over it a moment later, so a row topples into the
   next, and off the deck's far edge onto the one below. Past the top of your flight comes the **skydive**: time
