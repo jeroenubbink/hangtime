@@ -102,7 +102,7 @@ export class City {
     this.roads = level.roads.map(road);
     this.base = level.height || (() => 0);
     this.ramps = (level.ramps || []).map(arc);
-    // Where two big ramps meet side by side, a fin between them (see contain): { x, z0, z1, a, b }
+    // Where two big ramps meet side by side, a fin between them (see contain): { x, a, b }, a on its left
     this.fins = [];
     for (const a of this.ramps) for (const b of this.ramps) {
       if (a.R && b.R && a !== b && Math.abs(a.x + a.w / 2 - (b.x - b.w / 2)) < 0.01) this.fins.push({ x: a.x + a.w / 2, a, b });

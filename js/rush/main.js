@@ -2477,6 +2477,7 @@ function tick(raw, draw = true) {
   player.pose();
   for (const h of halves) { h.model.position.copy(h.car.pos); h.model.quaternion.copy(h.car.q); }
   effects(dt, raw);
+  for (const k of crates) { k.m.rotation.y += raw * 1.6; k.m.position.y = k.y + Math.sin(G.t * 2.4 + k.x) * 0.2; }
   debris.update(dt);
   smoke.update(dt, camera, renderer.domElement.height);
   glow.update(dt, camera, renderer.domElement.height);
