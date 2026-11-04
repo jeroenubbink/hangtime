@@ -86,8 +86,8 @@ export function createStage(canvas) {
   }
 
   let time = 'day';
-  function setTime(key) {
-    const t = TIMES[key] || TIMES.day;
+  // (`t`: a time of the game's own, that isn't one of these)
+  function setTime(key, t = TIMES[key] || TIMES.day) {
     time = key;
     setSky(...t.sky);
     scene.fog.color.set(t.fog[0]);

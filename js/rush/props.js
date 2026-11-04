@@ -60,6 +60,20 @@ const MODELS = {
   ]),
   // Fuel's Paradise: its pumps, canopy pillars and price sign (the sign's face is the station's)
   pump: PUMP, pillar: PILLAR, sign: SIGN,
+  // Over the Edge's lamp standards along the bridge's parapets, cast iron in its teal (from the bridge kit)
+  lantern: () => sceneryGeo('lantern') || merge([
+    [new THREE.CylinderGeometry(0.1, 0.16, 4.6, 8).translate(0, 2.3, 0), '#0c7a7c'],
+    [new THREE.BoxGeometry(1.6, 0.4, 0.34).translate(0, 4.2, 0), '#ffe2a0'],
+  ]),
+  // Short Cut's fruit stand on the corner, piled with oranges (from the film kit); and what's left of it once a car's
+  // been through it, burnt black and empty
+  // (a size up from the model's, to be seen from up in the air)
+  fruitstand: () => sceneryGeo('fruitstand')?.clone().scale(1.35, 1.35, 1.35) || merge([
+    [new THREE.BoxGeometry(2.6, 0.9, 1.3).translate(0, 0.45, 0), '#a8743f'],
+    [new THREE.BoxGeometry(2.5, 0.4, 1.1).translate(0, 1.1, 0), '#ff8a1a'],
+    [new THREE.BoxGeometry(2.7, 0.06, 1.6).translate(0, 2.35, 0), '#f4f2ec'],
+  ]),
+  fruitwreck: () => sceneryGeo('fruitwreck')?.clone().scale(1.35, 1.35, 1.35) || new THREE.BoxGeometry(2.6, 0.9, 1.3).translate(0, 0.45, 0),
   // A length of crash barrier along the edge of a bridge: it stops nothing
   rail: () => merge([
     [new THREE.BoxGeometry(3, 0.32, 0.1).translate(0, 0.62, 0), '#c3c8cf'],
@@ -74,11 +88,12 @@ const MODELS = {
 };
 // r: how close a car has to come (m); slow: speed a car loses knocking it over; h: how tall (for the flight)
 const KINDS = {
-  lamp: { r: 0.3, slow: 0.1, h: 6 }, light: { r: 0.3, slow: 0.1, h: 4.6 }, tree: { r: 0.45, slow: 0.22, h: 4 },
+  lamp: { r: 0.3, slow: 0.1, h: 6 }, lantern: { r: 0.3, slow: 0.1, h: 5 }, light: { r: 0.3, slow: 0.1, h: 4.6 }, tree: { r: 0.45, slow: 0.22, h: 4 },
   bin: { r: 0.35, slow: 0.02, h: 1 }, hydrant: { r: 0.25, slow: 0.05, h: 0.8 }, bollard: { r: 0.25, slow: 0.08, h: 0.9 },
   cone: { r: 0.35, slow: 0, h: 0.8 }, barrier: { r: 1.1, slow: 0.03, h: 1 }, rail: { r: 1.5, slow: 0.04, h: 0.8 },
   bench: { r: 0.8, slow: 0.04, h: 0.9 }, bush: { r: 0.8, slow: 0.03, h: 0.9 }, palm: { r: 0.4, slow: 0.22, h: 8.5 }, fountain: { r: 2.5, slow: 0.6, h: 3.9 },
   pump: { r: 0.5, slow: 0.12, h: 2.1 }, sign: { r: 0.3, slow: 0.15, h: 11.5 }, pillar: { r: 0.45, slow: 0.25, h: 5.4 },
+  fruitstand: { r: 1.5, slow: 0.15, h: 3.2 },
 };
 
 export class Props {
@@ -112,6 +127,8 @@ export class Props {
           const [x, z] = at(k % 2 ? 2.4 : 0.7);
           if (city.isRoad(x, z) || city.roadDist(x, z) > 3 || city.inLot(x, z, 1) || city.inDeck(x, z)) continue;
           if (city.junctions.some(({ box: [a, b, c, d] }) => x > a - 6 && x < b + 6 && z > c - 6 && z < d + 6)) continue;
+          // (nor where the level wants a pavement kept clear)
+          if (city.level.clear?.some(([a, b, c, d]) => x > a && x < b && z > c && z < d)) continue;
           if (k % 2) this.add('tree', x, z, s * 0.7);
           else this.add('lamp', x, z, arm);
           // (every 7th post, alternating bin and hydrant)
@@ -212,7 +229,9 @@ export class Props {
 
   // A knocked prop as a free mesh, for the debris
   piece(p) {
-    const g = new THREE.Group(), m = new THREE.Mesh(this.geos[p.kind], this.mat);
+    // (the fruit stand goes as its wreck)
+    const geo = p.kind === 'fruitstand' ? (this.geos.fruitwreck ||= shared(MODELS.fruitwreck())) : this.geos[p.kind];
+    const g = new THREE.Group(), m = new THREE.Mesh(geo, this.mat);
     m.position.y = -p.h / 2;
     m.castShadow = true;
     g.add(m);
