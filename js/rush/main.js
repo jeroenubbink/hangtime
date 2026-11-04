@@ -21,8 +21,12 @@ import { buildStation as stationModel, DEBRIS_COLOURS } from './station.js';
 import { RIDES, TRAFFIC, TRAFFIC_PAINTS } from './roster.js';
 import { Recorder, FLAGS, canSend, send } from './replay.js';
 import { Guides } from './guides.js';
+import { t, tl, translatePage, langButton } from '../i18n.js';
+import './nl.js';
 
 const $ = id => document.getElementById(id);
+translatePage();
+$('btn-help').after(langButton());
 const DEBRIS = { door: 'debris-door', doorWin: 'debris-door-window', bumper: 'debris-bumper', plate: 'debris-plate-a', plateB: 'debris-plate-b',
   plateS: 'debris-plate-small-a', spoiler: 'debris-spoiler-a', tyre: 'debris-tire' };
 const files = new Set([...Object.values(RIDES), ...Object.values(TRAFFIC)].flatMap(d => [d.file, d.fallback].filter(Boolean)));
@@ -257,7 +261,7 @@ function startRun(pre) {
   $('pops').innerHTML = '';
   showScreen(null);
   sound.init();
-  if (G.state === 'intro') showMsg(L.name.toUpperCase(), L.blurb, PRE_INTRO);
+  if (G.state === 'intro') showMsg(t(L.name).toUpperCase(), t(L.blurb), PRE_INTRO);
 }
 
 // A nitro crate, as in the derby: blue, floating and turning over its spot
@@ -289,7 +293,7 @@ function pickCrates() {
     k.m.visible = false;
     G.nitro = 1;
     sound.beep(true);
-    callout(`NITRO<small>for the air: ${document.body.classList.contains('touch') ? 'tap RUSH up there' : 'hold Shift'}</small>`);
+    callout(`NITRO<small>${t('for the air: {0}', document.body.classList.contains('touch') ? t('tap RUSH up there') : t('hold Shift'))}</small>`);
     for (let i = 0; i < 30; i++) glow.emit(k.x, k.y, k.z, (Math.random() - 0.5) * 8, Math.random() * 6, (Math.random() - 0.5) * 8, { life: 0.5, size: 0.4, gravity: 6, colour: '#7fd0ff', alpha: 0.9 });
   }
 }
@@ -410,24 +414,24 @@ function scoreEvent(v, pts, label, big = false, type = 'dent') {
   G.score += p;
   G.crash.quiet = 0;
   tally(v, type, p, v.car.pos);
-  if (label && big) callout(`${label}<small>+${p.toLocaleString()}</small>`, 'big');
+  if (label && big) callout(`${t(label)}<small>+${p.toLocaleString()}</small>`, 'big');
 }
 
 // What scored, where: each incident gathers everything scored within a few metres for half a second, then
 // pops up its total above the spot (small and yellow for a dent, big and red for well above the average).
 // Each vehicle keeps a ledger by damage type, for the wreck report.
 const DAMAGE = {
-  fall: ['Sky falls', '#7fe0ff'],
-  dent: ['Dents', '#ffd23a'], wreck: ['Wrecked', '#ff8a1e'], split: ['Torn in half', '#ff3d7a'],
-  blast: ['Blast', '#ff2a2a'], splash: ['Splashdown', '#2ee6ff'], prop: ['Street furniture', '#9be36b'],
+  fall: [t('Sky falls'), '#7fe0ff'],
+  dent: [t('Dents'), '#ffd23a'], wreck: [t('Wrecked'), '#ff8a1e'], split: [t('Torn in half'), '#ff3d7a'],
+  blast: [t('Blast'), '#ff2a2a'], splash: [t('Splashdown'), '#2ee6ff'], prop: [t('Street furniture'), '#9be36b'],
 };
-const NAMES = { hatch: 'Hatchback', coupe: 'Coupé', cab: 'Taxi', saloon: 'Saloon', suv: 'SUV', pickup: 'Pickup', police: 'Police car', van: 'Van',
-  garbage: 'Garbage truck', bus: 'Bus', tanker: 'Fuel tanker', lorry: 'Box lorry', flatbed: 'Flatbed' };
+const NAMES = Object.fromEntries(Object.entries({ hatch: 'Hatchback', coupe: 'Coupé', cab: 'Taxi', saloon: 'Saloon', suv: 'SUV', pickup: 'Pickup',
+  police: 'Police car', van: 'Van', garbage: 'Garbage truck', bus: 'Bus', tanker: 'Fuel tanker', lorry: 'Box lorry', flatbed: 'Flatbed' }).map(([k, n]) => [k, t(n)]));
 function tally(v, type, p, pos) {
   const C = G.crash;
   const key = v || 'props';
   let e = C.ledger.get(key);
-  if (!e) C.ledger.set(key, e = v ? { name: NAMES[v.kind] || v.kind, colour: v.colour, gen: v.gen, by: {}, total: 0 } : { name: 'Street furniture', colour: '#9be36b', gen: 0, by: {}, total: 0 });
+  if (!e) C.ledger.set(key, e = v ? { name: NAMES[v.kind] || v.kind, colour: v.colour, gen: v.gen, by: {}, total: 0 } : { name: DAMAGE.prop[0], colour: '#9be36b', gen: 0, by: {}, total: 0 });
   e.by[type] = (e.by[type] || 0) + p;
   e.total += p;
   G.rec?.event(G.t, 'score', { id: v ? v.id : 'props', what: type, pts: p, at: [pos.x, pos.y, pos.z].map(n => Math.round(n * 10) / 10) });
@@ -480,15 +484,15 @@ function report() {
   const order = Object.keys(DAMAGE).filter(t => types[t]);
   const bar = by => order.filter(t => by[t]).map(t => `<i style="flex:${by[t]};background:${DAMAGE[t][1]}"></i>`).join('');
   const most = rows[0].total || 1;
-  return `<h3>Wreck report</h3>
+  return `<h3>${t('Wreck report')}</h3>
     <div class="rep-bar">${bar(types)}</div>
     <div class="rep-legend">${order.map(t => `<span><i style="background:${DAMAGE[t][1]}"></i>${DAMAGE[t][0]} <b>${Math.round(types[t] / sum * 100)}%</b></span>`).join('')}</div>
     <div class="rep-list">${rows.slice(0, 8).map((e, i) => `<div class="rep-row" style="animation-delay:${0.15 + i * 0.08}s">
       <span class="chip" style="background:${e.colour}"></span>
-      <span class="who">${e.name}${e.gen > 1 ? `<em>chain ${e.gen}</em>` : ''}<small>${Object.entries(e.by).sort((a, b) => b[1] - a[1]).map(([t]) => DAMAGE[t][0]).join(' · ')}</small></span>
+      <span class="who">${e.name}${e.gen > 1 ? `<em>${t('chain {0}', e.gen)}</em>` : ''}<small>${Object.entries(e.by).sort((a, b) => b[1] - a[1]).map(([t]) => DAMAGE[t][0]).join(' · ')}</small></span>
       <span class="mini" style="width:${(e.total / most * 100).toFixed(0)}%">${bar(e.by)}</span>
       <span class="num">${e.total.toLocaleString()}</span></div>`).join('')}
-    ${rows.length > 8 ? `<div class="rep-more">+ ${rows.length - 8} more</div>` : ''}</div>`;
+    ${rows.length > 8 ? `<div class="rep-more">${t('+ {0} more', rows.length - 8)}</div>` : ''}</div>`;
 }
 function spike(k = 0.25, secs = 0.7) { G.spike = Math.max(G.spike, secs); G.spikeK = k; }
 
@@ -561,7 +565,7 @@ function wreck(X, split) {
     while (halves.length > 10) dropHalf(halves.shift());
   } else X.wreck();
   if (X.gen > 0 && G.state === 'crash') G.wrecked++;
-  scoreEvent(X, 500 * X.value, split ? 'TORN IN HALF' : X.special ? X.kind.toUpperCase() + ' DOWN' : 'WRECKED', !!X.special, split ? 'split' : 'wreck');
+  scoreEvent(X, 500 * X.value, split ? 'TORN IN HALF' : X.special ? t('{0} DOWN', NAMES[X.kind].toUpperCase()) : 'WRECKED', !!X.special, split ? 'split' : 'wreck');
   sound.crunch(1);
   // Some go up in flames a moment later; a tanker always does (not one that's gone up already, like the
   // forecourt's cars, which blow before they're wrecked: it would go up, and be thrown, twice)
@@ -758,7 +762,7 @@ function ignite(p, by) {
   T.lit = true;
   G.rec?.event(G.t, 'station', { by: by?.id });
   if (by === player && G.state === 'run') startCrash({ point: p.clone(), speed: player.car.vel.length() }, null);
-  callout('FILL \'ER UP', 'big');
+  callout(t('FILL \'ER UP'), 'big');
   const y = city.top(S.x, S.z);
   // The big one under the canopy, then each pump
   explosion(new THREE.Vector3(S.x, y + 1, S.z), 3);
@@ -879,7 +883,7 @@ function paid(v) {
   const deck = v.stack.col.deck, left = stacks.cols.filter(c => c.deck === deck && !c.down).length;
   if (!left) scoreEvent(v, 8000, 'DECK CLEARED', true, 'fall');
   // (every fifth: there are a lot of them, and they go fast)
-  else if (G.stacksDown % 5 === 0) callout(`STACKS ${G.stacksDown}/${stacks.total}`);
+  else if (G.stacksDown % 5 === 0) callout(t('STACKS {0}/{1}', G.stacksDown, stacks.total));
 }
 // A long way down: hitting the ground (or what's on it) hard hurts, and from high up it's worth something
 function fall(v, ev) {
@@ -913,12 +917,12 @@ function fly(dt, vy0, sp0) {
   const T = G.tricks || (G.tricks = { pitch: 0, yaw: 0, n: 0 });
   T.pitch += c.w.dot(_r) * dt;
   T.yaw += c.w.dot(_up) * dt;
-  for (const [key, name, heat] of [['pitch', 'FLIP', 0.3], ['yaw', 'SPIN 360', 0.2]]) {
+  for (const [key, name, heat] of [['pitch', t('FLIP'), 0.3], ['yaw', t('SPIN 360'), 0.2]]) {
     if (Math.abs(T[key]) < Math.PI * 2 * 0.9) continue;
     T[key] -= Math.sign(T[key]) * Math.PI * 2;
     T.n++;
     G.heat = Math.min(4, Math.round((G.heat + heat) * 10) / 10);
-    callout(`${T.n > 1 ? T.n + '× ' : ''}${name}<small>heat +${heat}</small>`);
+    callout(`${T.n > 1 ? T.n + '× ' : ''}${name}<small>${t('heat +{0}', heat)}</small>`);
     sound.beep(true);
   }
   const tank = fuel(), thrust = (G.latch || (arm.boost && I.boost)) && G[tank] > 0;
@@ -940,7 +944,7 @@ function fly(dt, vy0, sp0) {
   if (!G.dive && G.air > 0.5 && c.vel.y < 3 && high > 10) {
     G.dive = { t: 0 };
     const touch = document.body.classList.contains('touch');
-    callout(`SKYDIVE<small>let go · ${touch ? '◀▶▲▼' : '↑↓←→'} fly${G[fuel()] > 0 ? (touch ? ' · tap RUSH: nitro' : ' · Shift: nitro') : ''}</small>`, 'big');
+    callout(`${t('SKYDIVE')}<small>${t('let go · {0} fly', touch ? '◀▶▲▼' : '↑↓←→')}${G[fuel()] > 0 ? (touch ? t(' · tap RUSH: nitro') : t(' · Shift: nitro')) : ''}</small>`, 'big');
   }
 }
 // What the nitro burns in the air: the crates' where the level has them, else your rush
@@ -953,7 +957,7 @@ function slam(vy, sp) {
   const deck = city.groundHeight(c.pos.x, c.pos.z, c.pos.y) > 8, upright = _kick.set(0, 1, 0).applyQuaternion(c.q).y > 0.2;
   if ((sp < SLAM || -vy < 6) && deck && upright) { G.dive = null; return; }
   startCrash({ point: c.pos.clone(), speed: sp }, null, true);
-  callout(`SLAM<small>${Math.round(sp * KMH)} km/h</small>`, 'big');
+  callout(`${t('SLAM')}<small>${Math.round(sp * KMH)} km/h</small>`, 'big');
 }
 // The shock of coming down out of the air into anything (a deck, a stack, a deck's edge, the street): dust, a ring on
 // the ground, and every boxed car within R set off, thrown outward
@@ -1003,7 +1007,7 @@ function startCrash(h, other, fromAir = false) {
   G.shake = 1.2;
   G.punch = 10;
   sound.crash();
-  callout(`IMPACT ${kmh} km/h${bonus > 0 ? `<small>heat +${bonus.toFixed(1)}</small>` : ''}`, 'big');
+  callout(`${t('IMPACT {0} km/h', kmh)}${bonus > 0 ? `<small>${t('heat +{0}', bonus.toFixed(1))}</small>` : ''}`, 'big');
   if (fromAir) shock(h.point, clamp(4 + kmh / 40, 6, 14));
   $('crashbox').classList.remove('hidden');
 }
@@ -1034,7 +1038,7 @@ function tag(v) {
   if (again) return;
   sound.beep(true);
   const ready = A.meter >= 1 && was < 1;
-  callout(ready ? `EXPLOSION READY<small>${document.body.classList.contains('touch') ? 'tap BOOM' : 'Space'}</small>` : `TAG ${A.tagged.size}`, ready ? 'big' : '');
+  callout(ready ? `${t('EXPLOSION READY')}<small>${document.body.classList.contains('touch') ? t('tap BOOM') : t('Space')}</small>` : t('TAG {0}', A.tagged.size), ready ? 'big' : '');
 }
 
 // Your car goes up: as big as a tanker with a full meter, less on the self-destruct with less. It throws you up too.
@@ -1055,7 +1059,7 @@ function detonate(full) {
   c.w.add(_kick.set(G.rand() - 0.5, G.rand() - 0.5, G.rand() - 0.5).multiplyScalar(6));
   blast(player, p, R, big);
   G.shake = 2;
-  callout(full ? 'DETONATION' : 'SELF-DESTRUCT', 'big');
+  callout(full ? t('DETONATION') : t('SELF-DESTRUCT'), 'big');
 }
 
 function endCrash() {
@@ -1067,28 +1071,28 @@ function endCrash() {
   if (total > before) records.best[key] = total;
   if (medal > (records.medals[key] || 0)) records.medals[key] = medal;
   store.save('rush.records', records);
-  $('res-title').textContent = medal ? ['', 'BRONZE', 'SILVER', 'GOLD'][medal] : 'NO MEDAL';
+  $('res-title').textContent = t(medal ? ['', 'BRONZE', 'SILVER', 'GOLD'][medal] : 'NO MEDAL');
   $('res-title').className = ['none', 'bronze', 'silver', 'gold'][medal];
   $('res-rows').innerHTML = [
-    ['Carnage', G.score.toLocaleString()],
-    ['Heat', '×' + G.heat.toFixed(1) + (G.impact?.bonus ? ` <small>(impact ${G.impact.kmh} km/h)</small>` : '')],
-    ['Wrecked', G.wrecked],
-    ...(stacks ? [['Stacks down', `${G.stacksDown} of ${stacks.total}`]] : []),
-    ['Longest chain', G.chain],
-    ['<b>Total</b>', `<b>${total.toLocaleString()}</b>`],
+    [t('Carnage'), G.score.toLocaleString()],
+    [t('Heat'), '×' + G.heat.toFixed(1) + (G.impact?.bonus ? ` <small>${t('(impact {0} km/h)', G.impact.kmh)}</small>` : '')],
+    [t('Wrecked'), G.wrecked],
+    ...(stacks ? [[t('Stacks down'), t('{0} of {1}', G.stacksDown, stacks.total)]] : []),
+    [t('Longest chain'), G.chain],
+    [`<b>${t('Total')}</b>`, `<b>${total.toLocaleString()}</b>`],
   ].map(([a, b]) => `<tr><td>${a}</td><td class="num">${b}</td></tr>`).join('');
   // (with nothing to report, the card stays narrow)
   const rep = report();
   $('res-report').innerHTML = rep;
   $('res-report').parentElement.classList.toggle('wide', !!rep);
   const next = L.medals.find(t => t > total);
-  $('res-note').textContent = total > before && before ? `New best (was ${before.toLocaleString()})!` : next ? `${next.toLocaleString()} for ${['bronze', 'silver', 'gold'][L.medals.indexOf(next)]}.` : 'Gold. Nothing left but a higher score.';
+  $('res-note').textContent = total > before && before ? t('New best (was {0})!', before.toLocaleString()) : next ? t('{0} for {1}.', next.toLocaleString(), t(['bronze', 'silver', 'gold'][L.medals.indexOf(next)])) : t('Gold. Nothing left but a higher score.');
   const keys = Object.keys(LEVELS), i = keys.indexOf(key);
   $('btn-next').classList.toggle('hidden', i === keys.length - 1);
   G.rec?.event(G.t, 'end', { score: G.score, heat: G.heat, total, medal, wrecked: G.wrecked, chain: G.chain });
   if (G.rec) { G.rec.next = 0; record(); }
   $('btn-send').classList.add('hidden');
-  if (G.rec) canSend().then(ok => { $('btn-send').classList.toggle('hidden', !ok); $('btn-send').disabled = false; $('btn-send').textContent = 'Send replay'; });
+  if (G.rec) canSend().then(ok => { $('btn-send').classList.toggle('hidden', !ok); $('btn-send').disabled = false; $('btn-send').textContent = t('Send replay'); });
   startTour();
 }
 // This step for the replay: every vehicle, your inputs, and where the camera is looking
@@ -1120,7 +1124,7 @@ function bodies() {
 const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _v = new THREE.Vector3();
 // Down from the air (on the ground, or into something): long enough up there, and it's worth heat and rush
 function landAir() {
-  if (G.air > 0.45) { callout(`AIR ${G.air.toFixed(1)}s<small>heat +${(G.air * 0.15).toFixed(1)}</small>`); G.heat = Math.min(4, G.heat + G.air * 0.15); G.rush = Math.min(1, G.rush + G.air * 0.15); }
+  if (G.air > 0.45) { callout(`${t('AIR {0}s', G.air.toFixed(1))}<small>${t('heat +{0}', (G.air * 0.15).toFixed(1))}</small>`); G.heat = Math.min(4, G.heat + G.air * 0.15); G.rush = Math.min(1, G.rush + G.air * 0.15); }
   G.air = 0;
   G.tricks = null;
   G.arm = null;
@@ -1233,7 +1237,7 @@ function nearMisses() {
     const h = (toward ? 0.2 : 0.1) * (close ? 1.5 : 1);
     G.heat = Math.min(4, G.heat + h);
     G.rush = Math.min(1, G.rush + (toward ? 0.22 : 0.14));
-    callout(`${close ? 'SHAVE' : 'NEAR MISS'}${toward ? ' · ONCOMING' : ''}<small>heat +${h.toFixed(2)}</small>`, toward ? 'hot' : '');
+    callout(`${close ? t('SHAVE') : t('NEAR MISS')}${toward ? ' · ' + t('ONCOMING') : ''}<small>${t('heat +{0}', h.toFixed(2))}</small>`, toward ? 'hot' : '');
     sound.burst(0.25, 1400, 0.45);
   }
 }
@@ -1266,7 +1270,7 @@ function go() {
   G.rec = new Recorder({ level: city.key, car: settings.car, time, date: new Date().toISOString(),
     screen: [innerWidth, innerHeight], agent: navigator.userAgent });
   player.car.vel.copy(player.forward).multiplyScalar(city.level.start.speed);
-  showMsg('GO!', '', 0.8);
+  showMsg(t('GO!'), '', 0.8);
   sound.beep(true);
 }
 
@@ -1673,14 +1677,14 @@ function heapName(g, top, used) {
     : ['The Sideshow', 'The Support Act', 'The B-Side', 'Fringe Theatre', 'Warm-Up Act'], ['The Scrum', 'Pile-On', 'Group Hug', 'Bumper Cars', 'Car-Boot Sale']);
   if (BIG.has(g.cars[0]?.v.kind)) out.push(['Heavy Metal', 'Wide Load', 'Big Rig Energy', 'Gross Vehicle Weight', 'Tonnage']);
   out.push(['Collateral', 'Bystanders', 'The Overflow', 'Afterthoughts', 'Loose Change', 'Wrong Place, Wrong Time', 'Spare Parts', 'Odds and Ends', 'The Small Print']);
-  for (const names of out) {
+  for (const names of out.map(tl)) {
     const free = names.filter(s => !used.has(s));
     if (!free.length) continue;
     const name = free[Math.floor(Math.random() * free.length)];
     used.add(name);
     return name;
   }
-  return 'Leftovers';
+  return t('Leftovers');
 }
 function startTour() {
   const C = G.crash, gs = heaps();
@@ -1803,8 +1807,8 @@ function heapLabel(g) {
   const el = document.createElement('div'), k = g.pts / G.tour.max;
   el.className = 'heap';
   const cars = g.cars.length, props = g.items.length - cars;
-  const what = cars === 1 ? NAMES[g.cars[0].v.kind] + (g.wrecked ? ' · wrecked' : '') : cars ? `${cars} vehicles${g.wrecked ? ` · ${g.wrecked} wrecked` : ''}` : '';
-  const sub = [what, props ? `${props} street furniture` : ''].filter(Boolean).join(' · ');
+  const what = cars === 1 ? NAMES[g.cars[0].v.kind] + (g.wrecked ? t(' · wrecked') : '') : cars ? t('{0} vehicles', cars) + (g.wrecked ? t(' · {0} wrecked', g.wrecked) : '') : '';
+  const sub = [what, props ? t('{0} street furniture', props) : ''].filter(Boolean).join(' · ');
   el.innerHTML = `<div class="in"><b>${g.name}</b><span style="font-size:${Math.round(34 + 30 * k)}px;color:hsl(${Math.round(52 - 50 * k)}, 100%, ${Math.round(62 - 8 * k)}%)">+${g.pts.toLocaleString()}</span><small>${sub}</small></div>`;
   for (const o of G.tour.gs) o.el?.classList.add('old');
   $('pops').appendChild(el);
@@ -2407,7 +2411,7 @@ function updateHud(dt) {
   const nitro = !!city.level.dive && (G.nitro > 0 || (fuel() === 'rush' && G.air > 0.2 && G.state === 'run'));
   $('rush-fill').style.width = ((G.nitro > 0 && nitro ? G.nitro : G.rush) * 100).toFixed(1) + '%';
   $('rush').classList.toggle('nitro', nitro);
-  $('rush').firstElementChild.firstChild.textContent = nitro ? 'NITRO ' : 'RUSH ';
+  $('rush').firstElementChild.firstChild.textContent = nitro ? t('NITRO') + ' ' : t('RUSH') + ' ';
   $('rush').classList.toggle('on', !!G.boosting);
   $('rush').classList.toggle('full', G.rush > 0.98);
   setText('heat', '×' + G.heat.toFixed(1));
@@ -2416,12 +2420,12 @@ function updateHud(dt) {
   const A = G.crash?.aim, aiming = !!A && !A.done && !G.ended;
   $('boom').classList.toggle('hidden', !aiming);
   // (on a phone the drift button is the detonator: it says so while you aim, and burns once it's ready)
-  setText('t-drift', aiming ? 'BOOM' : 'DRIFT');
+  setText('t-drift', aiming ? t('BOOM') : t('DRIFT'));
   $('t-drift').classList.toggle('ready', aiming && A.meter >= 1);
   if (aiming) {
     $('boom-fill').style.width = (A.meter * 100).toFixed(1) + '%';
     $('boom').classList.toggle('full', A.meter >= 1);
-    setText('boom-txt', A.meter >= 1 ? (document.body.classList.contains('touch') ? 'TAP BOOM' : 'SPACE · DETONATE') : 'STEER INTO TRAFFIC');
+    setText('boom-txt', t(A.meter >= 1 ? (document.body.classList.contains('touch') ? 'TAP BOOM' : 'SPACE · DETONATE') : 'STEER INTO TRAFFIC'));
     const left = Math.max(0, AIM - A.t);
     setText('boom-t', left.toFixed(1));
     $('boom-t').classList.toggle('late', left < 3);
@@ -2430,7 +2434,7 @@ function updateHud(dt) {
     G.shown += (G.score - G.shown) * Math.min(1, dt * 6) + (G.score > G.shown ? 1 : 0);
     G.shown = Math.min(G.shown, G.score);
     setText('carnage', Math.round(G.shown).toLocaleString());
-    setText('crash-sub', `${G.wrecked} wrecked · chain ${G.chain} · ×${G.heat.toFixed(1)}`);
+    setText('crash-sub', t('{0} wrecked · chain {1} · ×{2}', G.wrecked, G.chain, G.heat.toFixed(1)));
     // The countdown to the end: five quiet seconds, or the end of the time limit, whichever's sooner. It shows
     // once things go quiet (or near the limit), and swells and reddens with every second it ticks down.
     const C = G.crash, left = Math.min(CRASH_QUIET - C.quiet, CRASH_MAX - C.t);
@@ -2486,7 +2490,7 @@ function renderMenu() {
     const b = document.createElement('button');
     const medal = records.medals[key] || 0, best = records.best[key];
     b.className = key === settings.level ? 'active' : '';
-    b.innerHTML = `<b>${L.name}</b><span>${L.blurb}</span><em class="m${medal}">${best ? best.toLocaleString() : 'not played'}</em>`;
+    b.innerHTML = `<b>${t(L.name)}</b><span>${t(L.blurb)}</span><em class="m${medal}">${best ? best.toLocaleString() : t('not played')}</em>`;
     b.onclick = () => { settings.level = key; saveSettings(); loadLevel(key); startTraffic(); renderMenu(); };
     box.appendChild(b);
   }
@@ -2495,17 +2499,17 @@ function renderMenu() {
   for (const [key, R] of Object.entries(RIDES)) {
     const b = document.createElement('button');
     b.className = key === settings.car ? 'active' : '';
-    b.innerHTML = `<b>${R.name}</b><span>${R.blurb}</span>`;
+    b.innerHTML = `<b>${t(R.name)}</b><span>${t(R.blurb)}</span>`;
     b.onclick = () => { settings.car = key; saveSettings(); renderMenu(); };
     cars.appendChild(b);
   }
   const tod = $('tod');
   tod.innerHTML = '';
-  for (const t of ['day', 'sunset']) {
+  for (const k of ['day', 'sunset']) {
     const b = document.createElement('button');
-    b.className = t === time ? 'active' : '';
-    b.textContent = TIMES[t].label;
-    b.onclick = () => { settings.times[city.key] = time = t; saveSettings(); stage.setTime(t); for (const v of traffic.list) v.setLights(TIMES[t].lamps); renderMenu(); };
+    b.className = k === time ? 'active' : '';
+    b.textContent = t(TIMES[k].label);
+    b.onclick = () => { settings.times[city.key] = time = k; saveSettings(); stage.setTime(k); for (const v of traffic.list) v.setLights(TIMES[k].lamps); renderMenu(); };
     tod.appendChild(b);
   }
 }
@@ -2524,8 +2528,8 @@ $('btn-send').onclick = async () => {
   const b = $('btn-send'), rec = G.rec;
   if (!rec) return;
   b.disabled = true;
-  b.textContent = 'Sending…';
-  try { b.textContent = `Sent ✓ ${await send(rec)}`; } catch (e) { b.textContent = 'Not sent: ' + e.message; b.disabled = false; }
+  b.textContent = t('Sending…');
+  try { b.textContent = t('Sent ✓ {0}', await send(rec)); } catch (e) { b.textContent = t('Not sent: {0}', e.message); b.disabled = false; }
 };
 $('btn-resume').onclick = resume;
 $('btn-quit').onclick = toMenu;

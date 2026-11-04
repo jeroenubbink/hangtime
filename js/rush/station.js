@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { merge } from '../scenery.js';
 import { CURB } from './city.js';
+import { t } from '../i18n.js';
 
 export const BRAND = { teal: '#0fb5ae', deep: '#0b5e6b', orange: '#ff7a1a', pink: '#ff2e7e', yellow: '#ffd23a', cream: '#fff6e0' };
 const B = BRAND, TAU = Math.PI * 2;
@@ -49,7 +50,7 @@ export function drawLogo(g, x, y, r, ring = false) {
   g.beginPath(); g.arc(x, y, r * 0.94, 0, TAU); g.fillStyle = ring ? B.teal : B.cream; g.fill();
   if (ring) {
     g.beginPath(); g.arc(x, y, r * (inner + 0.04), 0, TAU); g.fillStyle = B.cream; g.fill();
-    arc(g, 'FUEL\'S PARADISE', x, y, r * 0.83, -Math.PI / 2, r * 0.17, 1);
+    arc(g, t('FUEL\'S PARADISE'), x, y, r * 0.83, -Math.PI / 2, r * 0.17, 1);
     arc(g, '★ GAS · SNACKS · REGRETS ★', x, y, r * 0.83, Math.PI / 2, r * 0.1, -1);
   }
   g.beginPath(); g.arc(x, y, r * inner, 0, TAU); g.clip();
@@ -134,10 +135,10 @@ function fascia(c, m, short) {
   g.fillStyle = B.yellow; g.fillRect(0, H * 0.1, W, H * 0.03); g.fillRect(0, H * 0.87, W, H * 0.03);
   const r = H * 0.36;
   if (short) {
-    letters(g, 'NO SMOKING, PLEASE', W / 2, H / 2, H * 0.5, W * 0.8);
+    letters(g, t('NO SMOKING, PLEASE'), W / 2, H / 2, H * 0.5, W * 0.8);
     for (const x of [W * 0.06, W * 0.94]) drawLogo(g, x, H / 2, r);
   } else {
-    letters(g, 'FUEL\'S PARADISE', W / 2, H / 2, H * 0.62, W * 0.62);
+    letters(g, t('FUEL\'S PARADISE'), W / 2, H / 2, H * 0.62, W * 0.62);
     for (const x of [W * 0.12, W * 0.88]) drawLogo(g, x, H / 2, r);
   }
 }
@@ -168,8 +169,8 @@ function priceSign(c) {
   g.fillStyle = B.teal; g.fillRect(0, 0, W, H);
   g.fillStyle = B.deep; g.fillRect(W * 0.04, H * 0.46, W * 0.92, H * 0.5);
   drawLogo(g, W / 2, H * 0.2, W * 0.32, true);
-  letters(g, 'FUEL\'S PARADISE', W / 2, H * 0.4, H * 0.08, W * 0.9);
-  const rows = [['UNLEADED', '1.89'], ['DIESEL', '1.97'], ['KABOOM', '0.00']];
+  letters(g, t('FUEL\'S PARADISE'), W / 2, H * 0.4, H * 0.08, W * 0.9);
+  const rows = [[t('UNLEADED'), '1.89'], [t('DIESEL'), '1.97'], [t('KABOOM'), '0.00']];
   rows.forEach(([name, price], i) => {
     const y = H * (0.54 + i * 0.14);
     g.font = FONT(H * 0.06); g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = B.cream; g.fillText(name, W * 0.1, y);
@@ -185,7 +186,7 @@ function shopfront(c) {
   g.fillStyle = B.cream; g.fillRect(0, 0, W, H);
   g.fillStyle = B.teal; g.fillRect(0, 0, W, H * 0.3);
   g.fillStyle = B.orange; g.fillRect(0, H * 0.3, W, H * 0.04);
-  letters(g, 'FUEL\'S PARADISE  ·  MINIMART', W / 2, H * 0.15, H * 0.2, W * 0.8);
+  letters(g, t('FUEL\'S PARADISE  ·  MINIMART'), W / 2, H * 0.15, H * 0.2, W * 0.8);
   for (const x of [W * 0.05, W * 0.95]) drawLogo(g, x, H * 0.15, H * 0.13);
   // Glass, with a door in the middle
   const top = H * 0.4, bot = H * 0.95;
@@ -203,10 +204,10 @@ function shopfront(c) {
     g.fillStyle = bg; g.fillRect(x, H * 0.5, W * 0.09, H * 0.28);
     letters(g, text, x + W * 0.045, H * 0.64, H * 0.09, W * 0.08, '#fff', '#222');
   };
-  poster(W * 0.06, 'HOT DOGS', B.pink);
-  poster(W * 0.24, 'ICE', '#3aa0ff');
-  poster(W * 0.67, 'LOTTO', B.yellow);
-  poster(W * 0.85, 'SNACKS', B.orange);
+  poster(W * 0.06, t('HOT DOGS'), B.pink);
+  poster(W * 0.24, t('ICE'), '#3aa0ff');
+  poster(W * 0.67, t('LOTTO'), B.yellow);
+  poster(W * 0.85, t('SNACKS'), B.orange);
 }
 
 // ---------- Building it ----------

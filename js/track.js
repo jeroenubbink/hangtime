@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { TILE, HALF, GRID, DIRS, PIECE_TYPES, sidesOf, pieceParts, trackMaterial, collisionMaterial, onRoadLocal } from './pieces.js';
 import { addDetail, grassTexture } from './textures.js';
 import { Scatter, grandstand, mountainGeometry, merge, puffyClouds } from './scenery.js';
+import { t } from './i18n.js';
 
 export const emptyGrid = () => Array.from({ length: GRID }, () => Array(GRID).fill(null));
 
@@ -75,8 +76,8 @@ export function fromTurtle(x, z, h, tokens) {
 export function walk(grid) {
   const starts = [];
   grid.forEach((row, z) => row.forEach((c, x) => c && c.t === 'start' && starts.push({ x, z, h: c.r })));
-  if (starts.length === 0) return { ok: false, error: 'Place a start/finish piece' };
-  if (starts.length > 1) return { ok: false, error: 'Only one start/finish piece allowed' };
+  if (starts.length === 0) return { ok: false, error: t('Place a start/finish piece') };
+  if (starts.length > 1) return { ok: false, error: t('Only one start/finish piece allowed') };
   const s = starts[0];
   const path = [{ x: s.x, z: s.z, hin: s.h, hout: s.h, t: 'start' }];
   const seen = new Set([s.x + ',' + s.z]);
@@ -84,22 +85,22 @@ export function walk(grid) {
   for (let i = 0; i < GRID * GRID + 1; i++) {
     x += DIRS[h][0]; z += DIRS[h][1];
     const c = x >= 0 && x < GRID && z >= 0 && z < GRID ? grid[z][x] : null;
-    if (!c) return { ok: false, error: `Track ends at column ${x + 1}, row ${z + 1}`, at: { x, z } };
+    if (!c) return { ok: false, error: t('Track ends at column {0}, row {1}', x + 1, z + 1), at: { x, z } };
     const back = (h + 2) % 4, sides = sidesOf(c.t, c.r);
-    if (!sides.includes(back)) return { ok: false, error: `Pieces don't connect at column ${x + 1}, row ${z + 1}`, at: { x, z } };
+    if (!sides.includes(back)) return { ok: false, error: t('Pieces don\'t connect at column {0}, row {1}', x + 1, z + 1), at: { x, z } };
     if (x === s.x && z === s.z) {
-      if (h !== s.h) return { ok: false, error: 'Track runs into the start the wrong way', at: { x, z } };
+      if (h !== s.h) return { ok: false, error: t('Track runs into the start the wrong way'), at: { x, z } };
       const unused = grid.flat().filter(Boolean).length - path.length;
       return { ok: true, path, unused };
     }
     const key = x + ',' + z;
-    if (seen.has(key)) return { ok: false, error: 'Track crosses itself', at: { x, z } };
+    if (seen.has(key)) return { ok: false, error: t('Track crosses itself'), at: { x, z } };
     seen.add(key);
     const out = sides[0] === back ? sides[1] : sides[0];
     path.push({ x, z, hin: h, hout: out, t: c.t });
     h = out;
   }
-  return { ok: false, error: 'Track does not close' };
+  return { ok: false, error: t('Track does not close') };
 }
 
 export const BUILTIN = [

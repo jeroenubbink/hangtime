@@ -49,7 +49,7 @@ const SHOPS_BACK = [[20, 64, 'tiers', 'MALL OR NOTHING'], [18, 48, 'store', 'FRO
 // (`face`: the side its sign's on, toward the square: worked out from where the square's middle is, the ones near its
 // ends would put theirs on a side that's up against the next shop's wall)
 const shop = ([len, h, type, sign], x, z, w, d, face) => ({ x, z, w, d, h, type: type === 'tiers' ? 'tower' : type, tiers: type === 'tiers', brick: Math.round(h) % 2,
-  sign, face, font: /[a-z]/.test(sign) ? 'script' : null, bare: type === 'walkup', fixed: true });
+  sign, face, bare: type === 'walkup', fixed: true });
 // and the town behind the shops, block after block of it, so it's town as far as you can see from up there (the taller
 // the further back; `r`, a steady hash of where it stands, picks the rest)
 const TOWN = [...[98, 126, 154, 182, 210].flatMap(x => [x, -x]).flatMap(x => Array.from({ length: 10 }, (_, i) => [x, -158 - i * 28])),

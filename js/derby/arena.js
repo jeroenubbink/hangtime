@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { addDetail, grassTexture } from '../textures.js';
 import { merge, Scatter, grandstand, mountainGeometry, puffyClouds, sceneryGeo } from '../scenery.js';
+import { t as tr } from '../i18n.js';
 
 function rng(seed) {
   return () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -800,12 +801,12 @@ function adBoards(R, y, count, arena) {
   const ads = [['CRUNCHTIME', '#e8352b', '#fff'], ['DENT-O-MATIC', '#ffcf2e', '#222'], ['SCRAP & SONS', '#2f7fe0', '#fff'],
     ['HOT DOGS', '#22b35a', '#fff'], ['BUMPER CARS', '#9b4dff', '#fff'], ['TOW TRUCK 24/7', '#ff7a1a', '#222']];
   const tex = canvasTexture(1024, 384, (ctx) => {
-    ads.forEach(([t, bg, fg], i) => {
+    ads.forEach(([text, bg, fg], i) => {
       const x = (i % 2) * 512, yy = Math.floor(i / 2) * 128;
       ctx.fillStyle = bg; ctx.fillRect(x, yy, 512, 128);
       ctx.fillStyle = fg; ctx.font = 'bold 62px Russo One, Impact, sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(t, x + 256, yy + 68, 480);
+      ctx.fillText(tr(text), x + 256, yy + 68, 480);
     });
   });
   const mat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide });

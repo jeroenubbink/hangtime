@@ -1,6 +1,7 @@
 // Stunt scoring: airtime, flips, rolls, spins, loops and drifts. Stunts landed within a few seconds of
 // each other chain into a combo multiplier; crashing loses whatever was still in progress.
 import * as THREE from 'three';
+import { t } from './i18n.js';
 
 const TAU = Math.PI * 2;
 const CHAIN_WINDOW = 6;
@@ -33,8 +34,8 @@ export class Stunts {
 
   // Text for the live "in progress" indicator.
   get live() {
-    if (this.air && this.air.t > 0.45) return `AIR ${this.air.t.toFixed(1)} s`;
-    if (this.drift > 0.6) return `DRIFT ${this.drift.toFixed(1)} s`;
+    if (this.air && this.air.t > 0.45) return t('AIR {0} s', this.air.t.toFixed(1));
+    if (this.drift > 0.6) return t('DRIFT {0} s', this.drift.toFixed(1));
     return '';
   }
 

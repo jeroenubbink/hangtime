@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { merge } from '../scenery.js';
 import { addDetail } from '../textures.js';
 import { grounds } from './hotel.js';
+import { t } from '../i18n.js';
 
 export const LANE = 3.6;
 export const CURB = 0.16;
@@ -685,11 +686,11 @@ function deckMesh(b) {
   for (let i = -H; i < W + H; i += 36) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 18, 0); g.lineTo(i + 18 + H, H); g.lineTo(i + H, H); g.fill(); }
   g.restore();
   g.fillStyle = 'rgba(255,255,255,0.85)'; g.font = 'bold 54px sans-serif'; g.textAlign = 'center';
-  g.fillText(`SKY DECK ${Math.round(b.h)} m`, W / 2, H - 40);
-  const t = new THREE.CanvasTexture(cv);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 8;
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(b.w - 0.4, b.d - 0.4).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: t, polygonOffset: true, polygonOffsetFactor: -2 }));
+  g.fillText(t('SKY DECK {0} m', Math.round(b.h)), W / 2, H - 40);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(b.w - 0.4, b.d - 0.4).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2 }));
   m.position.set(b.x, b.top + (ROOF[b.type] ?? 0.7) + 0.02, b.z);
   m.receiveShadow = true;
   return m;

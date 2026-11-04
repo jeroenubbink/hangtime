@@ -2,6 +2,7 @@
 import { GRID, PIECES, PIECE_TYPES, chicaneX } from './pieces.js';
 import { emptyGrid, walk, serialize, deserialize, BUILTIN } from './track.js';
 import * as store from './store.js';
+import { t } from './i18n.js';
 
 const ROAD = '#4a4d55', LINE = '#eeeeea', GRASS = '#5da43f', GRASS2 = '#58a03b';
 
@@ -167,22 +168,22 @@ export class Editor {
   buildPalette() {
     const pal = document.getElementById('palette');
     pal.innerHTML = '';
-    for (const t of [...PIECE_TYPES, 'erase']) {
+    for (const type of [...PIECE_TYPES, 'erase']) {
       const b = document.createElement('button');
       b.className = 'piece';
-      b.dataset.type = t;
+      b.dataset.type = type;
       const c = document.createElement('canvas');
       c.width = c.height = 48;
       const x = c.getContext('2d');
-      if (t === 'erase') {
+      if (type === 'erase') {
         x.fillStyle = GRASS; x.fillRect(0, 0, 48, 48);
         x.strokeStyle = '#fff'; x.lineWidth = 5;
         x.beginPath(); x.moveTo(12, 12); x.lineTo(36, 36); x.moveTo(36, 12); x.lineTo(12, 36); x.stroke();
-      } else drawPiece(x, t, 0, 0, 0, 48);
+      } else drawPiece(x, type, 0, 0, 0, 48);
       const label = document.createElement('span');
-      label.textContent = t === 'erase' ? 'Erase' : PIECES[t].label;
+      label.textContent = t(type === 'erase' ? 'Erase' : PIECES[type].label);
       b.append(c, label);
-      b.onclick = () => { this.brush = t; this.refreshPalette(); };
+      b.onclick = () => { this.brush = type; this.refreshPalette(); };
       pal.append(b);
     }
     this.refreshPalette();
@@ -194,7 +195,7 @@ export class Editor {
 
   refreshLoadList() {
     const sel = document.getElementById('ed-load');
-    sel.innerHTML = '<option value="">Load track…</option>';
+    sel.innerHTML = `<option value="">${t('Load track…')}</option>`;
     BUILTIN.forEach((b, i) => sel.add(new Option(b.name + ' (built-in)', 'b' + i)));
     for (const name of Object.keys(customTracks())) sel.add(new Option(name, 'c' + name));
   }
@@ -225,14 +226,14 @@ export class Editor {
     $('ed-rotate').onclick = () => { this.rot = (this.rot + 1) % 4; this.draw(); };
     $('ed-test').onclick = () => {
       const res = walk(this.grid);
-      if (res.ok) this.onTest(this.grid, this.nameInput.value || 'Untitled');
+      if (res.ok) this.onTest(this.grid, this.nameInput.value || t('Untitled'));
     };
     $('ed-save').onclick = () => {
       const name = this.nameInput.value.trim();
-      if (!name) { this.flash('Give the track a name first'); return; }
+      if (!name) { this.flash(t('Give the track a name first')); return; }
       const all = customTracks();
       all[name] = serialize(this.grid);
-      this.flash(store.save('tracks', all) ? `Saved “${name}”` : 'Could not save (storage unavailable)');
+      this.flash(store.save('tracks', all) ? t('Saved “{0}”', name) : t('Could not save (storage unavailable)'));
       this.refreshLoadList();
     };
     $('ed-load').onchange = e => {
@@ -246,27 +247,27 @@ export class Editor {
     $('ed-clear').onclick = () => { this.grid = emptyGrid(); this.changed(); };
     $('ed-delete').onclick = () => {
       const name = this.nameInput.value.trim(), all = customTracks();
-      if (!all[name]) { this.flash('No saved track with that name'); return; }
+      if (!all[name]) { this.flash(t('No saved track with that name')); return; }
       delete all[name];
       store.save('tracks', all);
       this.refreshLoadList();
-      this.flash(`Deleted “${name}”`);
+      this.flash(t('Deleted “{0}”', name));
     };
     $('ed-export').onclick = async () => {
       const code = btoa(serialize(this.grid));
-      try { await navigator.clipboard.writeText(code); this.flash('Track code copied to clipboard'); }
-      catch { window.prompt('Copy this track code:', code); }
+      try { await navigator.clipboard.writeText(code); this.flash(t('Track code copied to clipboard')); }
+      catch { window.prompt(t('Copy this track code:'), code); }
     };
     $('ed-link').onclick = async () => {
-      const name = this.nameInput.value.trim() || 'Shared track';
+      const name = this.nameInput.value.trim() || t('Shared track');
       const url = `${location.origin}${location.pathname}#track=${encodeURIComponent(name)}&code=${encodeURIComponent(btoa(serialize(this.grid)))}`;
-      try { await navigator.clipboard.writeText(url); this.flash('Link copied: anyone who opens it gets this track'); }
-      catch { window.prompt('Copy this link:', url); }
+      try { await navigator.clipboard.writeText(url); this.flash(t('Link copied: anyone who opens it gets this track')); }
+      catch { window.prompt(t('Copy this link:'), url); }
     };
     $('ed-import').onclick = () => {
-      const code = window.prompt('Paste a track code:');
+      const code = window.prompt(t('Paste a track code:'));
       if (!code) return;
-      try { this.grid = deserialize(atob(code.trim())); this.changed(); } catch { this.flash('That code is not valid'); }
+      try { this.grid = deserialize(atob(code.trim())); this.changed(); } catch { this.flash(t('That code is not valid')); }
     };
     $('ed-back').onclick = () => this.onBack();
   }
@@ -289,7 +290,7 @@ export class Editor {
     this.result = walk(this.grid);
     const r = this.result;
     document.getElementById('ed-test').disabled = !r.ok;
-    let msg = r.ok ? `✔ Track OK — ${r.path.length} tiles` + (r.unused ? ` (${r.unused} unconnected)` : '') : '✖ ' + r.error;
+    let msg = r.ok ? t('✔ Track OK — {0} tiles', r.path.length) + (r.unused ? t(' ({0} unconnected)', r.unused) : '') : '✖ ' + r.error;
     if (this.flashMsg) msg = this.flashMsg;
     this.status.textContent = msg;
     this.status.className = r.ok ? 'ok' : 'bad';

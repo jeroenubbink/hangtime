@@ -10,6 +10,8 @@ import * as store from './store.js';
 import { waterTime } from './textures.js';
 import { TONE } from './toon.js';
 import { loadSceneryKit } from './scenery.js';
+import { t, ordinal, translatePage, langButton } from './i18n.js';
+import './nl.js';
 
 // Car models; the built-in box cars stand in if they can't be loaded
 await Promise.all([loadCarKits().catch(e => console.warn('Car models not loaded:', e)), loadSceneryKit().catch(e => console.warn('Scenery not loaded:', e))]);
@@ -17,6 +19,9 @@ await Promise.all([loadCarKits().catch(e => console.warn('Car models not loaded:
 const DT = 1 / 120;
 const CAMS = ['Chase', 'Far chase', 'Bumper', 'TV'];
 const $ = id => document.getElementById(id);
+translatePage();
+$('btn-help').after(langButton());
+$('pick-hangtime').closest('.picker').append(langButton());
 
 // ---------- Renderer & scene ----------
 const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: true });
@@ -315,7 +320,7 @@ function readInput() {
 
 // ---------- Tracks ----------
 function trackList() {
-  const list = BUILTIN.map((b, i) => ({ key: 'b' + i, name: b.name, grid: b.grid, medals: b.medals }));
+  const list = BUILTIN.map((b, i) => ({ key: 'b' + i, name: t(b.name), grid: b.grid, medals: b.medals }));
   for (const [name, data] of Object.entries(customTracks())) list.push({ key: 'c' + name, name, grid: () => deserialize(data), custom: true });
   return list;
 }
@@ -460,7 +465,7 @@ function startRace() {
     const car = new CarPhysics(game.world);
     car.reset(s.pos.clone().addScaledVector(side, 2.6), s.heading);
     race.rival = {
-      car, skill: game.rival, name: SKILLS[game.rival].name,
+      car, skill: game.rival, name: t(SKILLS[game.rival].name),
       lap: 0, next: race.next, last: 0, crash: null, stuck: 0, sinceCp: 0, done: null,
       frames: [], events: [], input: { ...NONE }, driver: new Driver(game.path, game.grid, game.rival, 2.6),
     };
@@ -511,11 +516,11 @@ function hazard(car, ev, st) {
 
 function crash(kind) {
   if (race.crash) return;
-  if (race.attack) { race.timeLeft = Math.max(0, race.timeLeft - 3); setTimeout(() => showMessage($('message').textContent, '−3 seconds', 1.4), 0); }
+  if (race.attack) { race.timeLeft = Math.max(0, race.timeLeft - 3); setTimeout(() => showMessage($('message').textContent, t('−3 seconds'), 1.4), 0); }
   race.crash = { t: kind === 'water' ? 2.0 : 2.6, kind: kind === 'water' ? 'water' : 'wreck' };
   const p = game.car.pos;
-  if (kind === 'water') { splash(p); sound.splash(); showMessage('SPLASH!', 'Too slow for the jump', 1.8); }
-  else { explode(p); sound.crash(); setCharred(true); game.shake = 0.9; showMessage('CRASHED!', kind === 'landing' ? 'Land on your wheels' : '', 1.8); kind = 'wreck'; }
+  if (kind === 'water') { splash(p); sound.splash(); showMessage(t('SPLASH!'), t('Too slow for the jump'), 1.8); }
+  else { explode(p); sound.crash(); setCharred(true); game.shake = 0.9; showMessage(t('CRASHED!'), kind === 'landing' ? t('Land on your wheels') : '', 1.8); kind = 'wreck'; }
   race.events.push({ f: race.frames.length / 16, type: kind });
 }
 
@@ -635,7 +640,7 @@ function rivalStep() {
       rv.sinceCp = r === 'cp' || r === 'lap' ? 0 : rv.sinceCp + DT;
       if (r === 'lap' && ++rv.lap >= race.laps) {
         rv.done = race.clock;
-        if (!race.finished) showMessage('', `${rv.name} rival has finished!`, 1.6);
+        if (!race.finished) showMessage('', t('{0} rival has finished!', rv.name), 1.6);
       }
       if (rv.sinceCp > 12) respawnRival();   // lost or stuck: put it back on track
     }
@@ -698,7 +703,7 @@ function checkpoints() {
     if (b != null && race.last % 3 === 0) showDelta(t - b);
   }
   if (r === 'lap') lapComplete();
-  else if (r === 'missed' && !race.attack) showMessage('', '↩ Missed a checkpoint — go back, or press R', 2);
+  else if (r === 'missed' && !race.attack) showMessage('', t('↩ Missed a checkpoint — go back, or press R'), 2);
 }
 
 // How far round the race a racer is, in tiles (for positions).
@@ -721,7 +726,7 @@ function lapComplete() {
   if (race.attack) {
     race.lap++;
     race.stunts.score += ATTACK_LAP_BONUS;
-    stuntPopup([{ name: 'LAP BONUS', detail: '', pts: ATTACK_LAP_BONUS, mult: 1 }]);
+    stuntPopup([{ name: t('LAP BONUS'), detail: '', pts: ATTACK_LAP_BONUS, mult: 1 }]);
     return;
   }
   const lapTime = race.time - race.lapStart;
@@ -745,7 +750,7 @@ function lapComplete() {
   race.lapStart = race.time;
   if (race.lap >= race.laps) finish(record);
   else {
-    showMessage(record ? 'LAP RECORD!' : `LAP ${race.lap + 1}`, fmt(lapTime), 1.8);
+    showMessage(record ? t('LAP RECORD!') : t('LAP {0}', race.lap + 1), fmt(lapTime), 1.8);
     sound.beep(true);
   }
 }
@@ -757,7 +762,7 @@ function finishAttack() {
   race.attackRecord = score > 0 && score > race.bestAttack;
   if (race.attackRecord) { race.bestAttack = score; store.save('attack.' + game.trackId, score); }
   sound.beep(true);
-  showMessage('TIME!', score.toLocaleString('en') + ' points', 2.2);
+  showMessage(t('TIME!'), t('{0} points', score.toLocaleString('en')), 2.2);
   if (race.attackRecord) confetti(game.car.pos);
   setTimeout(() => { if (game.mode === 'race' && race.finished) showAttackResults(); }, 2400);
 }
@@ -766,17 +771,17 @@ function showAttackResults() {
   const st = race.stunts, score = st.score;
   const got = ATTACK_MEDALS.findIndex(t => score >= t), medal = got >= 0 ? MEDALS[got] : null;
   const i = got >= 0 ? got : 3;
-  const nextUp = i > 0 ? `<small>${MEDALS[i - 1]} needs ${ATTACK_MEDALS[i - 1].toLocaleString('en')}</small>` : '<small>the best there is</small>';
-  $('res-title').textContent = 'Stunt attack';
+  const nextUp = `<small>${i > 0 ? t('{0} needs {1}', t(MEDALS[i - 1]), ATTACK_MEDALS[i - 1].toLocaleString('en')) : t('the best there is')}</small>`;
+  $('res-title').textContent = t('Stunt attack');
   $('res-body').innerHTML = `
-    <div class="duel won">${score.toLocaleString('en')}<small>points in ${ATTACK_SECONDS} seconds on ${escapeHtml(game.trackName)}</small></div>
-    <div class="medal-row">${medal ? `<i class="medal ${medal}"></i> ${medal[0].toUpperCase() + medal.slice(1)} medal` : 'No medal yet'}${nextUp}</div>
-    ${race.attackRecord ? '<div class="record">★ New stunt attack record</div>' : ''}
+    <div class="duel won">${score.toLocaleString('en')}<small>${t('points in {0} seconds on {1}', ATTACK_SECONDS, escapeHtml(game.trackName))}</small></div>
+    <div class="medal-row">${medal ? `<i class="medal ${medal}"></i> ${t(medal[0].toUpperCase() + medal.slice(1) + ' medal')}` : t('No medal yet')}${nextUp}</div>
+    ${race.attackRecord ? `<div class="record">${t('★ New stunt attack record')}</div>` : ''}
     <table>
-      <tr><td>Stunts landed</td><td>${st.count}</td></tr>
-      <tr><td>Laps</td><td>${race.lap}</td></tr>
-      <tr><td>Longest air</td><td>${st.biggestAir ? st.biggestAir.toFixed(1) + ' s' : '–'}</td></tr>
-      <tr><td>Record</td><td>${race.bestAttack.toLocaleString('en')}</td></tr>
+      <tr><td>${t('Stunts landed')}</td><td>${st.count}</td></tr>
+      <tr><td>${t('Laps')}</td><td>${race.lap}</td></tr>
+      <tr><td>${t('Longest air')}</td><td>${st.biggestAir ? st.biggestAir.toFixed(1) + ' s' : '–'}</td></tr>
+      <tr><td>${t('Record')}</td><td>${race.bestAttack.toLocaleString('en')}</td></tr>
     </table>`;
   showScreen('results');
 }
@@ -797,7 +802,7 @@ function finish(record) {
   if (race.stuntRecord) { race.bestStunts = st.score; store.save('stunts.' + game.trackId, st.score); }
   sound.beep(true);
   const pos = playerPosition();
-  showMessage(race.rival ? (pos === 1 ? 'YOU WIN!' : '2ND PLACE') : 'FINISH!', '', 2.2);
+  showMessage(t(race.rival ? (pos === 1 ? 'YOU WIN!' : '2ND PLACE') : 'FINISH!'), '', 2.2);
   if ((race.rival && pos === 1) || record) confetti(game.car.pos);
   setTimeout(() => {
     if (game.mode !== 'race' || !race.finished) return;
@@ -813,33 +818,33 @@ function showResults(record) {
   if (rv) {
     const won = playerPosition() === 1;
     const gap = rv.done != null ? Math.abs(rv.done - race.finishTime) : null;
-    duel = `<div class="duel ${won ? 'won' : 'lost'}">${won ? '1st' : '2nd'}
+    duel = `<div class="duel ${won ? 'won' : 'lost'}">${ordinal(won ? 1 : 2)}
       <small>${won
-        ? (gap != null ? `beat the ${rv.name} rival by ${gap.toFixed(2)} s` : `the ${rv.name} rival is still on lap ${Math.min(rv.lap + 1, race.laps)}`)
-        : `the ${rv.name} rival won by ${gap.toFixed(2)} s`}</small></div>`;
+        ? (gap != null ? t('beat the {0} rival by {1} s', rv.name, gap.toFixed(2)) : t('the {0} rival is still on lap {1}', rv.name, Math.min(rv.lap + 1, race.laps)))
+        : t('the {0} rival won by {1} s', rv.name, gap.toFixed(2))}</small></div>`;
   }
   let medals = '';
   if (game.medals) {
     const got = medalFor(fastest, game.medals), i = got ? MEDALS.indexOf(got) : 3;
-    const nextUp = i > 0 ? `<small>${MEDALS[i - 1]} needs ${fmt(game.medals[i - 1])}, ${(fastest - game.medals[i - 1]).toFixed(2)} s to find</small>` : '<small>the best there is</small>';
-    medals = `<div class="medal-row">${got ? `<i class="medal ${got}"></i> ${got[0].toUpperCase() + got.slice(1)} medal` : 'No medal yet'}${nextUp}</div>`;
+    const nextUp = `<small>${i > 0 ? t('{0} needs {1}, {2} s to find', t(MEDALS[i - 1]), fmt(game.medals[i - 1]), (fastest - game.medals[i - 1]).toFixed(2)) : t('the best there is')}</small>`;
+    medals = `<div class="medal-row">${got ? `<i class="medal ${got}"></i> ${t(got[0].toUpperCase() + got.slice(1) + ' medal')}` : t('No medal yet')}${nextUp}</div>`;
   }
-  $('res-title').textContent = game.fromEditor ? 'Test drive done' : 'Finished';
+  $('res-title').textContent = t(game.fromEditor ? 'Test drive done' : 'Finished');
   $('res-body').innerHTML = `
     ${duel}
     ${medals}
-    ${record ? '<div class="record">★ New lap record</div>' : ''}
-    ${race.stuntRecord ? '<div class="record">★ New stunt record</div>' : ''}
+    ${record ? `<div class="record">${t('★ New lap record')}</div>` : ''}
+    ${race.stuntRecord ? `<div class="record">${t('★ New stunt record')}</div>` : ''}
     <table>
-      ${race.lapTimes.map((t, i) => `<tr class="${t === fastest ? 'best' : ''}"><td>Lap ${i + 1}</td><td>${fmt(t)}</td></tr>`).join('')}
-      <tr><td><b>Total</b></td><td><b>${fmt(total)}</b></td></tr>
-      <tr><td>Track record</td><td>${fmt(race.best)}</td></tr>
+      ${race.lapTimes.map((lt, i) => `<tr class="${lt === fastest ? 'best' : ''}"><td>${t('Lap {0}', i + 1)}</td><td>${fmt(lt)}</td></tr>`).join('')}
+      <tr><td><b>${t('Total')}</b></td><td><b>${fmt(total)}</b></td></tr>
+      <tr><td>${t('Track record')}</td><td>${fmt(race.best)}</td></tr>
     </table>
     <table>
-      <tr><td><b>Stunt score</b></td><td><b>${st.score.toLocaleString('en')}</b></td></tr>
-      <tr><td>Stunts landed</td><td>${st.count}</td></tr>
-      <tr><td>Longest air</td><td>${st.biggestAir ? st.biggestAir.toFixed(1) + ' s' : '–'}</td></tr>
-      <tr><td>Stunt record</td><td>${race.bestStunts.toLocaleString('en')}</td></tr>
+      <tr><td><b>${t('Stunt score')}</b></td><td><b>${st.score.toLocaleString('en')}</b></td></tr>
+      <tr><td>${t('Stunts landed')}</td><td>${st.count}</td></tr>
+      <tr><td>${t('Longest air')}</td><td>${st.biggestAir ? st.biggestAir.toFixed(1) + ' s' : '–'}</td></tr>
+      <tr><td>${t('Stunt record')}</td><td>${race.bestStunts.toLocaleString('en')}</td></tr>
     </table>`;
   showScreen('results');
 }
@@ -924,7 +929,7 @@ function replayJumped() {
 function syncReplayUi() {
   $('rp-play').textContent = replay.playing ? '❚❚' : '▶';
   $('rp-speed').textContent = replay.speed + '×';
-  $('rp-cam').textContent = CAMS[replay.cam];
+  $('rp-cam').textContent = t(CAMS[replay.cam]);
 }
 
 // ---------- Cameras ----------
@@ -1113,8 +1118,8 @@ function drawAttitude(car, show) {
     ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '600 10px Rubik, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(label, cx, H - 2);
   };
-  dial(H / 2, 'PITCH', pitch, true);
-  dial(W - H / 2, 'ROLL', roll, false);
+  dial(H / 2, t('PITCH'), pitch, true);
+  dial(W - H / 2, t('ROLL'), roll, false);
 }
 
 let msgTimer = 0;
@@ -1128,16 +1133,16 @@ function showMessage(main, sub = '', secs = 1.5) {
 function updateHud(force) {
   if (!race) return;
   const lapNo = Math.min(race.lap + 1, race.laps);
-  $('hud-lap').textContent = race.attack ? 'STUNT ATTACK' : `LAP ${lapNo}/${race.laps}`;
+  $('hud-lap').textContent = race.attack ? t('STUNT ATTACK') : t('LAP {0}/{1}', lapNo, race.laps);
   $('hud-time').textContent = race.attack ? fmt(Math.max(0, race.timeLeft))
     : fmt(race.finished ? race.lapTimes[race.lapTimes.length - 1] : race.time - race.lapStart);
   $('hud-time').classList.toggle('low', !!race.attack && race.timeLeft < 10);
-  const lines = race.attack ? [`Record ${race.bestAttack.toLocaleString('en')}`] : race.lapTimes.map((t, i) => `L${i + 1} ${fmt(t)}`);
-  if (!race.attack) lines.push(`Best ${fmt(race.best)}`);
+  const lines = race.attack ? [t('Record {0}', race.bestAttack.toLocaleString('en'))] : race.lapTimes.map((lt, i) => t('L{0} {1}', i + 1, fmt(lt)));
+  if (!race.attack) lines.push(t('Best {0}', fmt(race.best)));
   const html = lines.join('<br>');
   if (force || html !== updateHud.last) { $('hud-laps').innerHTML = html; updateHud.last = html; }
   const pos = playerPosition();
-  setText('hud-pos', pos ? (pos === 1 ? '1ST' : '2ND') + `<small>/2 vs ${race.rival.name}</small>` : '', true);
+  setText('hud-pos', pos ? ordinal(pos).toUpperCase() + `<small>${t('/2 vs {0}', race.rival.name)}</small>` : '', true);
   $('hud-pos').className = pos === 1 ? 'lead' : '';
   const st = race.stunts;
   setText('hud-score', st.score || st.mult > 1 ? `${st.score.toLocaleString('en')}${st.mult > 1 ? ` <em>×${st.mult}</em>` : ''}` : '', true);
@@ -1167,13 +1172,13 @@ function stuntPopup(group) {
   const el = document.createElement('div');
   if (group[0].bail) {
     el.className = 'pop bail';
-    el.textContent = 'BAILED';
+    el.textContent = t('BAILED');
   } else {
     el.className = 'pop';
     const mult = group[0].mult;
     race.nitro = Math.min(1, race.nitro + group.reduce((n, a) => n + a.pts * a.mult, 0) * NITRO_PER_POINT);
-    el.innerHTML = group.map(a => `<div><b>${a.name}</b>${a.detail ? ` <span>${a.detail}</span>` : ''} <i>+${a.pts}</i></div>`).join('')
-      + (mult > 1 ? `<div class="mult">COMBO ×${mult}</div>` : '');
+    el.innerHTML = group.map(a => `<div><b>${stuntName(a.name)}</b>${a.detail ? ` <span>${a.detail}</span>` : ''} <i>+${a.pts}</i></div>`).join('')
+      + (mult > 1 ? `<div class="mult">${t('COMBO ×{0}', mult)}</div>` : '');
     sound.stunt(mult);
   }
   const feed = $('stunt-feed');
@@ -1181,6 +1186,9 @@ function stuntPopup(group) {
   while (feed.children.length > 3) feed.firstChild.remove();
   el.addEventListener('animationend', () => el.remove());
 }
+
+// A stunt's name, DOUBLE, TRIPLE, 3× or 540° in front and all
+const stuntName = s => { const [, n, name] = s.match(/^((?:DOUBLE |TRIPLE |\d+× |\d+° )?)(.*)$/); return (n ? t(n.trim()) + ' ' : '') + t(name); };
 
 // ---------- Screens ----------
 function showScreen(id) {
@@ -1192,10 +1200,10 @@ function renderMenu() {
   list.innerHTML = '';
   const tracks = trackList();
   if (!tracks.some(t => t.key === game.trackKey)) game.trackKey = 'b0';
-  for (const t of tracks) {
+  for (const tk of tracks) {
     const b = document.createElement('button');
-    b.className = 'track-item' + (t.key === game.trackKey ? ' active' : '');
-    const g = t.grid();
+    b.className = 'track-item' + (tk.key === game.trackKey ? ' active' : '');
+    const g = tk.grid();
     let medal, label;
     if (game.gameMode === 'attack') {
       const pts = store.load('attack.' + trackId(g), 0);
@@ -1204,23 +1212,23 @@ function renderMenu() {
       label = pts ? pts.toLocaleString('en') : '';
     } else {
       const best = store.load('best.' + trackId(g), null);
-      medal = medalFor(best, t.medals);
+      medal = medalFor(best, tk.medals);
       label = best ? fmt(best) : '';
     }
-    b.innerHTML = `<span>${escapeHtml(t.name)}${t.custom ? '<span class="custom">custom</span>' : ''}</span>`
+    b.innerHTML = `<span>${escapeHtml(tk.name)}${tk.custom ? `<span class="custom">${t('custom')}</span>` : ''}</span>`
       + `<span class="best">${medal ? `<i class="medal ${medal}"></i>` : ''}${label}</span>`;
-    b.onclick = () => { game.trackKey = t.key; store.save('track', t.key); renderMenu(); selectMenuTrack(); };
+    b.onclick = () => { game.trackKey = tk.key; store.save('track', tk.key); renderMenu(); selectMenuTrack(); };
     list.append(b);
   }
   segmented($('laps'), [1, 2, 3, 5].map(n => [n, n]), game.laps, n => { game.laps = n; store.save('laps', n); });
-  segmented($('rival'), [['off', 'Off'], ...Object.entries(SKILLS).map(([k, v]) => [k, v.name])], game.rival,
+  segmented($('rival'), [['off', t('Off')], ...Object.entries(SKILLS).map(([k, v]) => [k, t(v.name)])], game.rival,
     k => { game.rival = k; store.save('rival', k); });
-  segmented($('gmode'), [['race', 'Race'], ['attack', 'Stunt attack']], game.gameMode, k => { game.gameMode = k; store.save('gameMode', k); });
+  segmented($('gmode'), [['race', t('Race')], ['attack', t('Stunt attack')]], game.gameMode, k => { game.gameMode = k; store.save('gameMode', k); });
   $('menu').classList.toggle('attack', game.gameMode === 'attack');
-  $('btn-race').textContent = game.gameMode === 'attack' ? 'Go ▸' : 'Race ▸';
-  segmented($('car'), Object.entries(CARS).map(([k, v]) => [k, v.name]), game.carKind, setCar);
-  $('car-blurb').textContent = CARS[game.carKind].blurb;
-  segmented($('tod'), Object.entries(TOD).map(([k, v]) => [k, v.label]), game.tod,
+  $('btn-race').textContent = t(game.gameMode === 'attack' ? 'Go ▸' : 'Race ▸');
+  segmented($('car'), Object.entries(CARS).map(([k, v]) => [k, t(v.name)]), game.carKind, setCar);
+  $('car-blurb').textContent = t(CARS[game.carKind].blurb);
+  segmented($('tod'), Object.entries(TOD).map(([k, v]) => [k, t(v.label)]), game.tod,
     k => { game.tod = k; store.save('tod', k); applyTimeOfDay(); });
   const cols = $('colours');
   cols.innerHTML = '';
@@ -1229,12 +1237,12 @@ function renderMenu() {
     b.className = 'swatch' + (k === game.paint ? ' active' : '');
     // Body colour, then a band of the second colour with the accent through it, as on the car
     b.style.background = `linear-gradient(135deg, ${c[0]} 0 52%, ${c[2]} 52% 60%, ${c[1]} 60%)`;
-    b.title = name;
-    b.setAttribute('aria-label', name + ' livery');
+    b.title = t(name);
+    b.setAttribute('aria-label', t('{0} livery', t(name)));
     b.onclick = () => { setPaint(k); renderMenu(); };
     cols.append(b);
   }
-  $('livery-name').textContent = LIVERIES[game.paint].name;
+  $('livery-name').textContent = t(LIVERIES[game.paint].name);
 }
 
 function segmented(el, options, current, pick) {
@@ -1328,7 +1336,7 @@ window.addEventListener('keydown', e => {
   }
   if (e.code === 'KeyC') {
     if (m === 'replay') $('rp-cam').onclick();
-    else if (m === 'race' || m === 'countdown') { game.camMode = (game.camMode + 1) % CAMS.length; game.cam = null; showMessage('', CAMS[game.camMode] + ' camera', 1); }
+    else if (m === 'race' || m === 'countdown') { game.camMode = (game.camMode + 1) % CAMS.length; game.cam = null; showMessage('', t('{0} camera', t(CAMS[game.camMode])), 1); }
   }
   if (e.code === 'KeyR' && m === 'race' && race && !race.crash && !race.finished) respawn();
   if (m === 'replay' && e.code === 'Space') $('rp-play').onclick();
@@ -1406,7 +1414,7 @@ function frame(now) {
         race.cdShown = true;
         if (after > 0) { showMessage(String(after), game.trackName, 1.2); sound.beep(false); }
       }
-      if (race.countdown <= 0) { setMode('race'); showMessage('GO!', '', 0.8); sound.beep(true); }
+      if (race.countdown <= 0) { setMode('race'); showMessage(t('GO!'), '', 0.8); sound.beep(true); }
     }
     poseCarModel(game.model, car.pos, car.q, car.steer, car.wheels.map(w => w.comp), car.wheels.map(w => w.spin));
     // Count as airborne only after a moment, so bumps don't make the camera twitch. Through a corkscrew the
@@ -1544,11 +1552,11 @@ function importSharedTrack() {
     const grid = deserialize(data);
     if (!walk(grid).ok) return;
     const all = customTracks();
-    let name = (h.get('track') || 'Shared track').slice(0, 32);
+    let name = (h.get('track') || t('Shared track')).slice(0, 32);
     const existing = Object.keys(all).find(k => all[k] === data);
     if (existing) name = existing;
     else {
-      for (let i = 2; all[name]; i++) name = `${(h.get('track') || 'Shared track').slice(0, 28)} ${i}`;
+      for (let i = 2; all[name]; i++) name = `${(h.get('track') || t('Shared track')).slice(0, 28)} ${i}`;
       all[name] = data;
       store.save('tracks', all);
     }
@@ -1558,7 +1566,7 @@ function importSharedTrack() {
 }
 
 function noteSharedTrack() {
-  if (game.sharedTrack) $('menu-note').textContent = `Shared track “${game.sharedTrack}” added to your tracks.`;
+  if (game.sharedTrack) $('menu-note').textContent = t('Shared track “{0}” added to your tracks.', game.sharedTrack);
 }
 window.addEventListener('hashchange', () => {
   game.sharedTrack = null;

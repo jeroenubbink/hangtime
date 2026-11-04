@@ -280,3 +280,4 @@ body.touch #nitro kbd { display: none; }
 }
 .livery-name { text-transform: none; letter-spacing: 0.5px; opacity: 1; margin-left: 6px; font-weight: 700; }
 .seg.swatches { flex-wrap: wrap; max-width: 300px; }
+button.lang { margin-left: 22px; }

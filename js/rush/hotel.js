@@ -4,6 +4,7 @@
 // up in it, the trees, benches, bins and lamps, are the level's props, and the parked cars are traffic.)
 import * as THREE from 'three';
 import { merge } from '../scenery.js';
+import { t } from '../i18n.js';
 
 const SCRIPT = "'Great Vibes', 'Brush Script MT', cursive";
 const BLOCK = "'Russo One', Impact, sans-serif";
@@ -252,23 +253,23 @@ function shopFronts(blocks, [sx, sz]) {
       const s = -aw / 2 + (k + 0.5) * aw / n;
       parts.push([new THREE.BoxGeometry(aw / n, 0.07, 1.9).translate(s, 0, 0.95).rotateX(0.36).rotateY(yaw).translate(fx, g0 + 4.1, fz), k % 2 ? '#f4f1ea' : colour]);
     }
-    // the board
-    const bw = Math.min(len - 4, 6 + b.sign.length * 1.15), bh = 2.1;
+    // the board (lettered in script if its name has small letters)
+    const sign = t(b.sign), script = /[a-z]/.test(sign);
+    const bw = Math.min(len - 4, 6 + sign.length * 1.15), bh = 2.1;
     parts.push([new THREE.BoxGeometry(bw + 0.3, bh + 0.3, 0.3).translate(0, 0, 0.5).rotateY(yaw).translate(fx, g0 + 6.3, fz), '#2b2b30']);
     const tex = canvasTexture(1024, Math.round(1024 * bh / bw), (g, W, H) => {
       g.fillStyle = colour; g.fillRect(0, 0, W, H);
       g.strokeStyle = light ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.5)'; g.lineWidth = 6; g.strokeRect(10, 10, W - 20, H - 20);
-      const script = b.font === 'script';
       let px = H * (script ? 0.82 : 0.6);
       const font = p => (script ? `${p}px ${SCRIPT}` : `${p}px ${BLOCK}`);
       g.font = font(px);
-      const tw = g.measureText(b.sign).width;
+      const tw = g.measureText(sign).width;
       if (tw > W * 0.86) { px *= W * 0.86 / tw; g.font = font(px); }
       g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillStyle = light ? '#2a2420' : '#fff6e4';
-      g.fillText(b.sign, W / 2, H / 2 + (script ? px * 0.08 : px * 0.04));
+      g.fillText(sign, W / 2, H / 2 + (script ? px * 0.08 : px * 0.04));
     });
-    texs[b.font === 'script' ? SCRIPT : BLOCK].push(tex);
+    texs[script ? SCRIPT : BLOCK].push(tex);
     // (pulled forward in depth, like the hotel's: see hotelSign)
     const face = new THREE.Mesh(new THREE.PlaneGeometry(bw, bh).translate(0, 0, 0.66).rotateY(yaw),
       new THREE.MeshLambertMaterial({ map: tex, emissive: '#222222', polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));

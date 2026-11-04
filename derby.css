@@ -218,3 +218,4 @@ body.touch #feed { right: 128px; top: 64px; }
   body.touch #radar { top: 64px; width: 100px; height: 100px; }
   body.touch #callouts { top: 30%; }
 }
+button.lang { margin-left: 22px; }

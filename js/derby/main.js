@@ -14,8 +14,12 @@ import { ROSTER, CORE, DRIVERS, statBars } from './roster.js';
 import { Pickups, Mines, Props, ITEMS, drawIcon } from './pickups.js';
 import { loadSceneryKit } from '../scenery.js';
 import { openRoom, newCode, validCode, PROTOCOL } from '../net.js';
+import { t, ordinal, translatePage, langButton } from '../i18n.js';
+import './nl.js';
 
 const $ = id => document.getElementById(id);
+translatePage();
+document.querySelector('#menu .links').append(langButton());
 const DEBRIS = { door: 'debris-door', doorWin: 'debris-door-window', bumper: 'debris-bumper', plate: 'debris-plate-a', plateB: 'debris-plate-b',
   plateS: 'debris-plate-small-a', spoiler: 'debris-spoiler-a', tyre: 'debris-tire', axle: 'debris-drivetrain-axle' };
 await Promise.all([loadCarKits([...new Set(Object.values(ROSTER).map(c => c.file)), ...Object.values(DEBRIS)]).catch(e => console.warn('Models not loaded:', e)),
@@ -29,10 +33,10 @@ const NONE = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false }
 const HOLD = { throttle: 0, brake: 1, steer: 0, handbrake: true, boost: false, stop: true };
 
 export const EVENTS = {
-  elim: { name: 'Last Car Standing', short: 'Wreck them all. Last car running wins.' },
-  brawl: { name: 'Brawl', short: '3 minutes. Wrecks respawn. Most points wins.', secs: 180 },
-  spree: { name: 'Wrecking Spree', short: 'The clock only stops for carnage.' },
-  cup: { name: 'Championship', short: 'Three rounds, three arenas. Points for placing.' },
+  elim: { name: t('Last Car Standing'), short: t('Wreck them all. Last car running wins.') },
+  brawl: { name: t('Brawl'), short: t('3 minutes. Wrecks respawn. Most points wins.'), secs: 180 },
+  spree: { name: t('Wrecking Spree'), short: t('The clock only stops for carnage.') },
+  cup: { name: t('Championship'), short: t('Three rounds, three arenas. Points for placing.') },
 };
 const CUP_ROUNDS = [['bowl', 'elim'], ['yard', 'brawl'], ['deck', 'elim']];
 const CUP_POINTS = [10, 8, 6, 5, 4, 3, 2, 1];
@@ -285,7 +289,7 @@ const FX = {
     for (let i = 0; i < 10; i++) puff(X.car.pos, '#9a9288', 1.2, 1.2, 0.8, 0.4, 3);
     sound.crunch(1); sound.glass(); sound.cheer(0.8);
     if (X === G.follow || L === G.follow) { G.shake = 1; G.hitstop = 0.14; G.punch = 10; }
-    if (L.player) { G.slowmo = Math.max(G.slowmo, 0.5); callout(esc(kind), 'big'); }
+    if (L.player) { G.slowmo = Math.max(G.slowmo, 0.5); callout(esc(say(kind)), 'big'); }
   },
   // `lp`, `dir`: where and which way, in X's own frame
   hurt(X, by, dmg, point, n, lp, dir, zone) {
@@ -345,7 +349,7 @@ const FX = {
     }
     if (X.player) {
       G.slowmo = 1.2;
-      callout(cause === 'ring' ? 'OVER THE EDGE' : split ? 'CUT IN HALF!' : 'WRECKED', 'big bad');
+      callout(t(cause === 'ring' ? 'OVER THE EDGE' : split ? 'CUT IN HALF!' : 'WRECKED'), 'big bad');
       if (M.type === 'spree') callout('−15 s', 'big bad');
       if (M.type === 'elim') {
         if (!M.net) $('btn-ff').classList.remove('hidden');
@@ -365,7 +369,7 @@ const FX = {
   pickup(v, type, pos) {
     if (G.sim) return;
     ring(pos, ITEMS[type].colour);
-    if (v.player) { sound.pickup(); callout(ITEMS[type].note, 'item'); }
+    if (v.player) { sound.pickup(); callout(t(ITEMS[type].note), 'item'); }
   },
   ring(p, colour) { ring(p, colour); },
   shock(p) {
@@ -395,14 +399,16 @@ const FX = {
   },
   award(v, pts, label, quiet, big, n) {
     v.chain = { n, t: G.match.time };
-    if (v.player && !G.sim && !quiet) callout(`${esc(label)}<small>+${pts}</small>`, big ? 'big' : '');
+    if (v.player && !G.sim && !quiet) callout(`${esc(say(label))}<small>+${pts}</small>`, big ? 'big' : '');
   },
   sudden() {
     if (G.sim) return;
-    callout('SUDDEN DEATH', 'big');
+    callout(t('SUDDEN DEATH'), 'big');
     sound.cheer(0.8);
   },
 };
+// A hit's name, MEGA and NITRO in front of it and all, in the language you're playing in (it's sent online in English)
+const say = s => { const [, pre, kind] = s.match(/^((?:MEGA |NITRO )*)(.*)$/); return pre.split(' ').filter(Boolean).map(w => t(w) + ' ').join('') + t(kind); };
 function fx(name, ...args) {
   FX[name](...args);
   if (G.match?.net && !G.match.guest) NET.fx.push([name, ...args.map(enc)]);
@@ -427,7 +433,7 @@ function startMatch(type, arenaKey, { sim = false, spec = null } = {}) {
   G.sim = sim;
   if (spec) NET.time = spec.time;
   loadArena(arenaKey);
-  const t = TIMES[timeKey()];
+  const tm = TIMES[timeKey()];
   let spawns = shuffle(arena.spawns.slice());
   const humans = sim || spec || type === 'spree' ? [] : netHumans();    // the spree is one against seven
   if (sim) {
@@ -438,7 +444,7 @@ function startMatch(type, arenaKey, { sim = false, spec = null } = {}) {
       { key: c.car, human: !!c.peer }));
     spawns = spec.cars.map(c => c.spawn);
   } else {
-    const me = new Vehicle(arena, scene, 0, ROSTER[settings.car], paintOf(settings.car), { player: true, name: NET.role === 'host' ? hostName() : 'You' });
+    const me = new Vehicle(arena, scene, 0, ROSTER[settings.car], paintOf(settings.car), { player: true, name: NET.role === 'host' ? hostName() : t('You') });
     me.key = settings.car;
     // Friends online take the places of computer drivers, preferably ones in the same car
     const ups = lineup().slice();
@@ -451,13 +457,13 @@ function startMatch(type, arenaKey, { sim = false, spec = null } = {}) {
     const own = paint => freeLivery(used, paint);
     vehicles = [me,
       ...humans.map((h, i) => Object.assign(new Vehicle(arena, scene, i + 1, ROSTER[h.car], own(h.paint), { name: h.name }), { key: h.car, peer: h.peer, human: true })),
-      ...ups.map((u, i) => Object.assign(new Vehicle(arena, scene, humans.length + i + 1, ROSTER[u.car], own(u.paint), { driver: new DerbyDriver(u.driver), name: u.driver.name }), { key: u.car }))];
+      ...ups.map((u, i) => Object.assign(new Vehicle(arena, scene, humans.length + i + 1, ROSTER[u.car], own(u.paint), { driver: new DerbyDriver(u.driver), name: t(u.driver.name) }), { key: u.car }))];
   }
   vehicles.forEach((v, i) => {
     v.colour = colourOf(v.paint);
     v.chain = { n: 0, t: -10 };
     v.respawn(spawns[i]);
-    v.setLights(t.lamps);
+    v.setLights(tm.lamps);
   });
   // Your own car comes first, on every screen
   if (spec) vehicles.sort((a, b) => b.player - a.player);
@@ -601,7 +607,7 @@ function step() {
 
 // Tips for the first couple of matches
 const TIPS = [[4, 'Hit them in the side: T-bones hurt most'], [16, 'Crates on the glowing pads: repairs, nitro, shields…'],
-  [30, 'Nitro refills as you deal damage'], [46, 'Reversing into them spares your engine'], [54, 'Pink crates: hop, and land on a roof'], [62, 'Stuck or upside down? Press R / FLIP']];
+  [30, 'Nitro refills as you deal damage'], [46, 'Reversing into them spares your engine'], [54, 'Pink crates: hop, and land on a roof'], [62, 'Stuck or upside down? Press R / FLIP']].map(([s, tip]) => [s, t(tip)]);
 function tips() {
   const M = G.match;
   if (G.sim || records.played >= 2 || M.type === 'spree') return;
@@ -911,11 +917,11 @@ function endMatch() {
   const place = order.indexOf(me);
   let title, sub = '';
   if (M.type === 'spree') {
-    title = "TIME'S UP";
-    sub = `${me.score.toLocaleString()} points · ${me.takedowns} takedowns · lasted ${fmt(M.time)}`;
+    title = t("TIME'S UP");
+    sub = t('{0} points · {1} takedowns · lasted {2}', me.score.toLocaleString(), me.takedowns, fmt(M.time));
   } else {
-    title = place === 0 ? 'WINNER!' : `${ordinal(place + 1)} PLACE`;
-    sub = place === 0 ? (M.type === 'elim' ? 'Last car running.' : 'Most points.') : `Won by ${order[0].name} (${order[0].def.name}).`;
+    title = place === 0 ? t('WINNER!') : t('{0} PLACE', ordinal(place + 1));
+    sub = place === 0 ? t(M.type === 'elim' ? 'Last car running.' : 'Most points.') : t('Won by {0} ({1}).', order[0].name, t(order[0].def.name));
   }
   const notes = [];
   records.played++;
@@ -925,7 +931,7 @@ function endMatch() {
   }
   if ((M.type === 'brawl' || M.type === 'spree') && me.score > (records.best[M.type] || 0)) {
     records.best[M.type] = me.score;
-    notes.push(`New best ${EVENTS[M.type].name} score!`);
+    notes.push(t('New best {0} score!', EVENTS[M.type].name));
   }
   // Championship points
   let cupDone = false;
@@ -937,8 +943,8 @@ function endMatch() {
     cupDone = G.cup.round >= CUP_ROUNDS.length;
     if (cupDone) {
       const table = Object.entries(G.cup.points).sort((a, b) => b[1] - a[1]);
-      if (table[0][0] === me.name) { records.cups++; notes.push('Champion! The cup is yours.'); title = 'CHAMPION!'; }
-      else title = `${ordinal(table.findIndex(t => t[0] === me.name) + 1)} OVERALL`;
+      if (table[0][0] === me.name) { records.cups++; notes.push(t('Champion! The cup is yours.')); title = t('CHAMPION!'); }
+      else title = t('{0} OVERALL', ordinal(table.findIndex(r => r[0] === me.name) + 1));
     }
   }
   if (M.net && !M.guest) {
@@ -947,7 +953,7 @@ function endMatch() {
   }
   const before = Object.keys(ROSTER).filter(isLocked);
   saveRecords();
-  for (const k of before) if (!isLocked(k)) notes.push(`Unlocked: ${ROSTER[k].name}!`);
+  for (const k of before) if (!isLocked(k)) notes.push(t('Unlocked: {0}!', t(ROSTER[k].name)));
   setTimeout(() => { if (G.match === M) showResults(order, title, sub, notes.join(' '), cupDone); }, G.cup ? 1800 : 2400);
   G.state = 'over';
   if (!G.sim) {
@@ -959,32 +965,31 @@ function endMatch() {
 function showResults(order, title, sub, note, cupDone) {
   const M = G.match;
   $('res-title').textContent = title;
-  $('res-title').className = /WINNER|CHAMPION/.test(title) ? 'win' : '';
-  $('res-sub').textContent = G.cup ? `Championship round ${G.cup.round} of ${CUP_ROUNDS.length}: ${ARENAS[M.arena].name}, ${EVENTS[M.type].name}. ${sub}` : sub;
+  $('res-title').className = [t('WINNER!'), t('CHAMPION!')].includes(title) ? 'win' : '';
+  $('res-sub').textContent = G.cup ? t('Championship round {0} of {1}: {2}, {3}. {4}', G.cup.round, CUP_ROUNDS.length, t(ARENAS[M.arena].name), EVENTS[M.type].name, sub) : sub;
   let html;
   if (G.cup) {
     const table = Object.entries(G.cup.points).sort((a, b) => b[1] - a[1]);
     const byName = Object.fromEntries(vehicles.map(v => [v.name, v]));
-    html = '<tr><th>#</th><th>Driver</th><th>Car</th><th class="num">This round</th><th class="num">Points</th></tr>' + table.map(([name, pts], i) => {
+    html = `<tr><th>#</th><th>${t('Driver')}</th><th>${t('Car')}</th><th class="num">${t('This round')}</th><th class="num">${t('Points')}</th></tr>` + table.map(([name, pts], i) => {
       // Online the line-up can change between rounds: someone with points may not be in this one
       const v = byName[name], r = v ? order.indexOf(v) : -1;
-      return `<tr class="${v?.player ? 'me' : ''}"><td>${i + 1}</td><td><span class="dot" style="background:${esc(v?.colour || 'transparent')}"></span>${esc(name)}</td><td>${v ? v.def.name : '–'}</td><td class="num">${r < 0 ? '–' : `${ordinal(r + 1)} (+${CUP_POINTS[r]})`}</td><td class="num">${esc(pts)}</td></tr>`;
+      return `<tr class="${v?.player ? 'me' : ''}"><td>${i + 1}</td><td><span class="dot" style="background:${esc(v?.colour || 'transparent')}"></span>${esc(name)}</td><td>${v ? t(v.def.name) : '–'}</td><td class="num">${r < 0 ? '–' : `${ordinal(r + 1)} (+${CUP_POINTS[r]})`}</td><td class="num">${esc(pts)}</td></tr>`;
     }).join('');
   } else {
-    html = '<tr><th>#</th><th>Driver</th><th>Car</th><th class="num">Takedowns</th><th class="num">Damage</th><th class="num">Points</th></tr>' + order.map((v, i) =>
-      `<tr class="${v.player ? 'me' : ''}"><td>${i + 1}</td><td><span class="dot" style="background:${esc(v.colour)}"></span>${esc(v.name)}</td><td>${v.def.name}</td><td class="num">${v.takedowns}</td><td class="num">${Math.round(v.dealt)}</td><td class="num">${v.score.toLocaleString()}</td></tr>`).join('');
+    html = `<tr><th>#</th><th>${t('Driver')}</th><th>${t('Car')}</th><th class="num">${t('Takedowns')}</th><th class="num">${t('Damage')}</th><th class="num">${t('Points')}</th></tr>` + order.map((v, i) =>
+      `<tr class="${v.player ? 'me' : ''}"><td>${i + 1}</td><td><span class="dot" style="background:${esc(v.colour)}"></span>${esc(v.name)}</td><td>${t(v.def.name)}</td><td class="num">${v.takedowns}</td><td class="num">${Math.round(v.dealt)}</td><td class="num">${v.score.toLocaleString()}</td></tr>`).join('');
   }
   $('res-table').innerHTML = html;
-  $('res-note').textContent = M.guest ? [note, `Waiting for ${NET.hostName} to start the next one…`].filter(Boolean).join(' ') : note;
+  $('res-note').textContent = M.guest ? [note, t('Waiting for {0} to start the next one…', NET.hostName)].filter(Boolean).join(' ') : note;
   $('btn-next').classList.toggle('hidden', !!M.guest);
-  $('btn-next').textContent = G.cup && !cupDone ? 'Next round ▸' : 'Again';
+  $('btn-next').textContent = t(G.cup && !cupDone ? 'Next round ▸' : 'Again');
   $('btn-next').dataset.next = G.cup && !cupDone ? 'cup' : '';
   if (cupDone) G.cup = null;
   showScreen('results');
   $('hud').classList.add('hidden');
 }
 
-const ordinal = n => n + (n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th');
 const fmt = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
 function play() {
@@ -1000,7 +1005,7 @@ function play() {
 function nextCupRound() {
   const [a, type] = CUP_ROUNDS[G.cup.round];
   startMatch(type, a);
-  showMsg(`ROUND ${G.cup.round + 1}`, `${ARENAS[a].name} · ${EVENTS[type].name}`, 2.6);
+  showMsg(t('ROUND {0}', G.cup.round + 1), `${t(ARENAS[a].name)} · ${EVENTS[type].name}`, 2.6);
 }
 
 // ---------- HUD ----------
@@ -1024,7 +1029,7 @@ function callout(html, cls = '') {
 function feed(by, X, how) {
   const el = document.createElement('div');
   const name = v => `<b style="color:${esc(v.colour)}">${esc(v.name)}</b>`;
-  el.innerHTML = by && by !== X ? `${name(by)}<em>${how}</em>${name(X)}` : `${name(X)}<em>${how}</em>`;
+  el.innerHTML = by && by !== X ? `${name(by)}<em>${t(how)}</em>${name(X)}` : `${name(X)}<em>${t(how)}</em>`;
   const box = $('feed');
   box.prepend(el);
   while (box.children.length > 5) box.lastChild.remove();
@@ -1035,12 +1040,12 @@ const setText = (() => { const last = {}; return (id, t) => { if (last[id] !== t
 function updateHud() {
   const M = G.match, me = vehicles[0];
   if (M.type === 'elim') {
-    setText('status-main', `${vehicles.filter(v => v.alive).length} LEFT`);
-    setText('status-sub', M.sudden ? 'SUDDEN DEATH · ENGINES OVERHEATING' : fmt(M.time));
+    setText('status-main', t('{0} LEFT', vehicles.filter(v => v.alive).length));
+    setText('status-sub', M.sudden ? t('SUDDEN DEATH · ENGINES OVERHEATING') : fmt(M.time));
   } else {
     setText('status-main', fmt(Math.max(0, M.timeLeft)));
     $('status-main').classList.toggle('low', M.timeLeft < 10);
-    setText('status-sub', M.type === 'spree' ? `DEAL DAMAGE FOR TIME · X REPAIR (${M.repairCost})` : 'BRAWL');
+    setText('status-sub', M.type === 'spree' ? t('DEAL DAMAGE FOR TIME · X REPAIR ({0})', M.repairCost) : t('BRAWL'));
     // Time bought in the spree, shown in batches
     if (M.gained >= 0.5 && M.time - (M.gainShown || 0) > 0.6) {
       const el = document.createElement('div');
@@ -1053,7 +1058,7 @@ function updateHud() {
     }
   }
   setText('score', me.score.toLocaleString());
-  setText('combo', me.chain.n && M.time - me.chain.t < 4 ? `COMBO ×${(1 + 0.25 * me.chain.n).toFixed(2)}` : '');
+  setText('combo', me.chain.n && M.time - me.chain.t < 4 ? t('COMBO ×{0}', (1 + 0.25 * me.chain.n).toFixed(2)) : '');
   drawCarStatus(me);
   drawRadar();
 }
@@ -1098,19 +1103,19 @@ function drawCarStatus(v) {
   ctx.fillStyle = '#fff';
   ctx.font = '600 11px Rubik, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(v.item ? 'E: USE' : 'ITEM', 160, 86);
+  ctx.fillText(t(v.item ? 'E: USE' : 'ITEM'), 160, 86);
   // Timers for shield and spikes
   let ty = 112;
-  for (const [t, col, label] of [[v.shield, '#7ff0ff', 'SHIELD'], [v.ram, '#ff4a3d', 'SPIKES']]) {
-    if (t <= 0) continue;
+  for (const [secs, col, label] of [[v.shield, '#7ff0ff', t('SHIELD')], [v.ram, '#ff4a3d', t('SPIKES')]]) {
+    if (secs <= 0) continue;
     ctx.fillStyle = col;
-    ctx.fillText(`${label} ${t.toFixed(1)}`, 160, ty);
+    ctx.fillText(`${label} ${secs.toFixed(1)}`, 160, ty);
     ty += 16;
   }
   // Health and nitro
   const hp = Math.max(0, v.hp / v.maxHp);
   bar(ctx, 12, 176, W - 24, 14, hp, hp > 0.5 ? '#3ddc84' : hp > 0.25 ? '#ffcf2e' : '#ff4a3d', `${Math.ceil(Math.max(0, v.hp))}`);
-  bar(ctx, 12, 206, W - 24, 10, v.nitro, v.boosting ? '#ffb02e' : '#3aa8ff', 'NITRO');
+  bar(ctx, 12, 206, W - 24, 10, v.nitro, v.boosting ? '#ffb02e' : '#3aa8ff', t('NITRO'));
 }
 function bar(ctx, x, y, w, h, f, col, label) {
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -1234,7 +1239,7 @@ function drawLabels() {
 
 // ---------- Camera ----------
 const cam = { dir: new THREE.Vector3(0, 0, -1), back: 0, orbit: 0, menuA: 0 };
-const CAMS = ['Chase', 'Far chase', 'Hood', 'Overhead'];
+const CAMS = ['Chase', 'Far chase', 'Hood', 'Overhead'].map(c => t(c));
 function updateCamera(dt) {
   camera.clearViewOffset();
   const v = G.follow, c = v.car;
@@ -1438,7 +1443,7 @@ window.addEventListener('keydown', e => {
   else if (e.code === 'KeyR' && canUnflip(me)) unflip(me);
   if (e.code === 'KeyX' && !G.match.guest && G.match.type === 'spree' && me?.alive && me.score >= G.match.repairCost && me.hp < me.maxHp) {
     me.score -= G.match.repairCost;
-    callout(`REPAIRED<small>−${G.match.repairCost}</small>`, 'item');
+    callout(`${t('REPAIRED')}<small>−${G.match.repairCost}</small>`, 'item');
     G.match.repairCost += 150;
     collect(me, 'repair', me.car.pos.clone());
   }
@@ -1551,9 +1556,10 @@ function renderMenu() {
   const def = ROSTER[settings.car], locked = isLocked(settings.car);
   const wins = records.wins[settings.car] || 0;
   // Locked cars are a mystery until won: no name, stats or paint, only how to unlock them
-  $('car-name').innerHTML = locked ? '???<span class="lock">🔒 locked</span>' : `${def.name}${wins ? `<span class="wins">★ ${wins} win${wins > 1 ? 's' : ''}</span>` : ''}`;
-  $('car-blurb').textContent = locked ? `Unlock: ${def.blurb.match(/\(([^)]*)\)/)?.[1] ?? '?'}` : def.blurb.replace(/\s*\([^)]*\)$/, '');
-  $('car-stats').innerHTML = locked ? '' : statBars(def).map(([n, f]) => `<span>${n}</span><div class="bar"><i style="width:${Math.round(f * 100)}%"></i></div>`).join('');
+  $('car-name').innerHTML = locked ? `???<span class="lock">${t('🔒 locked')}</span>` : `${t(def.name)}${wins ? `<span class="wins">★ ${t(wins > 1 ? '{0} wins' : '{0} win', wins)}</span>` : ''}`;
+  const blurb = t(def.blurb);
+  $('car-blurb').textContent = locked ? t('Unlock: {0}', blurb.match(/\(([^)]*)\)/)?.[1] ?? '?') : blurb.replace(/\s*\([^)]*\)$/, '');
+  $('car-stats').innerHTML = locked ? '' : statBars(def).map(([n, f]) => `<span>${t(n)}</span><div class="bar"><i style="width:${Math.round(f * 100)}%"></i></div>`).join('');
   const pp = $('paints');
   pp.innerHTML = '';
   const own = ROSTER[settings.car].livery, opts = locked ? [] : HOUSE[own] ? [own, ...Object.keys(LIVERIES)] : Object.keys(LIVERIES);
@@ -1562,15 +1568,15 @@ function renderMenu() {
     const b = document.createElement('button');
     b.className = 'swatch' + (paintOf(settings.car) === k ? ' active' : '');
     b.style.background = `linear-gradient(135deg, ${c[0]} 0 52%, ${c[2]} 52% 60%, ${c[1]} 60%)`;
-    b.title = name;
-    b.setAttribute('aria-label', name);
+    b.title = t(name);
+    b.setAttribute('aria-label', t(name));
     b.onclick = () => { settings.paints[settings.car] = k; saveSettings(); buildShowroom(); renderMenu(); };
     pp.appendChild(b);
   }
   if (!locked) {
     const label = document.createElement('span');
     label.className = 'livery-name';
-    label.textContent = liveryOf(paintOf(settings.car)).name;
+    label.textContent = t(liveryOf(paintOf(settings.car)).name);
     pp.appendChild(label);
   }
 
@@ -1578,29 +1584,29 @@ function renderMenu() {
   ar.innerHTML = '';
   for (const [k, a] of Object.entries(ARENAS)) {
     const b = document.createElement('button');
-    b.textContent = a.name;
-    b.title = a.blurb;
+    b.textContent = t(a.name);
+    b.title = t(a.blurb);
     b.className = settings.arena === k ? 'active' : '';
     b.onclick = () => { settings.arena = k; saveSettings(); loadArena(k); buildShowroom(); renderMenu(); };
     ar.appendChild(b);
   }
   if (!$('arena-blurb')) ar.insertAdjacentHTML('afterend', '<div id="arena-blurb"></div>');
-  $('arena-blurb').textContent = settings.event === 'cup' ? 'The championship visits all three arenas.' : ARENAS[settings.arena].blurb;
+  $('arena-blurb').textContent = t(settings.event === 'cup' ? 'The championship visits all three arenas.' : ARENAS[settings.arena].blurb);
   const tm = $('times');
   tm.innerHTML = '';
-  for (const [k, t] of Object.entries(TIMES)) {
+  for (const [k, tod] of Object.entries(TIMES)) {
     const b = document.createElement('button');
-    b.textContent = t.label;
+    b.textContent = t(tod.label);
     b.className = settings.time === k ? 'active' : '';
     b.onclick = () => { settings.time = k; saveSettings(); applyTime(); renderMenu(); };
     tm.appendChild(b);
   }
   $('btn-go').disabled = locked;
-  $('btn-go').textContent = locked ? 'LOCKED' : 'CRUNCH ▸';
+  $('btn-go').textContent = t(locked ? 'LOCKED' : 'CRUNCH ▸');
   const r = records;
   const totalWins = Object.values(r.wins).reduce((a, b) => a + b, 0);
   renderNet();
-  $('records').textContent = r.played ? `Wins ${totalWins} · Cups ${r.cups} · Takedowns ${r.takedowns} · Best brawl ${r.best.brawl.toLocaleString()} · Best spree ${r.best.spree.toLocaleString()}` : 'Tip: T-bone them. Doors are thin.';
+  $('records').textContent = r.played ? t('Wins {0} · Cups {1} · Takedowns {2} · Best brawl {3} · Best spree {4}', totalWins, r.cups, r.takedowns, r.best.brawl.toLocaleString(), r.best.spree.toLocaleString()) : t('Tip: T-bone them. Doors are thin.');
 }
 
 const carKeys = Object.keys(ROSTER);
@@ -1620,7 +1626,7 @@ $('btn-restart').onclick = () => { showScreen(null); if (G.cup) { G.cup.round = 
 $('btn-quit').onclick = toMenu;
 $('btn-menu').onclick = toMenu;
 $('btn-next').onclick = () => { if ($('btn-next').dataset.next === 'cup') nextCupRound(); else play(); };
-$('btn-ff').onclick = () => { G.ff = !G.ff; $('btn-ff').textContent = G.ff ? 'Normal speed ▸' : 'Fast forward ▸▸'; };
+$('btn-ff').onclick = () => { G.ff = !G.ff; $('btn-ff').textContent = t(G.ff ? 'Normal speed ▸' : 'Fast forward ▸▸'); };
 window.addEventListener('keydown', e => {
   if (G.state !== 'menu' || $('menu').classList.contains('hidden')) return;
   if (e.code === 'ArrowLeft') cycleCar(-1);
@@ -1628,7 +1634,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Enter' && !$('btn-go').disabled) $('btn-go').onclick();
 });
 
-const go = () => { G.state = 'play'; showMsg('CRUNCH!', EVENTS[G.match.type].name, 1); sound.beep(true); sound.cheer(0.6); };
+const go = () => { G.state = 'play'; showMsg(t('CRUNCH!'), EVENTS[G.match.type].name, 1); sound.beep(true); sound.cheer(0.6); };
 
 // ---------- Main loop ----------
 let last = performance.now(), acc = 0;
@@ -1717,7 +1723,7 @@ G.net = NET;
 // A guest plays at the host's time of day (set when a match comes in, cleared back in the menu)
 const timeKey = () => (NET.role === 'guest' && NET.time) || settings.time;
 const HEARTBEAT = 1000, TIMEOUT = 10000, FIND_TIMEOUT = 30000;
-if (!settings.name) { settings.name = 'Driver ' + (10 + Math.floor(Math.random() * 90)); store.save('derby.settings', settings); }
+if (!settings.name) { settings.name = t('Driver {0}', 10 + Math.floor(Math.random() * 90)); store.save('derby.settings', settings); }
 NET.name = settings.name;
 
 const r2 = x => Math.round(x * 100) / 100, r3 = x => Math.round(x * 1000) / 1000;
@@ -1730,12 +1736,12 @@ const dec = a => (a?.v != null ? byId(a.v) : a?.p ? new THREE.Vector3(...a.p) : 
 // The host's own name in a match: not one a computer driver has (scores are kept by name)
 function hostName() {
   let name = NET.name;
-  for (let k = 2; DRIVERS.some(d => d.name === name); k++) name = `${NET.name} ${k}`;
+  for (let k = 2; DRIVERS.some(d => t(d.name) === name); k++) name = `${NET.name} ${k}`;
   return name;
 }
 function netHumans() {
   if (NET.role !== 'host') return [];
-  const taken = new Set([hostName(), ...DRIVERS.map(d => d.name)]);
+  const taken = new Set([hostName(), ...DRIVERS.map(d => t(d.name))]);
   return [...NET.peers].slice(0, 7).map(([peer, p]) => {
     let name = p.name;
     for (let k = 2; taken.has(name); k++) name = `${p.name} ${k}`;
@@ -1901,7 +1907,7 @@ function dropPeer(id) {
   if (!p) return;
   NET.peers.delete(id);
   const v = vehicles.find(x => x.peer === id);
-  if (v && G.match && !G.match.over) { handOver(v); callout(`${esc(v.name)} left`, 'item'); }
+  if (v && G.match && !G.match.over) { handOver(v); callout(esc(t('{0} left', v.name)), 'item'); }
   lobby();
 }
 // Tell everyone who's here
@@ -1967,10 +1973,10 @@ async function joinGame(code) {
   }));
   room.on('abort', fromHost(() => {
     NET.playing = false;
-    if (G.match?.guest && !G.match.over) { G.match.over = true; toMenu(); toast(`${NET.hostName} ended the match.`); }
+    if (G.match?.guest && !G.match.over) { G.match.over = true; toMenu(); toast(t('{0} ended the match.', NET.hostName)); }
   }));
-  room.on('bye', fromHost(() => endSession(`${NET.hostName} closed the game.`)));
-  room.onLeave = id => { if (id === NET.host) endSession(`${NET.hostName} left.`); };
+  room.on('bye', fromHost(() => endSession(t('{0} closed the game.', NET.hostName))));
+  room.onLeave = id => { if (id === NET.host) endSession(t('{0} left.', NET.hostName)); };
 }
 const hello = () => ({ v: PROTOCOL, name: NET.name, car: isLocked(settings.car) ? 'comet' : settings.car, paint: paintOf(settings.car) });
 // A guest changed car, paint or name: tell the host
@@ -2002,7 +2008,7 @@ setInterval(() => {
     if (now - NET.joinAt > FIND_TIMEOUT) endSession("Couldn't find that game. The link may be old, or the host has closed it.");
     else if (++NET.tries % 3 === 0) NET.room.send('hello', hello());
   } else {
-    if (now - NET.seen > TIMEOUT) endSession(`Lost the connection to ${NET.hostName}.`);
+    if (now - NET.seen > TIMEOUT) endSession(t('Lost the connection to {0}.', NET.hostName));
     else NET.room.send('ping', null, NET.host);
   }
 }, HEARTBEAT);
@@ -2019,12 +2025,12 @@ function renderNet() {
   $('net-link').classList.toggle('hidden', guest || !NET.room);
   $('net-url').value = link;
   let status = NET.status;
-  if (!status && guest) status = NET.playing ? `In ${NET.hostName}'s game. A match is on: you're in the next one.` : `In ${NET.hostName}'s game. Pick a car; you'll drive when they start.`;
-  if (!status) status = NET.peers.size ? 'Your friends drive in your next match.' + (settings.event === 'spree' ? ' (Wrecking Spree is single-player: pick another event.)' : '')
-    : 'Send this link to friends. They take the places of computer drivers in your next match.';
-  $('net-status').textContent = status;
-  $('net-players').textContent = NET.lobby.length > 1 ? 'Here: ' + NET.lobby.join(', ') : '';
-  $('net-leave').textContent = guest ? 'Leave the game' : 'Stop the online game';
+  if (!status && guest) status = t(NET.playing ? 'In {0}\'s game. A match is on: you\'re in the next one.' : 'In {0}\'s game. Pick a car; you\'ll drive when they start.', NET.hostName);
+  if (!status) status = NET.peers.size ? t('Your friends drive in your next match.') + (settings.event === 'spree' ? t(' (Wrecking Spree is single-player: pick another event.)') : '')
+    : t('Send this link to friends. They take the places of computer drivers in your next match.');
+  $('net-status').textContent = t(status);
+  $('net-players').textContent = NET.lobby.length > 1 ? t('Here: {0}', NET.lobby.join(', ')) : '';
+  $('net-leave').textContent = t(guest ? 'Leave the game' : 'Stop the online game');
   if (document.activeElement !== $('net-name')) $('net-name').value = NET.name;
   if (G.state === 'menu') {
     $('btn-go').disabled = guest || isLocked(settings.car);
@@ -2034,7 +2040,7 @@ function renderNet() {
 let toastT = 0;
 function toast(text) {
   const el = $('net-toast');
-  el.textContent = text;
+  el.textContent = t(text);
   el.classList.remove('hidden');
   clearTimeout(toastT);
   toastT = setTimeout(() => el.classList.add('hidden'), 6000);
@@ -2044,7 +2050,7 @@ $('net-leave').onclick = () => endSession();
 $('net-copy').onclick = () => {
   const url = $('net-url').value;
   if (!navigator.clipboard) { $('net-url').select(); return; }
-  navigator.clipboard.writeText(url).then(() => { $('net-copy').textContent = 'Copied'; setTimeout(() => ($('net-copy').textContent = 'Copy'), 1500); },
+  navigator.clipboard.writeText(url).then(() => { $('net-copy').textContent = t('Copied'); setTimeout(() => ($('net-copy').textContent = t('Copy')), 1500); },
     () => { $('net-url').select(); });
 };
 $('net-name').onchange = () => {
