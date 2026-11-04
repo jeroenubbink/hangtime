@@ -21,6 +21,7 @@ import { buildStation as stationModel, DEBRIS_COLOURS } from './station.js';
 import { crane, Boat } from './harbour.js';
 import { fixtures } from './fixtures.js';
 import { gateway } from './gateway.js';
+import { roadsign } from './roadsign.js';
 import { filmset } from './filmset.js';
 import { RIDES, TRAFFIC, TRAFFIC_PAINTS } from './roster.js';
 import { Recorder, FLAGS, canSend, send } from './replay.js';
@@ -200,6 +201,8 @@ function loadLevel(key) {
   if (city.level.fixtures) city.group.add(fixtures(city, city.level.fixtures));
   // (and Over the Edge's bridge, dressed up)
   if (city.level.gateway) city.group.add(gateway(city, city.level.gateway));
+  // (and Last Chance's sign up ahead, saying how far to the station)
+  if (city.level.roadsign) city.group.add(roadsign(city, city.level.roadsign));
   // (and Short Cut's film shoot, and its two famous corners)
   if (city.level.filmset) city.group.add(filmset(city, city.level.filmset));
   G.boat?.dispose();

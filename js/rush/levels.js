@@ -779,6 +779,8 @@ export const LEVELS = {
     // The forecourt, under its canopy, with the shop at the back
     lots: [{ rect: [-21, 21, -52, -7.3], colour: '#c4bfb4' }],
     station: { x: 0, z: -30, w: 30, d: 24, h: 5.4 },
+    // On the pavement on your right, just after the start: how far to go
+    roadsign: { x: 9.4, z: 345, to: -7.3 },
     blocks: [{ x: 0, z: -59, w: 30, d: 13, h: 6, fixed: true, shop: true },
       // and the backs of the next street, shoulder to shoulder with the forecourt and run back to the towers behind, so
       // the station sits in a tight pocket of town and not on a patch of waste ground

@@ -8,6 +8,7 @@ addDutch({
   'Rushtime': 'Rushtime',
   'Filling up…': 'Even tanken…',
   'HEAT': 'LEF', 'ONCOMING': 'TEGENLIGGER', 'CARNAGE': 'SCHADE', 'EXPLOSION': 'EXPLOSIE', 'STEER INTO TRAFFIC': 'STUUR HET VERKEER IN',
+  'GAS STATION': 'TANKSTATION', 'in {0} m': 'over {0} m',
   'DRIFT': 'DRIFT', 'RETRY': 'OPNIEUW', 'BOOM': 'BOEM',
   'Haze': 'Heiig',
   'VICTORIA BRIDGE': 'VICTORIABRUG', 'SLOW DOWN.': 'RUSTIG AAN.', '…said nobody here, ever.': '…zei hier nog nooit iemand.',
