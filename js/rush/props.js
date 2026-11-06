@@ -10,6 +10,18 @@ const CELL = 20;
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 
 function shared(g) { g.userData.shared = true; return g; }
+// The glass of a lamp (the near-white and warm yellow faces of its model), on its own, to light up after dark
+export function glassOf(g) {
+  const p = g.index ? g.toNonIndexed() : g, keep = [];
+  const c = p.attributes.color, pos = p.attributes.position;
+  if (c) for (let i = 0; i < pos.count; i += 3) if (c.getX(i) > 0.95 && c.getY(i) > 0.7 && c.getZ(i) > 0.3) for (let j = 0; j < 3; j++) keep.push(pos.getX(i + j), pos.getY(i + j), pos.getZ(i + j));
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(keep, 3));
+  return out;
+}
+// (a sodium-warm glow, 2000-2500 K, for the lamps along the streets and paths)
+const LIT = new THREE.MeshBasicMaterial({ color: '#ffa04a', toneMapped: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+const LIGHTS = ['lamp', 'lantern'];
 // The kit's leaves are a bright toy green: cooled toward teal and quietened, like the rest of the town (a copy: the
 // kit's own is shared)
 const _hsl = {};
@@ -118,6 +130,7 @@ export class Props {
     this.grid = new Map();
     this.meshes = {};
     this.geos = {};
+    this.lit = {};
     this.mat = new THREE.MeshLambertMaterial({ vertexColors: true });
     this.lay(extra);
     this.build();
@@ -181,11 +194,25 @@ export class Props {
       mesh.computeBoundingSphere();
       this.meshes[kind] = mesh;
       this.scene.add(mesh);
+      // and a lamp's glass, to light up after dark
+      if (LIGHTS.includes(kind)) {
+        const glass = this.lit[kind] = new THREE.InstancedMesh(glassOf(geo), LIT, items.length);
+        items.forEach((p, i) => { mesh.getMatrixAt(i, m); glass.setMatrixAt(i, m); });
+        glass.visible = false;
+        glass.computeBoundingSphere();
+        this.scene.add(glass);
+      }
     }
   }
 
+  // The lamps on (k, 0 to 1, from the time of day) or off
+  lamps(k) {
+    for (const g of Object.values(this.lit)) g.visible = k > 0.3;
+  }
+
   dispose() {
-    for (const m of Object.values(this.meshes)) { this.scene.remove(m); m.dispose(); }
+    for (const m of [...Object.values(this.meshes), ...Object.values(this.lit)]) { this.scene.remove(m); m.dispose(); }
+    for (const g of Object.values(this.lit)) g.geometry.dispose();
     for (const g of Object.values(this.geos)) g.dispose();
     this.mat.dispose();
   }
@@ -226,6 +253,7 @@ export class Props {
   knock(p) {
     p.alive = false;
     this.meshes[p.kind].setMatrixAt(p.i, ZERO);
+    if (this.lit[p.kind]) { this.lit[p.kind].setMatrixAt(p.i, ZERO); this.lit[p.kind].instanceMatrix.needsUpdate = true; }
     this.meshes[p.kind].instanceMatrix.needsUpdate = true;
   }
   // An explosion at (x, z) throws everything standing within R: returns [{ prop, vel }]

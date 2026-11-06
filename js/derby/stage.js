@@ -105,6 +105,7 @@ export function createStage(canvas) {
     orb.scale.setScalar(key === 'night' ? 0.7 : 1);
     stars.material.opacity = t.stars;
     stars.visible = t.stars > 0;
+    orb.visible = !t.rain;
     return t;
   }
 

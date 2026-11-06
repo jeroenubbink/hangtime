@@ -102,16 +102,11 @@ through them. Things to know:
   sunset-and-flaming-palm logo on its roof. Anything that hits it hard enough sets it off: your car under the canopy at speed or through a pump or pillar, or, once
   you've crashed, the traffic you've thrown at it, or a blast beside it. Then the pumps go, the canopy and its logo
   fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction.
-- **Eight rough ones, for ideas** (not shown to players yet: open `rush.html?drafts`): **Tanker Row** (tankers parked nose to tail along the far kerb: light one and
-  the blasts run down the row both ways into two junctions); **Pick Your Poison** (one ramp: hold back for the
-  queue at the lights, or rush all the way to Fuel's Paradise); **Bank Shot** (your road comes in at 45° and stops
-  at the avenue: bounce the wreckage off the shops and down to the big junction); **High Octane** (Fuel's Paradise
-  out on a bridge deck: its forecourt goes over the edge onto the road below); **Mind the Gap** (the road stops at a
-  canal, the ramp doesn't: short and you're swimming, long and you land on the queue past the quay road);
-  **Rendezvous** (three tankers and a bus cross the park nose to tail: flat out you're early, so ease off and meet
-  them); **Double Decker** (a jam on a bridge with a wall down one side and a junction down below the other); and
-  **Tower Dive** (see below).
-- **Tower Dive** (a draft): the biggest ramp in town, five ramps side by side, 30° to 50° at the lip (white fins
+- **Three rough ones, for ideas** (not shown to players yet: open `rush.html?drafts`): **Tanker Row** (tankers parked nose to tail along the far kerb: light one and
+  the blasts run down the row both ways into two junctions); **Bank Shot** (your road comes in at 45° and stops
+  at the avenue: bounce the wreckage off the shops and down to the big junction); and **Mind the Gap** (the road stops at a
+  canal, the ramp doesn't: short and you're swimming, long and you land on the queue past the quay road).
+- **Tower Dive**: the biggest ramp in town, five ramps side by side, 30° to 50° at the lip (white fins
   between them keep you in yours). Off the 35° to 45° ones at full speed you
   come down on the first of three **sky decks**, the roofs of the Hotel California (its name in lights across the
   front of the tall one), 40, 26 and 12 m up stepping down away from you, with

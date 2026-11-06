@@ -9,14 +9,13 @@ import { t } from '../i18n.js';
 const MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
 // (where the crane's legs stand, from its middle, and how high it is under the boom)
 const LEGS = [[-9, -6], [9, -6], [-9, 6], [9, 6]], TOP = 24;
-// The rest of its steel, for the camera to keep clear of (from its middle and the ground, as in the model): the
-// beams round the top of the legs, the boom, the machinery house on it; and the cross-bracing between the legs, that
-// it can see through but mustn't come up against
+// The rest of its steel, for the camera to keep clear of (from its middle and the ground, as in the model): the top,
+// the beams round the legs and the machinery house on it as one flat block, and the boom out along the jetty level
+// with it (one height over all of it, so a camera going over the crane goes over smoothly, not up and down every
+// beam); and the cross-bracing between the legs, that it can see through but mustn't come up against
 const STEEL = [
-  ...[-6, 6].map(z => ({ x: 0, z, w: 19.2, d: 1.4, y: 22, h: 2.4 })),
-  ...[-9, 9].map(x => ({ x, z: 0, w: 1.4, d: 13.4, y: 22, h: 2.4 })),
-  { x: 0, z: -11, w: 6.2, d: 58, y: 24.2, h: 3.8 },
-  { x: 0, z: 11.5, w: 7.8, d: 9.2, y: 28, h: 2.6 },
+  { x: 0, z: 4.7, w: 19.6, d: 22.8, y: 22, h: 8.6 },
+  { x: 0, z: -11, w: 6.2, d: 58, y: 22, h: 8.6 },
   { x: 0, z: 0, w: 3, d: 1.2, y: 28, h: 11.4, thin: true },
   ...[-6, 6].map(z => ({ x: 0, z, w: 19.2, d: 1.2, y: 1.5, h: 21, thin: true })),
 ];

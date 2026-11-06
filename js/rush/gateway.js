@@ -3,8 +3,9 @@
 // facing the run-up. The pylons and billboards are from the bridge kit (modelled in Blender, see
 // assets/src/bridge.blend); the girders are drawn here, to fit whatever deck they're on.
 import * as THREE from 'three';
-import { merge } from '../scenery.js';
+import { merge, sceneryGeo } from '../scenery.js';
 import { fixtures } from './fixtures.js';
+import { glassOf } from './props.js';
 import { t } from '../i18n.js';
 
 const TEAL = '#14a3a3', DARK = '#0c7a7c', PALE = '#5fd0cb';
@@ -54,6 +55,42 @@ export function gateway(city, G) {
     });
     group.add(onto(new THREE.Mesh(new THREE.PlaneGeometry(12, 4.5), face), x, city.groundHeight(x, z, 1), z, yaw, 0, 7.4, 0.1));
   }
+  // At night: a warm uplight on the ground before each face of each pylon, washing its stone up to the lantern (drawn
+  // into the stone itself, brightest low down, not sixteen real lights), its lantern lit, and a string of bulbs along
+  // the top of each girder. Out of sight by day; `group.lamps(k)` turns them up to k (0 to 1).
+  const wash = { value: new THREE.Color() }, pylonGeo = sceneryGeo('pylon');
+  const stone = new THREE.MeshLambertMaterial({ vertexColors: true });
+  stone.onBeforeCompile = sh => {
+    sh.uniforms.wash = wash;
+    sh.vertexShader = 'varying float vUp, vSide;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvUp = position.y; vSide = 1.0 - abs(normal.y);');
+    sh.fragmentShader = 'uniform vec3 wash;\nvarying float vUp, vSide;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>',
+      '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * wash * vSide * (1.0 - 0.8 * smoothstep(0.5, 15.0, vUp));');
+  };
+  group.traverse(o => { if (pylonGeo && o.isMesh && o.geometry === pylonGeo) o.material = stone; });
+  const bulbs = [], glow = new THREE.MeshBasicMaterial({ color: '#ffd59a', transparent: true, opacity: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  const can = new THREE.CylinderGeometry(0.3, 0.38, 0.32, 10), canMat = new THREE.MeshLambertMaterial({ color: '#2c3036' });
+  const lens = new THREE.CircleGeometry(0.25, 10).rotateX(-Math.PI / 2), lit = new THREE.Group();
+  for (const [x, z, yaw] of G.pylons) {
+    const gy = city.groundHeight(x, z, 1);
+    for (let f = 0; f < 4; f++) {
+      const ca = Math.cos(f * Math.PI / 2), sa = Math.sin(f * Math.PI / 2);
+      group.add(onto(new THREE.Mesh(can, canMat), x, gy, z, yaw, 2.6 * sa, 0.16, 2.6 * ca));
+      lit.add(onto(new THREE.Mesh(lens, glow), x, gy, z, yaw, 2.6 * sa, 0.33, 2.6 * ca));
+    }
+    if (pylonGeo) lit.add(onto(new THREE.Mesh(glassOf(pylonGeo), glow), x, gy, z, yaw, 0, 0, 0));
+  }
+  const bulb = new THREE.SphereGeometry(0.2, 6, 4), N = 24;
+  for (const s of [-1, 1]) for (let i = 0; i <= N; i++) bulbs.push(new THREE.Vector3(s < 0 ? a - 0.55 : b + 0.55, y + 0.42, c - 0.3 + i * L / N));
+  const string = new THREE.InstancedMesh(bulb, glow, bulbs.length);
+  bulbs.forEach((v, i) => string.setMatrixAt(i, new THREE.Matrix4().setPosition(v)));
+  lit.add(string);
+  group.add(lit);
+  group.lamps = k => {
+    wash.value.set('#ffa860').multiplyScalar(k * 0.8);
+    glow.opacity = k;
+    lit.visible = k > 0;
+  };
+  group.lamps(0);
   return group;
 }
 

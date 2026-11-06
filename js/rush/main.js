@@ -10,6 +10,7 @@ import { createStage, TIMES as STAGE_TIMES } from '../derby/stage.js';
 import { Puffs, Debris } from '../derby/fx.js';
 import { Vehicle, contact, damageFrom, subdivide } from '../derby/vehicle.js';
 import { loadSceneryKit } from '../scenery.js';
+import { makeRain } from '../rain.js';
 import { City, rng, EDGE } from './city.js';
 import { LEVELS as ALL_LEVELS } from './levels.js';
 import { Stacks, BOX, LOOSE } from './stacks.js';
@@ -84,6 +85,7 @@ camera.updateProjectionMatrix();
 const sound = new Sound();
 const smoke = new Puffs(scene, 1800, { soft: 0.15 });
 const glow = new Puffs(scene, 1400, { additive: true, soft: 0.35 });
+const rain = makeRain(scene, '#a9bfc2');
 
 // The rough junctions still being tried out are only there with rush.html?drafts
 const DRAFTS = new URLSearchParams(location.search).has('drafts');
@@ -94,6 +96,9 @@ const LEVELS = Object.fromEntries(Object.entries(ALL_LEVELS).filter(([, L]) => D
 const TIMES = { ...STAGE_TIMES,
   haze: { label: 'Haze', sky: ['#9fb6c8', '#d3d6cf', '#ece4cf'], fog: ['#ddd6c3', 40, 430], hemi: ['#f2ead8', '#8a7a5e', 1.7],
     sun: ['#fff1cf', 1.6, [70, 95, 55]], orb: '#fff6de', stars: 0, lamps: 0 },
+  // and Short Cut's: rain, a low grey-teal sky, the streets wet and the lamps on early
+  rain: { label: 'Rain', sky: ['#33474f', '#5f7a82', '#8ea2a4'], fog: ['#71878a', 60, 480], hemi: ['#b4ccd0', '#3a4642', 1.25],
+    sun: ['#d8e6ea', 0.6, [50, 120, 30]], orb: '#8ea2a4', stars: 0, lamps: 0.6, rain: true },
 };
 const settings = Object.assign({ level: 'cross', car: 'comet', time: 'day' }, store.load('rush.settings', {}));
 const records = Object.assign({ best: {}, medals: {} }, store.load('rush.records', {}));
@@ -116,6 +121,9 @@ const LOOKS = { ...TIMES,
     sun: ['#fff0dc', 2.3, [60, 110, 40]], orb: '#fff2d8', grade: 1 },
   sunset: { ...TIMES.sunset, sky: ['#1f3460', '#b8678e', '#ffae66'], hemi: ['#ffc4a8', '#2f3c50', 1.1], grade: 0.5 },
   haze: { ...TIMES.haze, grade: 0.4 },
+  rain: { ...TIMES.rain, grade: 0.6 },
+  // (and night: a deep teal dark, the street lamps and windows and the bridge's own lights doing the rest)
+  night: { ...TIMES.night, label: 'Night', sky: ['#020812', '#0a2236', '#163a4c'], fog: ['#0a1c26', 110, 560], hemi: ['#4a7896', '#14110e', 0.5], sun: ['#9fc4ff', 0.55, [25, 120, 18]], grade: 0.7 },
 };
 
 // ---------- World ----------
@@ -213,7 +221,7 @@ function loadLevel(key) {
   // (and Gridlock Leap's building site)
   if (city.level.fixtures) city.group.add(fixtures(city, city.level.fixtures));
   // (and Over the Edge's bridge, dressed up)
-  if (city.level.gateway) city.group.add(gateway(city, city.level.gateway));
+  if (city.level.gateway) city.group.add(city.gate = gateway(city, city.level.gateway));
   // (and Last Chance's sign up ahead, saying how far to the station)
   if (city.level.roadsign) city.group.add(roadsign(city, city.level.roadsign));
   // (and Short Cut's film shoot, and its two famous corners)
@@ -793,6 +801,7 @@ function pillars(S) {
 function dress(L) {
   props?.dispose();
   props = new Props(scene, city, [...(L.props || []), ...pillars(L.station)]);
+  props.lamps(LOOKS[time].lamps);
   oranges?.clear();
   buildStation(L.station);
 }
@@ -2422,7 +2431,10 @@ function updateLines(k) {
   lines.g.attributes.color.needsUpdate = true;
 }
 
-const setLook = key => { stage.setTime(key, LOOKS[key]); post.mat.uniforms.grade.value = LOOKS[key].grade; };
+const setLook = key => { stage.setTime(key, LOOKS[key]); post.mat.uniforms.grade.value = LOOKS[key].grade; city?.gate?.lamps(LOOKS[key].lamps); props?.lamps(LOOKS[key].lamps);
+  rain.lines.visible = !!LOOKS[key].rain;
+  if (city) city.wet = !!LOOKS[key].rain;
+};
 
 // ---------- Post: radial speed blur, a vignette and the teal-and-orange grade ----------
 const post = (() => {
@@ -2732,6 +2744,7 @@ function tick(raw, draw = true) {
     post.mat.uniforms.amount.value = 0;
     smoke.update(raw, camera, renderer.domElement.height);
     glow.update(raw, camera, renderer.domElement.height);
+    rain.update(raw, camera.position);
     if (draw) post.render();
     return;
   }
@@ -2780,6 +2793,7 @@ function tick(raw, draw = true) {
   oranges.update(dt);
   smoke.update(dt, camera, renderer.domElement.height);
   glow.update(dt, camera, renderer.domElement.height);
+  rain.update(dt, camera.position);
   // Rush on screen: blur, wider view, streaks
   const speed = player.car.vel.length();
   G.rushK = (G.rushK || 0) + ((G.boosting && G.state === 'run' ? 1 : 0) - (G.rushK || 0)) * Math.min(1, raw * 4);

@@ -76,6 +76,9 @@ export class Lane {
     // Busy lanes run from a little way out (beyond sight down a street lined with buildings) to past the junction
     this.from = def.spawn ? Math.max(0, this.jS - 230) : 0;
     this.to = def.spawn ? Math.min(this.len, this.jS + 250) : this.len;
+    // (and they're taken off at the end of it, except round a bend onto another road: there they drive on to its end,
+    // not vanish halfway along it, in front of you)
+    this.end = def.then ? this.len : this.to;
   }
   // The segment at s (the first and last run on beyond the ends)
   seg(s) {
@@ -377,7 +380,7 @@ export class Traffic {
         v.input = { ...this.input };
       }
       const behind = (p.x - focus.x) * focus.dx + (p.z - focus.z) * focus.dz < -150;
-      const done = v.s > v.lane.to - 3 && (v.asleep || d > 60);
+      const done = v.s > v.lane.end - 3 && (v.asleep || d > 60);
       // (not one the crash has had while it's in play: shoved past the end of its lane, a wreck, or near
       // something flying; once it's driven on, well out of it, it goes, rather than on off the end of the road
       // for ever)

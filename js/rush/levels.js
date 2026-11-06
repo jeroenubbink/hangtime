@@ -17,16 +17,10 @@
 // Station: a petrol station's canopy { x, z, w, d, h }; hit it hard enough and it goes up. Its pumps and price
 //   sign are props, and the block marked `shop` gets its shopfront.
 
-// A cross street busy both ways (two lanes each way, green for them), and a dip for a road to run under the
-// others in (see Over the Edge): 1 along its line, falling to 0 up grass banks `bank` m either side of it
+// A cross street busy both ways (two lanes each way, green for them)
 // (the outer lane's gaps a little longer: rounded, so they're exactly the figures written out, and the traffic's the same)
 const busy = (road, gap = [1.6, 3.0]) => [1, -1].flatMap(side => [0, 1].map(i =>
   ({ road, side, i, speed: [15 + i, 18 + i * 2], gap: [gap[0] + i * 0.2, gap[1] + i * 0.4].map(g => Math.round(g * 100) / 100), spawn: true })));
-const dip = (a, bank = 21) => {
-  if (a <= 8.6) return 1;
-  const k = Math.min(1, (a - 8.6) / bank);
-  return 1 - k * k * (3 - 2 * k);
-};
 const fade = x => { const t = Math.min(1, Math.max(0, (Math.abs(x) - 50) / 170)); return 1 - t * t * (3 - 2 * t); };
 const rails = (x, z0, z1) => Array.from({ length: Math.floor((z1 - z0) / 3) + 1 }, (_, i) => ['rail', x, z0 + i * 3, Math.PI / 2]);
 const D45 = Math.SQRT1_2;
@@ -320,6 +314,8 @@ export const LEVELS = {
   bridge: {
     name: 'Over the Edge', blurb: 'Two lanes each way over the bridge, a jam backed up across it, and a busy road down below. Send it over.',
     seed: 59,
+    // (at night, the bridge lit up)
+    time: 'night',
     bounds: [-440, 440, -210, 470],
     start: { x: 5.4, z: 380, speed: 28 },
     junction: [0, 0],
@@ -357,6 +353,8 @@ export const LEVELS = {
     props: [...rails(-12.05, -27, 27), ...rails(12.05, -27, 27),
       ...[-22.5, -7.5, 7.5, 22.5].flatMap(z => [['lantern', -11.6, z, Math.PI / 2], ['lantern', 11.6, z, Math.PI / 2]]),
       ...[-1, 1].flatMap(sz => [50, 74, 98].flatMap(x => [-x, x]).map(x => ['bench', x, sz * 37.2, sz > 0 ? 0 : Math.PI])),
+      // (lanterns along the paths too, between the benches)
+      ...[-1, 1].flatMap(sz => [38, 62, 86, 110].flatMap(x => [-x, x]).map(x => ['lantern', x, sz * 40.9, 0])),
       ...[[-62, 44], [-88, 50], [-114, 43], [64, 45], [92, 51], [118, 42], [-58, -45], [-96, -50], [-120, -42], [70, -47], [100, -43], [124, -51]].map(([x, z], i) => ['tree', x, z, i]),
     ],
     lanes: [
@@ -383,6 +381,8 @@ export const LEVELS = {
   cut: {
     name: 'Short Cut', blurb: 'The road bends right. You don\'t have to: flat out, off the building site\'s ramp, down on the queue, and on through two junctions.',
     seed: 71,
+    // (in the rain, the street wet)
+    time: 'rain',
     bounds: [-440, 440, -330, 470],
     start: { x: 5.4, z: 380, speed: 28 },
     junction: [0, -140],
@@ -481,38 +481,6 @@ export const LEVELS = {
     specials: [{ lane: 4, kind: 'bus', eta: 7.6 }],
     medals: [60000, 180000, 400000],
   },
-  pick: {
-    draft: true,
-    name: 'Pick Your Poison', blurb: 'One ramp, two targets: hold back and come down on the queue at the lights, or rush it all the way to Fuel\'s Paradise.',
-    seed: 89,
-    bounds: [-440, 440, -330, 470],
-    start: { x: 5.4, z: 380, speed: 28 },
-    junction: [0, -180],
-    roads: [
-      { name: 'main', x0: 0, z0: 420, x1: 0, z1: -180, right: 2, left: 2 },
-      { name: 'lights', x0: -430, z0: -100, x1: 430, z1: -100, right: 2, left: 2 },
-      { name: 'end', x0: -430, z0: -180, x1: 430, z1: -180, right: 2, left: 2 },
-    ],
-    ramps: [{ x: 3.6, z: 49, len: 9, h: 1.35, w: 7.2 }],
-    lots: [{ rect: [-21, 21, -232, -187.3], colour: '#c4bfb4' }],
-    station: { x: 0, z: -210, w: 30, d: 24, h: 5.4 },
-    blocks: [{ x: 0, z: -239, w: 30, d: 13, h: 6, fixed: true, shop: true }],
-    props: [
-      ...[-6, 6].flatMap(x => [-204, -214].map(z => ['pump', x, z, 0])),
-      ['sign', 17, -190, 0],
-      ...[56, 62, 68].flatMap(z => [['cone', 0.4, z, 0], ['cone', 7.6, z, 0]]),
-    ],
-    parked: [...[-2.8, 2.8, -9.2, 9.2].flatMap(x => [-196, -205, -214].map(z => ({ kind: null, x, z }))), { kind: 'tanker', x: 16.5, z: -218 }],
-    lanes: [
-      // Your way: clear to the ramp, then the queue at the lights
-      { road: 'main', side: 1, i: 0, speed: [16, 20], stop: 510.3, queue: [null, null, 'van', null, null, 'bus', null, null, null, null] },
-      { road: 'main', side: 1, i: 1, speed: [16, 20], stop: 510.3, queue: [null, 'tanker', null, null, null, 'lorry', null, null, null] },
-      { road: 'main', side: -1, i: 0, speed: [18, 22], fill: [20, 560], gap: [50, 100] },
-      ...busy('lights'), ...busy('end'),
-    ],
-    specials: [{ lane: 9, kind: 'tanker', eta: 8.4 }],
-    medals: [60000, 180000, 400000],
-  },
   bank: {
     draft: true,
     name: 'Bank Shot', blurb: 'Your road comes in at an angle and stops at the avenue. The big junction is down it: bounce the wreckage off the shops and send it there.',
@@ -537,39 +505,6 @@ export const LEVELS = {
     ],
     specials: [{ lane: 1, kind: 'tanker', eta: 7.2 }, { lane: 3, kind: 'bus', eta: 7.0 }],
     medals: [40000, 120000, 300000],
-  },
-  octane: {
-    draft: true,
-    name: 'High Octane', blurb: 'Fuel\'s Paradise, built out over the edge of a bridge. Light it up and the forecourt goes over, onto the road below.',
-    seed: 101,
-    bounds: [-440, 440, -210, 470],
-    start: { x: 5.4, z: 380, speed: 28 },
-    junction: [56, 0],
-    height: (x, z) => -7 * fade(x) * dip(Math.abs(z)),
-    roads: [
-      { name: 'main', x0: 0, z0: 420, x1: 0, z1: -175, right: 2, left: 2 },
-      { name: 'under', x0: -430, z0: 0, x1: 430, z1: 0, right: 1, left: 1, under: true },
-    ],
-    deck: { rect: [-12.2, 48, -29.6, 29.6], y: 0, piers: [-8, 0, 8, 20, 32, 44].flatMap(x => [[x, -14], [x, 14]]) },
-    park: [-130, 130, -62, 55],
-    lots: [{ rect: [12.2, 47.5, -15, 15], colour: '#c4bfb4' }],
-    station: { x: 31, z: 0, w: 26, d: 20, h: 5.4 },
-    blocks: [{ x: 0, z: -192, w: 40, d: 30, h: 26, fixed: true }],
-    props: [
-      ...[25, 37].flatMap(x => [-5, 5].map(z => ['pump', x, z, 0])),
-      ...rails(-12.05, -27, 27), ...rails(47.8, -27, 27),
-    ],
-    parked: [...[19, 25, 31, 37, 43].flatMap(x => [-12.3, 12.3].map(z => ({ kind: null, x, z, yaw: Math.PI / 2 }))), { kind: 'tanker', x: 31, z: 0, yaw: Math.PI / 2 }],
-    lanes: [
-      // A jam on the bridge in the inside lane; the outside lane's clear, for the turn into the forecourt
-      { road: 'main', side: 1, i: 0, speed: [19, 23], gap: [50, 100], stop: 425, queue: [null, null, 'van', null, null, 'lorry'] },
-      { road: 'main', side: -1, i: 0, speed: [18, 22], fill: [12, 590], gap: [45, 90] },
-      { road: 'main', side: -1, i: 1, speed: [17, 21], fill: [12, 590], gap: [55, 110] },
-      { road: 'under', side: 1, i: 0, speed: [15, 19], gap: [1.5, 2.8], spawn: true },
-      { road: 'under', side: -1, i: 0, speed: [15, 19], gap: [1.5, 2.8], spawn: true },
-    ],
-    specials: [{ lane: 3, kind: 'tanker', eta: 7.4 }, { lane: 4, kind: 'bus', eta: 7.8 }],
-    medals: [50000, 150000, 350000],
   },
   canal: {
     draft: true,
@@ -596,63 +531,6 @@ export const LEVELS = {
       { road: 'far', side: 1, i: 1, speed: [16, 20], stop: 50.6, queue: [null, 'bus', null] },
     ],
     specials: [{ lane: 1, kind: 'tanker', eta: 6.4 }],
-    medals: [40000, 120000, 300000],
-  },
-  meet: {
-    draft: true,
-    name: 'Rendezvous', blurb: 'Three tankers and a bus are crossing the park, nose to tail. Watch them come and be there when they are: flat out you\'re early.',
-    seed: 107,
-    bounds: [-440, 440, -210, 470],
-    start: { x: 5.4, z: 380, speed: 28 },
-    junction: [0, 0],
-    roads: [
-      { name: 'main', x0: 0, z0: 420, x1: 0, z1: -175, right: 2, left: 2 },
-      { name: 'cross', x0: -430, z0: 0, x1: 430, z1: 0, right: 2, left: 2 },
-    ],
-    // Open ground round the junction, so you can see them coming a long way off
-    park: [-330, 330, -70, 120],
-    blocks: [{ x: 0, z: -192, w: 40, d: 30, h: 26, fixed: true }],
-    lanes: [
-      { road: 'main', side: -1, i: 0, speed: [18, 22], fill: [20, 380], gap: [55, 110] },
-      { road: 'main', side: -1, i: 1, speed: [17, 21], fill: [20, 380], gap: [70, 140] },
-      ...busy('cross', [3.0, 5.0]),
-    ],
-    specials: [
-      { lane: 2, kind: 'tanker', eta: 7.6, exact: true }, { lane: 2, kind: 'tanker', eta: 8.4, exact: true },
-      { lane: 2, kind: 'tanker', eta: 9.2, exact: true }, { lane: 3, kind: 'bus', eta: 8.0, exact: true },
-    ],
-    medals: [40000, 120000, 300000],
-  },
-  decker: {
-    draft: true,
-    name: 'Double Decker', blurb: 'A jam on the bridge, a wall down one side of it, and a busy junction down below on the other. Go in at an angle.',
-    seed: 109,
-    bounds: [-440, 440, -210, 470],
-    start: { x: 5.4, z: 380, speed: 28 },
-    junction: [-42, 0],
-    // Two roads down below, crossing just west of the bridge: one under it, one alongside it
-    height: (x, z) => -7 * Math.max(fade(x) * dip(Math.abs(z)), dip(Math.abs(x + 42))),
-    roads: [
-      { name: 'main', x0: 0, z0: 420, x1: 0, z1: -175, right: 2, left: 2 },
-      { name: 'under', x0: -430, z0: 0, x1: 430, z1: 0, right: 1, left: 1, under: true },
-      { name: 'beside', x0: -42, z0: 420, x1: -42, z1: -175, right: 1, left: 1, under: true },
-    ],
-    deck: { rect: [-12.2, 12.2, -29.6, 29.6], y: 0, piers: [-8, 0, 8].flatMap(x => [[x, -14], [x, 14]]), wall: [12.2, 13, -29.6, 29.6] },
-    park: [-130, 130, -62, 55],
-    blocks: [{ x: 0, z: -192, w: 40, d: 30, h: 26, fixed: true }],
-    props: rails(-12.05, -27, 27),
-    lanes: [
-      { road: 'main', side: 1, i: 0, speed: [19, 23], gap: [50, 100], stop: 485.3, queue: [null, null, 'van', null, null, 'bus', null, null, null, null, 'suv', null, null] },
-      { road: 'main', side: 1, i: 1, speed: [21, 25], gap: [60, 120], stop: 485.3, queue: [null, 'lorry', null, null, null, 'pickup', null, null, null, 'van', null, null] },
-      { road: 'main', side: -1, i: 0, speed: [18, 22], fill: [12, 590], gap: [45, 90] },
-      { road: 'main', side: -1, i: 1, speed: [17, 21], fill: [12, 590], gap: [55, 110] },
-      { road: 'under', side: 1, i: 0, speed: [15, 19], gap: [1.6, 3.0], spawn: true },
-      { road: 'under', side: -1, i: 0, speed: [15, 19], gap: [1.6, 3.0], spawn: true },
-      // and the road alongside, waiting at its lights
-      { road: 'beside', side: 1, i: 0, speed: [15, 19], stop: 413.9, queue: [null, null, 'van', null, null, null] },
-      { road: 'beside', side: -1, i: 0, speed: [15, 19], stop: 168.9, queue: [null, 'bus', null, null, null] },
-    ],
-    specials: [{ lane: 4, kind: 'tanker', eta: 6.9 }, { lane: 5, kind: 'bus', eta: 7.6 }],
     medals: [40000, 120000, 300000],
   },
   tower: {
@@ -769,6 +647,8 @@ export const LEVELS = {
   gas: {
     name: 'Last Chance Gas', blurb: 'A T-junction, and Fuel\'s Paradise straight across it. Thread the gap and light it up.',
     seed: 47,
+    // (at dusk, the station's lights coming on)
+    time: 'sunset',
     bounds: [-440, 440, -140, 470],
     start: { x: 1.8, z: 380, speed: 28 },
     junction: [0, 0],

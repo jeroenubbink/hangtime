@@ -10,6 +10,7 @@ import * as store from './store.js';
 import { waterTime } from './textures.js';
 import { TONE } from './toon.js';
 import { loadSceneryKit } from './scenery.js';
+import { makeRain } from './rain.js';
 import { t, ordinal, translatePage, langButton } from './i18n.js';
 import './nl.js';
 
@@ -84,35 +85,7 @@ scene.add(sun, sun.target);
 const SUN_OFFSET = new THREE.Vector3(70, 120, 45);
 
 // Rain: streaks in a box that follows the camera
-const rain = (() => {
-  const N = 1400, pos = new Float32Array(N * 6), B = { x: 50, y: 30, z: 50 };
-  for (let i = 0; i < N; i++) {
-    const x = (Math.random() - 0.5) * B.x, y = Math.random() * B.y, z = (Math.random() - 0.5) * B.z;
-    pos.set([x, y, z, x + 0.15, y + 0.9, z], i * 6);
-  }
-  const g = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: '#c3ced8', transparent: true, opacity: 0.5 }));
-  lines.frustumCulled = false;
-  lines.visible = false;
-  scene.add(lines);
-  return {
-    lines,
-    update(dt, around) {
-      if (!lines.visible) return;
-      const fall = 26 * dt;
-      for (let i = 0; i < N; i++) {
-        const o = i * 6;
-        pos[o + 1] -= fall; pos[o + 4] -= fall; pos[o] -= fall * 0.16; pos[o + 3] -= fall * 0.16;
-        if (pos[o + 1] < 0) {
-          const x = (Math.random() - 0.5) * B.x, z = (Math.random() - 0.5) * B.z;
-          pos.set([x, B.y, z, x + 0.15, B.y + 0.9, z], o);
-        }
-      }
-      lines.position.set(around.x, around.y - 12, around.z);
-      g.attributes.position.needsUpdate = true;
-    },
-  };
-})();
+const rain = makeRain(scene);
 
 // Time of day: sky gradient, fog, lights, street lamps and headlights
 const TOD = {
