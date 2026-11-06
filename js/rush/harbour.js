@@ -39,12 +39,14 @@ export function crane(city, C) {
 
 // The yacht, `B`: { x, z, name, pts }, bow out to sea (-z), moored at the water's level. It floats (solid sides, a deck
 // to come down on, a saloon on that) until `sink()`: then it lurches over, the bow comes up and it goes down stern first.
+const LIFT = 1.1;
 export class Boat {
   constructor(scene, city, B) {
     this.scene = scene; this.city = city; this.B = B;
     const W = city.water;
-    // (a little low in the water: the bow's forefoot rides at the waterline)
-    this.y = W.y - 0.12;
+    // (riding up in the water, the white of its sides clear of it and the top of the red bottom showing: the model's
+    // LIFT up, and what's solid isn't, see `parts`: its deck's where it always was, level with the quay)
+    this.y = W.y + LIFT;
     this.group = new THREE.Group();
     const hull = new THREE.Mesh(sceneryGeo('yacht') || merge([
       [new THREE.BoxGeometry(6.4, 2.6, 24).translate(0, 0.25, 0), '#f4f2ec'],
@@ -56,7 +58,7 @@ export class Boat {
     scene.add(this.group);
     // What's solid: the hull, to its deck (level with the quay), and the saloon on it. Floating, so they're the ground
     // over the water (see City.groundHeight), and walls round it.
-    this.parts = [{ dz: 0, w: 6.4, d: 24, up: 1.6 }, { dz: 3, w: 4.8, d: 11, up: 3.9 }].map(P => {
+    this.parts = [{ dz: 0, w: 6.4, d: 24, up: 1.48 - LIFT }, { dz: 3, w: 4.8, d: 11, up: 3.78 - LIFT }].map(P => {
       const b = { x: B.x, z: B.z + P.dz, w: P.w, d: P.d, ca: 1, sa: 0, up: P.up };
       city.addToGrid(b, b.x - b.w / 2, b.x + b.w / 2, b.z - b.d / 2, b.z + b.d / 2);
       city.floats.push(b);
