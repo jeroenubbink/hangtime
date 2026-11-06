@@ -459,19 +459,23 @@ export const LEVELS = {
   },
   row: {
     draft: true,
-    name: 'Tanker Row', blurb: 'The depot\'s tankers wait nose to tail along the far kerb. Light one and they all go, both ways, into both junctions.',
+    name: 'Tanker Row', blurb: 'Every tanker the depot has, parked in a row outside its gate. Light one and they all go, both ways, into both junctions.',
     seed: 83,
+    time: 'dawn',
     bounds: [-440, 440, -210, 470],
     start: { x: 5.4, z: 380, speed: 28 },
     junction: [0, 0],
     roads: [
       { name: 'main', x0: 0, z0: 420, x1: 0, z1: -7.2, right: 2, left: 2 },
-      { name: 'depot', x0: -430, z0: 0, x1: 430, z1: 0, right: 2, left: 2 },
+      // (a parking lane along the far side, bays for the tankers: 11 m each, round the junction)
+      { name: 'depot', x0: -430, z0: 0, x1: 430, z1: 0, right: 2, left: 2, parking: { side: -1, from: 358.5, to: 501.5, bay: 11 } },
       { name: 'west', x0: -90, z0: 420, x1: -90, z1: -175, right: 2, left: 2 },
       { name: 'east', x0: 90, z0: 420, x1: 90, z1: -175, right: 2, left: 2 },
     ],
-    // On the far pavement, 11 m apart: each one's blast is just enough to set off the next
-    parked: Array.from({ length: 13 }, (_, i) => ({ kind: 'tanker', x: -66 + i * 11, z: -9.7, yaw: Math.PI / 2, hp: 20 })),
+    // In the parking lane, a bay each, 11 m apart: each one's blast is just enough to set off the next
+    parked: [...Array.from({ length: 13 }, (_, i) => ({ kind: 'tanker', x: -66 + i * 11, z: -9, yaw: Math.PI / 2, hp: 20 })),
+      // (and one in the yard, filling up under the rack)
+      { kind: 'tanker', x: -44, z: -36.2, yaw: Math.PI / 2, hp: 20 }],
     lanes: [
       { road: 'main', side: 1, i: 0, speed: [19, 23], gap: [50, 100], stop: 410.3, queue: 2 },
       { road: 'main', side: 1, i: 1, speed: [21, 25], gap: [60, 120], stop: 410.3, queue: 1 },
@@ -479,6 +483,41 @@ export const LEVELS = {
       ...busy('depot'), ...busy('west', [2.0, 3.6]), ...busy('east', [2.0, 3.6]),
     ],
     specials: [{ lane: 4, kind: 'bus', eta: 7.6 }],
+    // Across the end of your road, the depot: its yard paved from the far pavement back, between the side streets
+    lots: [{ rect: [-77.8, 77.8, -172, -15.8], colour: '#b4b2a8' }],
+    depot: {
+      gate: [0, -17.6],
+      fence: [[-77, -16.8, -8, -16.8], [8, -16.8, 77, -16.8], [-77.2, -17, -77.2, -171], [77.2, -17, 77.2, -171], [-77, -171.2, 77, -171.2]],
+      kit: [
+        // the tank farm: the biggest in the middle, straight down your road behind the gate, and a walled compound each
+        // side of it
+        ['depot_tank_huge', 0, -108],
+        ['depot_tank_big', -52, -96, 0.4], ['depot_tank_mid', -56, -145, 2.6], ['depot_tank_small', -38, -126, -1.2],
+        ['depot_tank_mid', 52, -90, -0.8], ['depot_tank_mid', 52, -122, 2.2], ['depot_tank_small', 40, -153, 1.4], ['depot_tank_small', 62, -153, -2.4],
+        ['depot_bullet', 0, -147], ['depot_bullet', 0, -157],
+        // up front, the loading rack (a tanker filling up under it), the office, and the gas in its white bullets
+        ['depot_gantry', -44, -40], ['depot_office', 26, -27], ['depot_bullet', 56, -34], ['depot_bullet', 56, -43],
+        // the pipes across the yard from the tanks to the rack
+        ...[-66, -54, -42, -30, -18, -6, 6, 18, 30, 42, 54, 66].map(x => ['depot_pipes', x, -62]),
+        ...[-74, -86].flatMap(z => [['depot_pipes', -26, z, Math.PI / 2], ['depot_pipes', 26, z, Math.PI / 2]]),
+        ['depot_firepoint', -26, -29], ['depot_firepoint', 13, -22], ['depot_firepoint', 40, -52, Math.PI / 2], ['depot_firepoint', -20, -134, Math.PI],
+      ],
+      // the low concrete walls round the tanks (to hold what they'd spill): [x0, x1, z0, z1]
+      bunds: [[-22, 22, -86, -132], [-74, -30, -70, -168], [30, 74, -70, -168]],
+      // yellow lines on the yard: the way in from the gate, round to the rack, and along the pipes
+      lines: [[[-5, -19], [-5, -52], [-30, -52]], [[5, -19], [5, -52], [70, -52]], [[-30, -52], [-58, -52], [-58, -28], [-30, -28], [-30, -52]]],
+      // the floodlights, two at the front lighting the yard in from the gate, two in the back corners over the tanks
+      masts: [[-64, -22, 2.76], [64, -22, -2.76], [-73, -167, 0.79], [73, -167, -0.79]],
+      slabs: [-77.8, 77.8, -172, -15.8],
+      lettered: [0, -108, 16, 9.2],
+    },
+    // (and once the tour comes, the chain going up again: from up in a front corner of the yard, along the row)
+    reel: { kind: 'tanker', min: 4, eyes: [[-72, 21, -64], [72, 21, -64]] },
+    // The warnings on the way down, each more worried than the last, and the sign over the bays
+    warnings: [
+      { kind: 'smoking', x: 5.4, z: 340, over: 4.8 }, { kind: 'flammable', x: 5.4, z: 220, over: 4.8 }, { kind: 'seriously', x: 5.4, z: 110, over: 4.8 },
+      { kind: 'permit', x: -30, z: -13.4 },
+    ],
     medals: [60000, 180000, 400000],
   },
   bank: {

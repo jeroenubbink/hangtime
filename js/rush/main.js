@@ -22,7 +22,8 @@ import { buildStation as stationModel, DEBRIS_COLOURS } from './station.js';
 import { crane, Boat } from './harbour.js';
 import { fixtures } from './fixtures.js';
 import { gateway } from './gateway.js';
-import { roadsign } from './roadsign.js';
+import { roadsign, warning } from './roadsign.js';
+import { depot } from './depot.js';
 import { filmset } from './filmset.js';
 import { RIDES, TRAFFIC, TRAFFIC_PAINTS } from './roster.js';
 import { Recorder, FLAGS, canSend, send } from './replay.js';
@@ -41,7 +42,7 @@ const files = new Set([...Object.values(RIDES), ...Object.values(TRAFFIC)].flatM
 await Promise.all([
   ...[...files, ...Object.values(DEBRIS)].map(f => loadCarKits([f]).catch(() => console.info('No model', f))),
   loadSceneryKit().catch(e => console.warn('Scenery not loaded:', e)), loadSceneryKit('derby').catch(() => {}),
-  loadSceneryKit('hotel').catch(() => {}), loadSceneryKit('docks').catch(() => {}), loadSceneryKit('works').catch(() => {}), loadSceneryKit('bridge').catch(() => {}), loadSceneryKit('film').catch(() => {}),
+  loadSceneryKit('hotel').catch(() => {}), loadSceneryKit('docks').catch(() => {}), loadSceneryKit('works').catch(() => {}), loadSceneryKit('bridge').catch(() => {}), loadSceneryKit('film').catch(() => {}), loadSceneryKit('depot').catch(() => {}),
 ]);
 $('loading').remove();
 
@@ -99,6 +100,10 @@ const TIMES = { ...STAGE_TIMES,
   // and Short Cut's: rain, a low grey-teal sky, the streets wet and the lamps on early
   rain: { label: 'Rain', sky: ['#33474f', '#5f7a82', '#8ea2a4'], fog: ['#71878a', 60, 480], hemi: ['#b4ccd0', '#3a4642', 1.25],
     sun: ['#d8e6ea', 0.6, [50, 120, 30]], orb: '#8ea2a4', stars: 0, lamps: 0.6, rain: true },
+  // and Tanker Row's: first light, before the depot opens: a cold blue sky going peach low down, the sun just up and
+  // long shadows across the road, the last of the stars, the lamps not off yet
+  dawn: { label: 'Dawn', sky: ['#24406e', '#8fa8d0', '#ffcf9e'], fog: ['#c4c4d2', 130, 620], hemi: ['#b4c4e6', '#4a4252', 1.25],
+    sun: ['#ffc890', 1.9, [120, 32, 90]], orb: '#ffe0b8', stars: 0.15, lamps: 0.45 },
 };
 const settings = Object.assign({ level: 'cross', car: 'comet', time: 'day' }, store.load('rush.settings', {}));
 const records = Object.assign({ best: {}, medals: {} }, store.load('rush.records', {}));
@@ -122,6 +127,7 @@ const LOOKS = { ...TIMES,
   sunset: { ...TIMES.sunset, sky: ['#1f3460', '#b8678e', '#ffae66'], hemi: ['#ffc4a8', '#2f3c50', 1.1], grade: 0.5 },
   haze: { ...TIMES.haze, grade: 0.4 },
   rain: { ...TIMES.rain, grade: 0.6 },
+  dawn: { ...TIMES.dawn, grade: 0.7 },
   // (and night: a deep teal dark, the street lamps and windows and the bridge's own lights doing the rest)
   night: { ...TIMES.night, label: 'Night', sky: ['#020812', '#0a2236', '#163a4c'], fog: ['#0a1c26', 110, 560], hemi: ['#4a7896', '#14110e', 0.5], sun: ['#9fc4ff', 0.55, [25, 120, 18]], grade: 0.7 },
 };
@@ -134,6 +140,7 @@ const G = { state: 'menu', t: 0, heat: 1, rush: 0.4, crash: null, score: 0, show
 window.rush = G;
 
 // A traffic car: built plain, and only cut into small triangles (so it can crumple) when first hit
+const WRECKED = new THREE.Color('#7a7470');
 class Car extends Vehicle {
   build() {
     if (!this.def.lazy) return super.build();
@@ -167,7 +174,8 @@ class Car extends Vehicle {
   // A wreck keeps its colours, scorched darker (not the derby's charcoal: a pile-up should stay colourful)
   wreck() {
     super.wreck();
-    if (!this.burnt) this.model.userData.paint.color.set('#7a7470');
+    // (its paint as it was kept, for the reel to show it before)
+    if (!this.burnt) { this.fresh ??= this.model.userData.paint.color.clone(); this.model.userData.paint.color.set(WRECKED); }
   }
   // Blown up: burnt out, black all over (the livery's still there under the soot, just)
   burn() {
@@ -224,6 +232,9 @@ function loadLevel(key) {
   if (city.level.gateway) city.group.add(city.gate = gateway(city, city.level.gateway));
   // (and Last Chance's sign up ahead, saying how far to the station)
   if (city.level.roadsign) city.group.add(roadsign(city, city.level.roadsign));
+  // (and Tanker Row's depot, and the warnings on the way to it)
+  if (city.level.depot) city.group.add(city.depot = depot(city, city.level.depot));
+  for (const W of city.level.warnings || []) city.group.add(warning(city, W));
   // (and Short Cut's film shoot, and its two famous corners)
   if (city.level.filmset) city.group.add(filmset(city, city.level.filmset));
   G.boat?.dispose();
@@ -649,7 +660,7 @@ function blowUp(X) {
   X.boomT = null;
   X.blown = true;
   X.blownAt = G.t;
-  X.burn();
+  scorched(X, true);
   G.rec?.event(G.t, 'boom', { id: X.id, kind: X.kind, big: X.def.explosive ? 2 : 1 });
   // (a forecourt car: thrown up and out, and wrecked by it)
   if (X.launch) { launch(X); X.launchT = G.t; if (!X.wrecked && !X.halved) wreck(X, false); }
@@ -1167,7 +1178,7 @@ function detonate(full) {
   G.rec?.event(G.t, 'boom', { id: 'you', kind: settings.car, big: Math.round(big * 100) / 100 });
   player.blown = true;
   player.blownAt = G.t;
-  player.burn();
+  scorched(player, true);
   // (a fat one: the fireball and two more bursting round it, a second shock wave, and a white-out)
   explosion(p, big);
   for (const s of [-1, 1]) explosion(new THREE.Vector3(G.rand() - 0.5, 0, G.rand() - 0.5).normalize().multiplyScalar(2.5 * s).add(p), big * 0.5);
@@ -1846,6 +1857,8 @@ function startTour() {
   }
   const T = G.tour = { gs, t: -HOLD, end: gs.length > 1 ? gs.length * HEAP : gs.length, centre, D: clamp(14 + spread * 1.1, 20, 60), from: p.clone(), fromLook: (C.look || C.focus).clone(),
     fromD: Math.hypot(p.x - first.x, p.z - first.z), az0: Math.atan2(p.x - first.x, p.z - first.z), look: centre.clone(), max: Math.max(1, ...gs.map(g => g.pts)) };
+  // (on Tanker Row, first the chain going up again: see the reel)
+  T.reel = startReel();
   // How high each move to a heap has to go to clear the roofs under the way it takes (the way it would take down at
   // street level, followed through: every building it would cross, and anything beside them)
   const look = new THREE.Vector3(), at = new THREE.Vector3(), was = new THREE.Vector3(), each = T.end / Math.max(1, gs.length);
@@ -1872,7 +1885,105 @@ function outOfBlocks(p) {
   return p;
 }
 // Enter (or Start) skips the rest of it, to the results
-function skipTour() { G.tour.t = Math.max(G.tour.t, G.tour.end); }
+function skipTour() {
+  // (the reel first, if it's on: then the tour)
+  if (G.tour.reel) return endReel();
+  G.tour.t = Math.max(G.tour.t, G.tour.end);
+}
+
+// ---------- The reel ----------
+// A level's `reel` ({ kind, min, eyes: [[x, y, z]] }): when the crash set off a chain of `min` or more of `kind`, before
+// the tour the chain goes up again, slowed down, from whichever of the `eyes` is nearer where it started (on Tanker
+// Row, up in a corner of the depot's yard, along the row with the town behind), a long lens following it along; then
+// everything's put back the way it ended up. It's the run's own recording (see replay.js), and the world stands still
+// for the tour: posing the wrecks from it disturbs nothing.
+const REEL_SPEED = 0.45;
+function startReel() {
+  const R = city.level.reel, rec = G.rec;
+  if (!R || !rec?.frames.length) return null;
+  const booms = rec.events.filter(e => e.type === 'boom' && e.kind === R.kind);
+  if (booms.length < R.min) return null;
+  const t0 = booms[0].t - 0.6, t1 = Math.min(booms[booms.length - 1].t, booms[0].t + 3.5) + 1.2;
+  const byId = new Map([['you', player], ...traffic.list.map(v => [v.id, v]), ...halves.map(h => [h.id, h])]);
+  // (where each of them is now, to go back to)
+  const saved = [...byId.values()].map(v => [v, v.car.pos.clone(), v.car.q.clone(), v.model.visible]);
+  // Where they went up: the first, and the middle of them all
+  const at = booms.filter(e => e.t <= t1).map(e => reelFrame(rec, e.t).b.find(b => b[0] === e.id)).filter(Boolean).map(b => new THREE.Vector3(b[1], b[2], b[3]));
+  const centre = at.reduce((c, p) => c.add(p), new THREE.Vector3()).divideScalar(at.length);
+  const eye = new THREE.Vector3(...R.eyes.reduce((e, f) => (_w.set(f[0], at[0].y, f[2]).distanceTo(at[0]) < _rp.set(e[0], at[0].y, e[2]).distanceTo(at[0]) ? f : e)));
+  // (the smoke and fire the crash left hanging, cleared: the chain's own come back as it goes)
+  clearEffects();
+  const el = document.createElement('div');
+  el.className = 'reel';
+  el.innerHTML = `<span class="rec">${t('REPLAY')}</span><b>${t('AND AGAIN, FROM THE TOP')}</b>`;
+  $('pops').appendChild(el);
+  $('hud').classList.add('touring');
+  return { t: t0, t0, t1, booms: booms.filter(e => e.t <= t1), next: 0, byId, saved, eye, first: at[0], centre, look: at[0].clone(), el };
+}
+// The recorded frame at or before t
+function reelFrame(rec, t) {
+  const F = rec.frames;
+  let lo = 0, hi = F.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (F[m].t <= t) lo = m; else hi = m - 1; }
+  return F[lo];
+}
+const _rq = new THREE.Quaternion(), _rp = new THREE.Vector3();
+function reelTick(raw) {
+  const L = G.tour.reel, rec = G.rec, dt = raw * REEL_SPEED;
+  L.t += dt;
+  if (L.t >= L.t1) return endReel();
+  // Everything where it was then (between two frames), burnt or not yet
+  const a = reelFrame(rec, L.t), b = rec.frames[Math.min(rec.frames.indexOf(a) + 1, rec.frames.length - 1)];
+  const k = b.t > a.t ? clamp((L.t - a.t) / (b.t - a.t), 0, 1) : 0, next = new Map(b.b.map(e => [e[0], e]));
+  for (const v of L.byId.values()) v.model.visible = false;
+  for (const e of a.b) {
+    const v = L.byId.get(e[0]), f = next.get(e[0]) || e;
+    if (!v) continue;
+    v.car.pos.set(e[1], e[2], e[3]).lerp(_rp.set(f[1], f[2], f[3]), k);
+    v.car.q.set(e[4], e[5], e[6], e[7]).normalize().slerp(_rq.set(f[4], f[5], f[6], f[7]).normalize(), k);
+    if (v.pose) v.pose(); else { v.model.position.copy(v.car.pos); v.model.quaternion.copy(v.car.q); }
+    v.model.visible = !(e[8] & FLAGS.halved);
+    reelLook(v, e[8]);
+  }
+  // and each blast as it comes
+  while (L.next < L.booms.length && L.booms[L.next].t <= L.t) {
+    const e = L.booms[L.next++], v = L.byId.get(e.id);
+    if (!v) continue;
+    explosion(v.car.pos, e.big || 2);
+    sound.boom(0.6);
+  }
+  // The camera: a long lens on the first, easing round and opening out to take in the rest as they go, and drifting
+  // in a little
+  const u = clamp((L.t - L.t0) / (L.t1 - L.t0), 0, 1), e = u * u * (3 - 2 * u);
+  L.look.lerpVectors(L.first, L.centre, e);
+  camera.position.copy(L.eye).lerp(L.look, u * 0.08);
+  camera.up.set(0, 1, 0);
+  camera.lookAt(_rp.copy(L.look).setY(L.look.y + 1));
+  camera.fov = stage.fitFov(30 + 18 * e);
+  camera.updateProjectionMatrix();
+  stage.focusSun(L.look, 70);
+  smoke.update(dt, camera, renderer.domElement.height);
+  glow.update(dt, camera, renderer.domElement.height);
+  spreadRings(dt);
+}
+// How it looked by its `flags` then: burnt out, or wrecked (greyed), or as it came
+function reelLook(v, flags) {
+  if (v.paints) scorched(v, !!(flags & FLAGS.blown));
+  if (v.fresh && !(flags & FLAGS.blown)) v.model.userData.paint.color.copy(flags & FLAGS.wrecked ? WRECKED : v.fresh);
+}
+// Everything back the way it ended up, and on with the tour
+function endReel() {
+  const L = G.tour.reel;
+  for (const [v, p, q, shown] of L.saved) {
+    v.car.pos.copy(p); v.car.q.copy(q);
+    if (v.pose) v.pose(); else { v.model.position.copy(p); v.model.quaternion.copy(q); }
+    v.model.visible = shown;
+    reelLook(v, (v.wrecked ? FLAGS.wrecked : 0) | (v.blown ? FLAGS.blown : 0));
+  }
+  L.el.remove();
+  clearEffects();
+  G.tour.reel = null;
+}
 // Where the camera looks at a heap from: `a` round it, `D` out and up (`up`: 0, at the usual angle; 1, much more
 // steeply down on it)
 const tourSpot = (c, a, D, out, up = 0) => out.set(c.x + Math.sin(a) * D * (1 - 0.6 * up), c.y + 3 + D * (0.5 + 0.7 * up), c.z + Math.cos(a) * D * (1 - 0.6 * up));
@@ -2447,7 +2558,7 @@ function updateLines(k) {
   lines.g.attributes.color.needsUpdate = true;
 }
 
-const setLook = key => { stage.setTime(key, LOOKS[key]); post.mat.uniforms.grade.value = LOOKS[key].grade; city?.gate?.lamps(LOOKS[key].lamps); props?.lamps(LOOKS[key].lamps);
+const setLook = key => { stage.setTime(key, LOOKS[key]); post.mat.uniforms.grade.value = LOOKS[key].grade; city?.gate?.lamps(LOOKS[key].lamps); city?.depot?.lamps(LOOKS[key].lamps); props?.lamps(LOOKS[key].lamps);
   rain.lines.visible = !!LOOKS[key].rain;
   if (city) city.wet = !!LOOKS[key].rain;
 };
@@ -2772,6 +2883,12 @@ function tick(raw, draw = true) {
     }
     if (free.on) free.update(raw);
     rain.update(raw, camera.position);
+    if (draw) post.render();
+    return;
+  }
+  // (and Tanker Row's reel, before the tour: the world held, the chain played again)
+  if (G.tour?.reel && !free.on) {
+    reelTick(raw);
     if (draw) post.render();
     return;
   }

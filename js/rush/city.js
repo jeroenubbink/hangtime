@@ -44,9 +44,11 @@ export function road(def) {
   r.rv = rightOf(...r.dir);
   r.ang = Math.atan2(r.dir[1], r.dir[0]);
   r.axis = Math.abs(r.dir[0]) < 1e-6 || Math.abs(r.dir[1]) < 1e-6;
-  r.width = (r.right + r.left) * LANE + r.median;
-  r.vHi = r.right * LANE + r.median / 2;
-  r.vLo = -(r.left * LANE + r.median / 2);
+  // (a parking lane along one side, `parking`: { side, from, to, bay }, its bays painted from u `from` to `to`)
+  const park = s => (r.parking?.side === s ? LANE : 0);
+  r.width = (r.right + r.left) * LANE + r.median + park(1) + park(-1);
+  r.vHi = r.right * LANE + r.median / 2 + park(1);
+  r.vLo = -(r.left * LANE + r.median / 2) - park(-1);
   r.at = (u, v) => [r.x0 + r.dir[0] * u + r.rv[0] * v, r.z0 + r.dir[1] * u + r.rv[1] * v];
   r.local = (x, z) => { const px = x - r.x0, pz = z - r.z0; return [px * r.dir[0] + pz * r.dir[1], px * r.rv[0] + pz * r.rv[1]]; };
   r.poly = [[0, r.vLo], [r.len, r.vLo], [r.len, r.vHi], [0, r.vHi]].map(([u, v]) => r.at(u, v));
@@ -403,6 +405,15 @@ export class City {
       const m = new THREE.Mesh(this.band(r, 0, r.len, r.vLo, r.vHi, 0, (k, u) => [k, u / 12]), mat);
       m.receiveShadow = true;
       this.group.add(m);
+      // (the parking lane's bays: a line between each two, and one along the far end)
+      const P = r.parking;
+      if (P) {
+        const v0 = P.side > 0 ? r.vHi - LANE : r.vLo, v1 = v0 + LANE, n = Math.round((P.to - P.from) / P.bay);
+        const lines = Array.from({ length: n + 1 }, (_, k) => this.band(r, P.from + k * P.bay - 0.08, P.from + k * P.bay + 0.08, v0 + 0.3, v1 - 0.3, 0.02));
+        const bays = new THREE.Mesh(merge(lines.map(g => [g, '#eeeeea'])), new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -10 }));
+        bays.receiveShadow = true;
+        this.group.add(bays);
+      }
     });
     // Junctions: plain asphalt where roads meet (no lane lines); where two cross square-on, zebra crossings and
     // stop lines on the way in

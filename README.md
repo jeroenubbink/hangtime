@@ -102,8 +102,10 @@ through them. Things to know:
   sunset-and-flaming-palm logo on its roof. Anything that hits it hard enough sets it off: your car under the canopy at speed or through a pump or pillar, or, once
   you've crashed, the traffic you've thrown at it, or a blast beside it. Then the pumps go, the canopy and its logo
   fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction.
-- **Three rough ones, for ideas** (not shown to players yet: in dev mode only, see Run): **Tanker Row** (tankers parked nose to tail along the far kerb: light one and
-  the blasts run down the row both ways into two junctions); **Bank Shot** (your road comes in at 45° and stops
+- **Three rough ones, for ideas** (not shown to players yet: in dev mode only, see Run): **Tanker Row** (at dawn, the Sparks fuel depot's whole fleet parked in a row
+  of bays outside its gate, under warnings that get more worried the nearer you get: light one and the blasts run
+  down the row both ways into two junctions, and once it's over the chain goes up again in slow motion, from the
+  depot's yard, before the tour of the wreckage); **Bank Shot** (your road comes in at 45° and stops
   at the avenue: bounce the wreckage off the shops and down to the big junction); and **Mind the Gap** (the road stops at a
   canal, the ramp doesn't: short and you're swimming, long and you land on the queue past the quay road).
 - **Tower Dive**: the biggest ramp in town, five ramps side by side, 30° to 50° at the lip (white fins
@@ -313,7 +315,9 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
 - `assets/cars/toy-*.glb`, `assets/scenery/nature.glb`, `assets/scenery/derby.glb`: both games' toy cars, the round
   trees, bushes and flowers, and Crunchtime's cones, drums, bales, tyre stacks, fence panels, barn and windmill,
   modelled in Blender (source: `assets/src/toys.blend`); `assets/scenery/hotel.glb`, Tower Dive's palm and fountain
-  (source: `assets/src/hotel.blend`)
+  (source: `assets/src/hotel.blend`); `assets/scenery/depot.glb`, Tanker Row's fuel depot (storage tanks, the loading
+  rack, the gate, the office, the fence, pipes), built by a script: `blender -b -P assets/src/depot.py` makes
+  `assets/src/depot.blend` and the .glb
 - `js/net.js`: online rooms over WebRTC, found through public Nostr relays (Trystero, loaded only when you go online)
 - `js/toon.js`: the shared toybox look for both games: two-tone shading, rim light and a colour boost, patched into three.js's shaders
 - `js/derby/`: Crunchtime
@@ -329,9 +333,9 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
 - `js/rush/`: Rushtime
   - `main.js`: your car's handling, the run-up (heat, rush, near misses), the crash (chains, explosions, slow motion,
     crash camera), speed effects (radial blur, streaks), HUD and menus
-  - `city.js`: streets as axis-aligned roads with lane markings, kerbs and pavements, buildings, the quay, and
-    bridges (the ground is one height everywhere, except over a bridge deck, where it depends on whether you're
-    above or below it)
+  - `city.js`: streets as axis-aligned roads with lane markings (and a parking lane, if a road has one), kerbs and
+    pavements, buildings, the quay, and bridges (the ground is one height everywhere, except over a bridge deck, where
+    it depends on whether you're above or below it)
   - `levels.js`: the junctions: roads, traffic lanes, red lights and queues, ramps, bridges, and the timed tanker and bus
   - `traffic.js`: lanes and drivers (following, stopping at red, reacting late, swerving); far traffic glides along
     its lane without physics
@@ -339,6 +343,9 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
   - `stacks.js`: Tower Dive's stacks of cars in glass boxes, and how they come down
   - `hotel.js`: Tower Dive's grounds: the hotel's sign, the park's stream and footbridges, the drive, the car park's
     bays and the lawns (all paint and boards: nothing solid), and the shops' signs and awnings
+  - `depot.js`: Tanker Row's fuel depot: the yard's fence, gate, tanks and bund walls, the lines on it, and the
+    company's name on the gate and its biggest tank
+  - `roadsign.js`: the signs by and over the road: Last Chance's distance to the station, Tanker Row's warnings
   - `standins.js`: a car park's cars, far off, as painted boxes (two draw calls instead of a few thousand triangles each)
   - `replay.js`: records each run for the Send replay button (see Run)
   - `guides.js`: the medal lines

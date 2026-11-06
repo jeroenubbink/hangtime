@@ -156,6 +156,13 @@ body.touch #boom { bottom: 172px; pointer-events: auto; }
 .heap.gone { opacity: 0; }
 /* (on the tour the heaps' own scores say it all: the rest of the HUD steps aside) */
 #hud.touring #crashbox, #hud.touring #heatbox, #hud.touring #rush, #hud.touring #speedo { display: none; }
+/* Tanker Row's reel: a tape's REPLAY mark, and what it is */
+.reel { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; animation: heap .45s cubic-bezier(.2, 1.6, .4, 1) both; }
+.reel .rec { font: 900 15px 'Titillium Web', sans-serif; letter-spacing: 3px; color: #fff; background: #d8352b; padding: 2px 10px 2px 22px; border-radius: 3px; position: relative; }
+.reel .rec::before { content: ''; position: absolute; left: 8px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: #fff; animation: rec 1s steps(2) infinite; }
+.reel b { font: italic 900 34px 'Titillium Web', 'Russo One', sans-serif; letter-spacing: 1px; color: #fff; text-shadow: 0 3px 0 #0b3b44, 0 0 18px rgba(255, 138, 26, .55); white-space: nowrap; }
+@keyframes rec { to { visibility: hidden; } }
+@media (max-width: 600px) { .reel b { font-size: 22px; } }
 #callouts { position: absolute; left: 50%; top: 30%; transition: top .3s; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .call { font: italic 26px 'Russo One', sans-serif; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5); animation: pop 1.5s ease-out forwards; white-space: nowrap; }
 .call small { display: block; font: 600 14px Rubik, sans-serif; text-align: center; opacity: 0.9; font-style: normal; }

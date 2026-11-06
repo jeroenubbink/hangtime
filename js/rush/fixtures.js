@@ -14,6 +14,9 @@ const SOLID = {
   pylon: [4, 4, 19.2, 0], billboard: null,
   filmcrane: [2.4, 3.2, 1.6, 0], lights: [1.6, 2.4, 1.4, 0], trailer: [9, 2.6, 3.8, 0], catering: [7.4, 2.5, 3.6, 0], clocktower: [7.4, 7.4, 46, 0],
   clapper: null, chairs: null,
+  // (Tanker Row's depot: the tanks a little inside their round sides)
+  depot_tank_huge: [29.6, 29.6, 20.2, 0], depot_tank_big: [24, 24, 17, 0], depot_tank_mid: [16.6, 16.6, 13.6, 0], depot_tank_small: [9.4, 9.4, 10.2, 0], depot_bullet: [18, 4.2, 5.4, 0],
+  depot_office: [12, 4, 5.8, 0], depot_mast: [1.6, 1.6, 22, 0], depot_gate: null, depot_gantry: null, depot_pipes: null, depot_firepoint: null,
 };
 const STAND_IN = { excavator: '#f2b51c', cabin: '#e8ecef', sand: '#d8b56c', skip: '#e0761c', roller: '#f2b51c', pipes: '#a9a8a2', worksign: '#d42a2a', pylon: '#ddd2bd', billboard: '#2c3036',
   filmcrane: '#f07a1a', lights: '#f2b51c', trailer: '#f1f0ea', catering: '#f4c430', clocktower: '#d8c7a6', clapper: '#23262b', chairs: '#d94a3a' };
