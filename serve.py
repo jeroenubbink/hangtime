@@ -26,7 +26,11 @@ SUMMARIES = {}
 
 def summary(name):
     path = os.path.join(REPLAYS, name)
-    mtime = os.path.getmtime(path)
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        # (gone since the folder was listed)
+        return None
     if name in SUMMARIES and SUMMARIES[name][0] == mtime:
         return SUMMARIES[name][1]
     try:
@@ -45,7 +49,7 @@ def summary(name):
                 break
         S = {'name': name, 'level': R.get('level'), 'car': R.get('car'), 'time': R.get('time'), 'date': R.get('date'),
              'score': end and end.get('total'), 'medal': end and end.get('medal'), 'path': path_}
-    except (ValueError, KeyError, TypeError, IndexError):
+    except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError):
         S = None
     SUMMARIES[name] = (mtime, S)
     return S

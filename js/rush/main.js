@@ -264,11 +264,7 @@ function clearRun() {
   for (const h of halves) dropHalf(h);
   halves = [];
   debris?.clear();
-  smoke.clear(); glow.clear();
-  for (const s of scorches) dropMesh(s);
-  scorches.length = 0;
-  for (const r of rings) dropMesh(r.m);
-  rings.length = 0;
+  clearEffects();
 }
 // Take a one-off effect mesh out of the scene and free its geometry and material
 function dropMesh(m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
@@ -280,7 +276,6 @@ function startRun(pre) {
   const L = city.level;
   clearRun();
   dress(L);
-  G.boat?.reset();
   // Scripted: the same traffic every time, so a junction can be learned. The traffic always gets exactly
   // PRE_ALL seconds of driving before GO, however much of the intro you watch.
   G.rand = rng(L.seed * 7919 + 17);
@@ -402,6 +397,11 @@ function puff(p, colour, size, life, rise = 1.5, alpha = 0.55, spread = 0.6) {
 function flame(p, size = 1) {
   glow.emit(p.x + (Math.random() - 0.5) * 0.6, p.y + 0.3, p.z + (Math.random() - 0.5) * 0.6, (Math.random() - 0.5), 2 + Math.random() * 2, (Math.random() - 0.5),
     { life: 0.35 + Math.random() * 0.3, size: size * (0.6 + Math.random() * 0.5), grow: -1.2, drag: 1, colour: Math.random() < 0.5 ? '#ff8a2e' : '#ffd060', alpha: 0.9 });
+}
+// A flame somewhere along a car that's gone up (it burns end to end)
+const _bf = new THREE.Vector3();
+function burning(v, size) {
+  flame(_bf.set((Math.random() - 0.5) * 1.6, 0.6, (Math.random() - 0.5) * v.len * 0.9).applyQuaternion(v.car.q).add(v.car.pos), size);
 }
 function glassBurst(p, n) {
   for (let i = 0; i < n; i++) {
@@ -809,12 +809,14 @@ function pillars(S) {
   if (!S) return [];
   return [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([i, k]) => ['pillar', S.x + i * (S.w / 2 - 1.2), S.z + k * (S.d / 2 - 1.2), 0]);
 }
-// The level's street furniture (the station's pumps and pillars among it) and its petrol station, fresh
+// The level's street furniture (the station's pumps and pillars among it) and its petrol station, fresh (and the
+// yacht afloat again: behind the menu too, not only in a run)
 function dress(L) {
   props?.dispose();
   props = new Props(scene, city, [...(L.props || []), ...pillars(L.station)]);
   props.lamps(LOOKS[time].lamps);
   oranges?.clear();
+  G.boat?.reset();
   buildStation(L.station);
 }
 // (its materials and textures are made once and kept: see station.js)
@@ -1931,9 +1933,10 @@ function tourCamera(rawDt) {
 function heapLabel(g) {
   const el = document.createElement('div'), k = g.pts / G.tour.max;
   el.className = 'heap';
-  const cars = g.cars.length, props = g.items.length - cars;
+  // (the yacht's no street furniture: it's named)
+  const cars = g.cars.length, boat = g.items.some(i => i.boat), props = g.items.length - cars - (boat ? 1 : 0);
   const what = cars === 1 ? NAMES[g.cars[0].v.kind] + (g.wrecked ? t(' · wrecked') : '') : cars ? t('{0} vehicles', cars) + (g.wrecked ? t(' · {0} wrecked', g.wrecked) : '') : '';
-  const sub = [what, props ? t('{0} street furniture', props) : ''].filter(Boolean).join(' · ');
+  const sub = [boat ? t(G.boat.B.name) : '', what, props ? t('{0} street furniture', props) : ''].filter(Boolean).join(' · ');
   el.innerHTML = `<div class="in"><b>${g.name}</b><span style="font-size:${Math.round(34 + 30 * k)}px;color:hsl(${Math.round(52 - 50 * k)}, 100%, ${Math.round(62 - 8 * k)}%)">+${g.pts.toLocaleString()}</span><small>${sub}</small></div>`;
   for (const o of G.tour.gs) o.el?.classList.add('old');
   $('pops').appendChild(el);
@@ -2508,7 +2511,7 @@ function effects(dt, rawDt) {
     // A blown one burns end to end, roaring at first and dying down to flickers
     if (v.blown) {
       const roar = G.t - v.blownAt < 8;
-      if (Math.random() < dt * (roar ? 70 : 25)) flame(_w.set((Math.random() - 0.5) * 1.6, 0.6, (Math.random() - 0.5) * v.len * 0.9).applyQuaternion(c.q).add(c.pos), roar ? 2 : 1.2);
+      if (Math.random() < dt * (roar ? 70 : 25)) burning(v, roar ? 2 : 1.2);
     }
     if (!v.alive) {
       const age = G.t - v.diedAt;
@@ -2750,15 +2753,19 @@ function tick(raw, draw = true) {
   if (guides) guides.group.visible = ['menu', 'intro', 'count', 'run', 'replay'].includes(G.state === 'paused' ? G.paused : G.state);
   // A run being watched (dev mode): from the camera that was used, or the free one
   if (G.state === 'replay') {
-    const W = watching, was = W.bar.t, fx = W.bar.fx;
+    // (`shown`: the time the last frame showed, before the bar's slider or play button moved it; `from`, before this
+    // frame's playing on)
+    const W = watching, shown = W.shown ?? W.bar.t, from = W.bar.t, fx = W.bar.fx;
     W.bar.advance(raw);
     W.seek(W.bar.t, free.on ? false : null, false, fx);
-    // (with its effects on: the blasts and sparks it went through as it played, the fires, the smoke; back, and
-    // they're cleared)
+    // (with its effects on: the blasts and sparks it went through as it played, the fires, the smoke; back, or off,
+    // and they're cleared)
+    if (W.bar.t < shown || (W.fxWas && !fx)) clearEffects();
+    W.fxWas = fx;
+    W.shown = W.bar.t;
     if (fx) {
       const dt = raw * W.bar.speed;
-      if (W.bar.t < was) clearEffects();
-      else if (W.bar.playing) W.fx(was, W.bar.t, dt);
+      if (W.bar.t > from) W.fx(from, W.bar.t, dt);
       smoke.update(dt, camera, renderer.domElement.height);
       glow.update(dt, camera, renderer.domElement.height);
       spreadRings(dt);
@@ -3023,7 +3030,7 @@ function replay(R) {
       }
       for (const v of Object.values(cars)) {
         if (!v.burnt || !v.model.visible) continue;
-        if (Math.random() < dt * 40) flame(_p.set((Math.random() - 0.5) * 1.6, 0.6, (Math.random() - 0.5) * v.len * 0.9).applyQuaternion(v.car.q).add(v.car.pos), 1.6);
+        if (Math.random() < dt * 40) burning(v, 1.6);
         if (Math.random() < dt * 8) puff(v.car.pos, '#3a3632', 1.2, 2.6, 3, 0.42);
       }
     },
@@ -3044,17 +3051,20 @@ let watching = null, devUI = null, held = null;
 function toggleFree() {
   if (free.on) {
     free.leave();
-    // (back to what was up before: the menu, the pause card, the HUD)
-    if (held) { if (held.screen) showScreen(held.screen); $('hud').classList.toggle('hidden', held.hud); }
+    // (back to what was up before: the menu, the pause card, the HUD; not if the game's moved on meanwhile, a run
+    // restarted from the pad, say: that put up what it needs)
+    if (held && held.state === G.state) { if (held.screen) showScreen(held.screen); $('hud').classList.toggle('hidden', held.hud); }
     held = null;
     if (G.state !== 'replay') { camera.fov = stage.fitFov(55); camera.updateProjectionMatrix(); }
   } else {
     if (G.state !== 'replay') {
-      held = { screen: ['menu', 'results', 'pause', 'help'].find(s => !$(s).classList.contains('hidden')), hud: $('hud').classList.contains('hidden') };
+      held = { state: G.state, screen: ['menu', 'results', 'pause', 'help'].find(s => !$(s).classList.contains('hidden')), hud: $('hud').classList.contains('hidden') };
       showScreen(null);
       $('hud').classList.add('hidden');
     }
     devUI.lib.classList.add('hidden');
+    // (the run's held still: so is its engine)
+    muteLoops();
     free.enter();
   }
   devUI.free.classList.toggle('on', free.on);
@@ -3087,16 +3097,22 @@ async function watch(run) {
   stopWatching();
   if (free.on) toggleFree();
   muteLoops();
+  // (your own car, kept: replay() puts the run's in the settings, only for watching it)
+  const car = settings.car;
   const P = replay(R);
   drawLines();
   G.state = 'replay';
-  watching = { ...P, bar: replayBar(run, P.start, P.end, { free: toggleFree, close: () => { stopWatching(); toMenu(); } }) };
+  watching = { ...P, car, bar: replayBar(run, P.start, P.end, { free: toggleFree, close: () => { stopWatching(); toMenu(); } }) };
 }
 function stopWatching() {
   if (!watching) return;
   if (free.on) toggleFree();
   watching.bar.dispose();
   watching.dispose();
+  // (back to your car, and the track's time of day: the menu's loadLevel keeps what it finds on the same track)
+  settings.car = watching.car;
+  time = timeFor(city.key);
+  setLook(time);
   watching = null;
 }
 // A snapshot for Claude: the picture as it is now, what you say about it, and where everything is
@@ -3136,7 +3152,8 @@ function devKey(e) {
   if (e.code === 'KeyV') { toggleRuns(); return true; }
   if (G.state === 'replay' && (e.code === 'KeyP' || (e.code === 'Space' && !free.on))) { watching.bar.toggle(); return true; }
   if (G.state === 'replay' && e.code === 'Escape') { stopWatching(); toMenu(); return true; }
-  return false;
+  // (and while the free camera's flying, the run holds still: its keys fly, they don't skip the intro or restart it)
+  return free.on && e.code !== 'KeyM';
 }
 if (DEV) {
   devUI = devBar({ free: toggleFree, lines: toggleLines, runs: toggleRuns, snap });

@@ -132,7 +132,7 @@ const SC_TOWN = [
   ...[54, 82].flatMap(x => [x, -x]).flatMap(x => Array.from({ length: 12 }, (_, i) => [x, 85.2 + i * 28])),
 ].filter(([x, z]) => !(x < 0 && x > -80 && z > 0 && z < 60)).map(([x, z]) => town(x, z));
 
-// (a `draft` is still rough: only there with rush.html?drafts)
+// (a `draft` is still rough: only there in dev mode, see dev.js)
 export const LEVELS = {
   cross: {
     name: 'Market Cross', blurb: 'Four lanes in, four lanes across. The lights are red for you; they don\'t have to be.',

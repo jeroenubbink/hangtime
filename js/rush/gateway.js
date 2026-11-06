@@ -94,24 +94,26 @@ export function gateway(city, G) {
   return group;
 }
 
-// A canvas drawn by `draw`, as a material
-function board(w, h, draw) {
+// A canvas drawn by `draw`, as a material (`lit`: glowing, not shaded). (Short Cut's film set letters its own with
+// these too)
+export function board(w, h, draw, lit) {
   const cv = document.createElement('canvas');
   cv.width = w; cv.height = h;
   draw(cv.getContext('2d'));
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
-  return new THREE.MeshLambertMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const o = { map: tex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
+  return lit ? new THREE.MeshBasicMaterial({ ...o, toneMapped: false }) : new THREE.MeshLambertMaterial(o);
 }
 // The font (`font`, its size as {}) at `px`, or smaller to fit `w`
-function fit(g, text, w, px, font) {
+export function fit(g, text, w, px, font) {
   g.font = font.replace('{}', px);
   const m = g.measureText(text).width;
   if (m > w) g.font = font.replace('{}', Math.floor(px * w / m));
 }
 // `o` on something standing at (x, y, z) turned by `yaw`, at (lx, ly, lz) in its own frame
-function onto(o, x, y, z, yaw, lx, ly, lz) {
+export function onto(o, x, y, z, yaw, lx, ly, lz) {
   const s = Math.sin(yaw), k = Math.cos(yaw);
   o.position.set(x + lx * k + lz * s, y + ly, z - lx * s + lz * k);
   o.rotation.y = yaw;

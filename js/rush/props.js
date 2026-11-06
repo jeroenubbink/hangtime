@@ -24,16 +24,20 @@ const LIT = new THREE.MeshBasicMaterial({ color: '#ffa04a', toneMapped: false, p
 const LIGHTS = ['lamp', 'lantern'];
 // The kit's leaves are a bright toy green: cooled toward teal and quietened, like the rest of the town (a copy: the
 // kit's own is shared)
-const _hsl = {};
-function leafy(g) {
-  if (!g?.attributes.color) return g;
-  g = g.clone();
+// (made once for each kit model and `kept`, not freed with the props: they're laid again for every run)
+const _hsl = {}, leaves = new WeakMap();
+function leafy(src) {
+  if (!src?.attributes.color) return src;
+  if (leaves.has(src)) return leaves.get(src);
+  const g = src.clone();
+  g.userData = { kept: true };
   const c = g.attributes.color, col = new THREE.Color();
   for (let i = 0; i < c.count; i++) {
     col.fromBufferAttribute(c, i).getHSL(_hsl);
     if (_hsl.h > 0.15 && _hsl.h < 0.45 && _hsl.s > 0.2) col.setHSL(_hsl.h + (0.42 - _hsl.h) * 0.5, _hsl.s * 0.6, _hsl.l * 0.9);
     c.setXYZ(i, col.r, col.g, col.b);
   }
+  leaves.set(src, g);
   return g;
 }
 const MODELS = {
@@ -213,7 +217,7 @@ export class Props {
   dispose() {
     for (const m of [...Object.values(this.meshes), ...Object.values(this.lit)]) { this.scene.remove(m); m.dispose(); }
     for (const g of Object.values(this.lit)) g.geometry.dispose();
-    for (const g of Object.values(this.geos)) g.dispose();
+    for (const g of Object.values(this.geos)) if (!g.userData.kept) g.dispose();
     this.mat.dispose();
   }
 

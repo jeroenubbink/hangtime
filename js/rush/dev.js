@@ -149,6 +149,8 @@ const css = `
 .list .dev-only b::after { content: 'DEV'; margin-left: 8px; font-size: 10px; padding: 1px 5px; border-radius: 4px; background: var(--hot); color: var(--accent-ink); vertical-align: 2px; }
 `;
 const el = (tag, attrs = {}, html = '') => Object.assign(document.createElement(tag), attrs, html ? { innerHTML: html } : {});
+// (a run's fields came in a POST to serve.py, from anyone on the network: as text, not markup)
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
 // The bar up in the corner: free camera, lines, runs. `on` has the callbacks: free(), lines(), runs()
 export function devBar(on) {
@@ -182,7 +184,7 @@ export function showRuns(box, levelName, runs, watch) {
   }
   const medal = medalRuns(runs), row = (r, tag) => {
     const x = el('button', { className: 'run' },
-      `<i style="background:${MEDAL_COLOURS[r.medal] || '#555'}"></i><span>${tag ? `<b>${tag}</b> · ` : ''}${r.car} · ${r.time}<br><small>${(r.date || '').slice(0, 16).replace('T', ' ')}</small></span><span class="num">${r.score.toLocaleString()}</span>`);
+      `<i style="background:${MEDAL_COLOURS[r.medal] || '#555'}"></i><span>${tag ? `<b>${tag}</b> · ` : ''}${esc(r.car)} · ${esc(r.time)}<br><small>${esc(String(r.date || '').slice(0, 16).replace('T', ' '))}</small></span><span class="num">${esc(r.score.toLocaleString())}</span>`);
     x.onclick = () => watch(r);
     box.appendChild(x);
   };
@@ -204,7 +206,7 @@ export function replayBar(run, start, end, on) {
   const camB = el('button', { textContent: 'Free cam', title: 'Free camera (F)' });
   const fxB = el('button', { textContent: 'FX', title: 'Blasts, fires and smoke, as in a run (X)' });
   const close = el('button', { textContent: '✕', title: 'Back to the menu' });
-  const what = el('span', { className: 'what', innerHTML: `<b style="color:${MEDAL_COLOURS[run.medal] || 'inherit'}">${MEDAL_NAMES[run.medal]}</b> · ${run.score.toLocaleString()} · ${run.car} · ${run.name}` });
+  const what = el('span', { className: 'what', innerHTML: `<b style="color:${MEDAL_COLOURS[run.medal] || 'inherit'}">${MEDAL_NAMES[run.medal]}</b> · ${esc(run.score.toLocaleString())} · ${esc(run.car)} · ${esc(run.name)}` });
   bar.append(play, range, tEl, ...speeds, camB, fxB, close, what);
   document.body.appendChild(bar);
   const S = { t: start, playing: true, speed: 1, fx: store.load('rush.devFx', false), run, bar, camB };
