@@ -102,7 +102,7 @@ through them. Things to know:
   sunset-and-flaming-palm logo on its roof. Anything that hits it hard enough sets it off: your car under the canopy at speed or through a pump or pillar, or, once
   you've crashed, the traffic you've thrown at it, or a blast beside it. Then the pumps go, the canopy and its logo
   fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction.
-- **Three rough ones, for ideas** (not shown to players yet: open `rush.html?drafts`): **Tanker Row** (tankers parked nose to tail along the far kerb: light one and
+- **Three rough ones, for ideas** (not shown to players yet: in dev mode only, see Run): **Tanker Row** (tankers parked nose to tail along the far kerb: light one and
   the blasts run down the row both ways into two junctions); **Bank Shot** (your road comes in at 45° and stops
   at the avenue: bounce the wreckage off the shops and down to the big junction); and **Mind the Gap** (the road stops at a
   canal, the ramp doesn't: short and you're swimming, long and you land on the queue past the quay road).
@@ -126,10 +126,9 @@ through them. Things to know:
   stacks. Under your flight, between the avenue and the skyway, a park with a stream winding through it; round the
   hotel a drive lined with palms, a car park behind it, and a square of tall shops shutting it all in, with the town
   going on behind them as far as you can see from up there.
-- **Guide lines** (for testing only, not shown to players: open `rush.html?guides`): up to three coloured routes painted on the road
-  per junction, each the best of a different idea that route bots found (20 runs per junction: either lane, a late
-  swerve either way, rush or not, easing off), ending in a ring where the car first hit, labelled with what to do
-  ("Rush, left lane", "Steady, swerve left") and what the bot scored. Off the ground the line goes dashed.
+- **Medal lines** (dev mode only, see Run): the way the best bronze, silver and gold runs kept went, painted on the
+  road in their medal's colour, ending in a ring where the car first hit, labelled with the medal, the car and the
+  score. Off the ground the line goes dashed.
 - **The opening shot** pans across the junction from over the low roofs round it (only walk-ups near a junction),
   then flies back down the road to your car and round behind it for the countdown.
 - **The traffic is scripted:** the same every time, so a junction can be learned. Until you crash its drivers are
@@ -209,6 +208,27 @@ const R = rush.debug.replay(await (await fetch('replays/<name>.json')).json());
 R.seek(14.2);                          // the vehicles at game time 14.2 s, seen from the camera you had
 R.seek(14.2, [0, 30, 40, 0, 0, 0]);    // or from anywhere: [x, y, z, look x, y, z]
 ```
+
+### Rushtime's dev mode
+
+On by itself when the game comes from this machine or the local network (localhost, 192.168.…, 10.…, *.local),
+off on the published site (unless you open `rush.html?dev`); switched off and on again from the menu, under
+How to play. In dev mode:
+
+- the tracks are listed in two: **Released** and **In development** (the drafts, marked DEV);
+- **F**, or Free cam up in the corner: fly round, at any moment (the run holds still meanwhile). WASD or the
+  arrows, E/Q up and down, Shift for fast, drag to look round, the wheel to go forward; on a phone, drag to look
+  round, and two fingers to slide and to pinch forward. F or Esc to leave;
+- **L**, Lines: the medal lines (see Rushtime);
+- **V**, Runs: the run library, every run `serve.py` has kept for this track, best first, the bronze, silver
+  and gold ones on top. Pick one to watch it: play and pause (P), scrub, 0.25× to 2×, and Free cam to look round
+  while it plays, and FX (X) for its blasts, fires and smoke as in a run (✕ or Esc goes back to the menu);
+- **K**, Snap: a snapshot of what you see, with a note on what to look at, for Claude: the picture (the 3D view,
+  not the menus over it) and the game's state then (the track, the camera, the run or replay and its time), kept
+  by `serve.py` in `replays/snaps/`;
+- every run you finish is kept in the run library by itself (no need for Send replay).
+
+The run library comes from `serve.py` (`/replays/index`), so it needs `serve.py`, not just any static server.
 
 ## Hangtime controls
 
@@ -321,7 +341,8 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
     bays and the lawns (all paint and boards: nothing solid), and the shops' signs and awnings
   - `standins.js`: a car park's cars, far off, as painted boxes (two draw calls instead of a few thousand triangles each)
   - `replay.js`: records each run for the Send replay button (see Run)
-  - `guides.js`, `routes.js`: the guide lines, and the bots' routes they draw (generated)
+  - `guides.js`: the medal lines
+  - `dev.js`: dev mode: the free camera, the run library and the bar to watch a run with
   - `roster.js`: your cars and the traffic
 - `assets/cars/toy-bus.glb`, `toy-tanker.glb`, `toy-lorry.glb`, `toy-flatbed.glb`: Rushtime's big vehicles, made in
   Blender (source: `assets/src/rush-vehicles.blend`)

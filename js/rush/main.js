@@ -27,6 +27,7 @@ import { filmset } from './filmset.js';
 import { RIDES, TRAFFIC, TRAFFIC_PAINTS } from './roster.js';
 import { Recorder, FLAGS, canSend, send } from './replay.js';
 import { Guides } from './guides.js';
+import { DEV, LOCAL, setDev, FreeCam, devBar, showRuns, replayBar, library, runsOf, asRoutes, loadRun, snapshot } from './dev.js';
 import { Oranges } from './oranges.js';
 import { t, tl, translatePage, langButton } from '../i18n.js';
 import './nl.js';
@@ -87,9 +88,8 @@ const smoke = new Puffs(scene, 1800, { soft: 0.15 });
 const glow = new Puffs(scene, 1400, { additive: true, soft: 0.35 });
 const rain = makeRain(scene, '#a9bfc2');
 
-// The rough junctions still being tried out are only there with rush.html?drafts
-const DRAFTS = new URLSearchParams(location.search).has('drafts');
-const LEVELS = Object.fromEntries(Object.entries(ALL_LEVELS).filter(([, L]) => DRAFTS || !L.draft));
+// The tracks still in development (`draft`) are only there in dev mode (see dev.js)
+const LEVELS = Object.fromEntries(Object.entries(ALL_LEVELS).filter(([, L]) => DEV || !L.draft));
 
 // ---------- Settings & records ----------
 // The times of day: the stage's, and Gridlock Leap's own, a hot hazy afternoon, the far end of the street lost in it
@@ -111,8 +111,8 @@ if (!TIMES[settings.time]) settings.time = 'day';
 settings.times = Object.fromEntries(Object.entries(settings.times || {}).filter(([k, t]) => ALL_LEVELS[k] && TIMES[t]));
 const timeFor = key => settings.times[key] || LEVELS[key].time || settings.time;
 let time = 'day';
-// The guide lines are for testing only: rush.html?guides
-const GUIDES = new URLSearchParams(location.search).has('guides');
+// The medal lines are dev mode's, and can be switched off (L)
+const devS = { lines: store.load('rush.devLines', true) };
 const saveSettings = () => store.save('rush.settings', settings);
 // Rushtime's own day and sunset: teal and orange, a cool sky and shade with a warm sun on the cars (and `grade`, how
 // far the picture's split, teal in the shadows and orange in the light)
@@ -228,8 +228,7 @@ function loadLevel(key) {
   if (city.level.filmset) city.group.add(filmset(city, city.level.filmset));
   G.boat?.dispose();
   G.boat = city.level.boat ? new Boat(scene, city, city.level.boat) : null;
-  guides?.dispose();
-  guides = GUIDES ? new Guides(scene, city) : null;
+  drawLines();
   // (asked from half a metre up, about where a car's middle would be: a small piece lying on the quay has its middle
   // lower than the quay's edge takes for gone over it, see groundHeight, and would drop through the stone)
   debris = new Debris(scene, (x, z, y) => city.groundHeight(x, z, y + 0.5));
@@ -237,6 +236,19 @@ function loadLevel(key) {
   oranges = new Oranges(scene, (x, z, y) => city.groundHeight(x, z, y));
   time = timeFor(key);
   setLook(time);
+}
+
+// The medal lines: the way the best bronze, silver and gold runs kept went (from serve.py's run library)
+function drawLines() {
+  guides?.dispose();
+  guides = null;
+  if (!DEV || !devS.lines) return;
+  const C = city;
+  library().then(list => {
+    if (city !== C || guides || !devS.lines) return;
+    const routes = asRoutes(runsOf(list, C.key, C.level.medals));
+    if (routes.length) guides = new Guides(scene, C, routes);
+  });
 }
 
 function clearRun() {
@@ -638,7 +650,7 @@ function blowUp(X) {
   X.blown = true;
   X.blownAt = G.t;
   X.burn();
-  G.rec?.event(G.t, 'boom', { id: X.id, kind: X.kind });
+  G.rec?.event(G.t, 'boom', { id: X.id, kind: X.kind, big: X.def.explosive ? 2 : 1 });
   // (a forecourt car: thrown up and out, and wrecked by it)
   if (X.launch) { launch(X); X.launchT = G.t; if (!X.wrecked && !X.halved) wreck(X, false); }
   const p = X.car.pos.clone(), big = X.def.explosive ? 2 : 1, R = 8 * big;
@@ -1150,7 +1162,7 @@ function detonate(full) {
   A.done = true;
   A.endT = G.crash.rt;
   const c = player.car, p = c.pos.clone(), big = full ? 2 : 0.6 + 1.4 * A.meter, R = 8 * big;
-  G.rec?.event(G.t, 'boom', { id: 'you', kind: settings.car });
+  G.rec?.event(G.t, 'boom', { id: 'you', kind: settings.car, big: Math.round(big * 100) / 100 });
   player.blown = true;
   player.blownAt = G.t;
   player.burn();
@@ -1198,7 +1210,7 @@ function endCrash() {
   G.rec?.event(G.t, 'end', { score: G.score, heat: G.heat, total, medal, wrecked: G.wrecked, chain: G.chain });
   if (G.rec) { G.rec.next = 0; record(); }
   $('btn-send').classList.add('hidden');
-  if (G.rec) canSend().then(ok => { $('btn-send').classList.toggle('hidden', !ok); $('btn-send').disabled = false; $('btn-send').textContent = t('Send replay'); });
+  if (G.rec) canSend().then(ok => { $('btn-send').classList.toggle('hidden', !ok); $('btn-send').disabled = false; $('btn-send').textContent = t('Send replay'); if (ok && DEV) $('btn-send').onclick(); });
   startTour();
 }
 // This step for the replay: every vehicle, your inputs, and where the camera is looking
@@ -1519,7 +1531,8 @@ window.addEventListener('keydown', e => {
   keys.add(e.code);
   sound.init();
   if (e.repeat) return;
-  if (e.code === 'KeyR' && city && G.state !== 'menu') startRun(PRE_RETRY);
+  if (DEV && devKey(e)) return;
+  if (e.code === 'KeyR' && city && G.state !== 'menu' && G.state !== 'replay') startRun(PRE_RETRY);
   if (e.code === 'Escape') { if (G.state === 'paused') resume(); else if (['run', 'crash', 'count', 'intro'].includes(G.state)) pause(); }
   if (e.code === 'KeyM') sound.setMuted(!sound.muted);
   if (G.state === 'intro' && ['Space', 'Enter', 'ArrowUp', 'KeyW'].includes(e.code)) { skipTo(PRE_COUNT); G.state = 'count'; }
@@ -2535,6 +2548,9 @@ function effects(dt, rawDt) {
     for (let k = 0; k < 3; k++) smoke.emit(g.p.x, g.p.y + 0.5, g.p.z, (Math.random() - 0.5) * 1.5, 9 + Math.random() * 4, (Math.random() - 0.5) * 1.5,
       { life: 1.3, size: 0.5, grow: 1.2, gravity: 9, colour: '#dff3ff', alpha: 0.7 });
   }
+  spreadRings(dt);
+}
+function spreadRings(dt) {
   for (let i = rings.length - 1; i >= 0; i--) {
     const r = rings[i];
     r.t += dt;
@@ -2648,13 +2664,19 @@ function startTraffic() {
 function renderMenu() {
   const box = $('levels');
   box.innerHTML = '';
+  // (in dev mode, the released tracks and then the ones in development)
+  const order = DEV ? [['Released', false], ['In development', true]] : [[null, false]];
+  for (const [head, draft] of order) {
+  if (head) box.insertAdjacentHTML('beforeend', `<h4>${head}</h4>`);
   for (const [key, L] of Object.entries(LEVELS)) {
+    if (!!L.draft !== draft) continue;
     const b = document.createElement('button');
     const medal = records.medals[key] || 0, best = records.best[key];
-    b.className = key === settings.level ? 'active' : '';
+    b.className = (key === settings.level ? 'active' : '') + (L.draft ? ' dev-only' : '');
     b.innerHTML = `<b>${t(L.name)}</b><span>${t(L.blurb)}</span><em class="m${medal}">${best ? best.toLocaleString() : t('not played')}</em>`;
     b.onclick = () => { settings.level = key; saveSettings(); loadLevel(key); startTraffic(); renderMenu(); };
     box.appendChild(b);
+  }
   }
   const cars = $('cars');
   cars.innerHTML = '';
@@ -2692,13 +2714,22 @@ $('btn-send').onclick = async () => {
   if (!rec) return;
   b.disabled = true;
   b.textContent = t('Sending…');
-  try { b.textContent = t('Sent ✓ {0}', await send(rec)); } catch (e) { b.textContent = t('Not sent: {0}', e.message); b.disabled = false; }
+  try { b.textContent = t('Sent ✓ {0}', await send(rec)); } catch (e) { b.textContent = t('Not sent: {0}', e.message); b.disabled = false; return; }
+  // (and into the run library: the medal lines may have changed)
+  if (DEV) { library(true); drawLines(); }
 };
 $('btn-resume').onclick = resume;
 $('btn-quit').onclick = toMenu;
 $('btn-help').onclick = () => showScreen('help');
+// (dev mode's switch: where it would come on by itself, or wherever it's on)
+if (LOCAL || DEV) {
+  const b = Object.assign(document.createElement('button'), { className: 'link', textContent: DEV ? 'Dev mode: on (switch off)' : 'Dev mode: off (switch on)' });
+  b.style.marginLeft = '16px';
+  b.onclick = () => setDev(!DEV);
+  $('btn-help').after(b);
+}
 $('btn-help-close').onclick = () => { store.save('rush.seenHelp', true); showScreen(G.state === 'menu' ? 'menu' : null); };
-window.addEventListener('keydown', e => { if (G.state === 'menu' && e.code === 'Enter' && $('help').classList.contains('hidden')) $('btn-go').onclick(); });
+window.addEventListener('keydown', e => { if (G.state === 'menu' && !free.on && e.code === 'Enter' && $('help').classList.contains('hidden')) $('btn-go').onclick(); });
 
 // ---------- Main loop ----------
 let last = performance.now(), acc = 0;
@@ -2716,7 +2747,34 @@ function frame(now) {
 function tick(raw, draw = true) {
   // (the guide lines show up to the crash, not over the wreckage)
   // (paused, by what it was paused from)
-  if (guides) guides.group.visible = ['menu', 'intro', 'count', 'run'].includes(G.state === 'paused' ? G.paused : G.state);
+  if (guides) guides.group.visible = ['menu', 'intro', 'count', 'run', 'replay'].includes(G.state === 'paused' ? G.paused : G.state);
+  // A run being watched (dev mode): from the camera that was used, or the free one
+  if (G.state === 'replay') {
+    const W = watching, was = W.bar.t, fx = W.bar.fx;
+    W.bar.advance(raw);
+    W.seek(W.bar.t, free.on ? false : null, false, fx);
+    // (with its effects on: the blasts and sparks it went through as it played, the fires, the smoke; back, and
+    // they're cleared)
+    if (fx) {
+      const dt = raw * W.bar.speed;
+      if (W.bar.t < was) clearEffects();
+      else if (W.bar.playing) W.fx(was, W.bar.t, dt);
+      smoke.update(dt, camera, renderer.domElement.height);
+      glow.update(dt, camera, renderer.domElement.height);
+      spreadRings(dt);
+    }
+    if (free.on) free.update(raw);
+    rain.update(raw, camera.position);
+    if (draw) post.render();
+    return;
+  }
+  // (and the free camera: the run held where it is while you look round)
+  if (free.on && G.state !== 'menu') {
+    free.update(raw);
+    rain.update(raw, camera.position);
+    if (draw) post.render();
+    return;
+  }
   if (G.state === 'menu') {
     // The junction, from above, with its traffic going about its business
     cam.menuA += raw * 0.05;
@@ -2735,11 +2793,14 @@ function tick(raw, draw = true) {
     mark.update();
     // (from over the roofs: Tower Dive's junction is a sky deck)
     const gy = city.groundHeight(jx, jz, 1e4);
-    camera.position.set(jx + Math.sin(cam.menuA) * 46, gy + 24, jz + Math.cos(cam.menuA) * 46);
-    camera.up.set(0, 1, 0);
-    camera.lookAt(jx, gy, jz);
-    camera.fov = stage.fitFov(55);
-    camera.updateProjectionMatrix();
+    if (free.on) free.update(raw);
+    else {
+      camera.position.set(jx + Math.sin(cam.menuA) * 46, gy + 24, jz + Math.cos(cam.menuA) * 46);
+      camera.up.set(0, 1, 0);
+      camera.lookAt(jx, gy, jz);
+      camera.fov = stage.fitFov(55);
+      camera.updateProjectionMatrix();
+    }
     stage.focusSun(new THREE.Vector3(jx, 0, jz), 60);
     post.mat.uniforms.amount.value = 0;
     smoke.update(raw, camera, renderer.domElement.height);
@@ -2855,6 +2916,27 @@ Object.assign(flashEl.style, { position: 'fixed', inset: 0, pointerEvents: 'none
   background: 'radial-gradient(ellipse at center, transparent 45%, rgba(220,30,20,0.55) 100%)' });
 document.body.appendChild(flashEl);
 
+// A car in a replay burnt black, or back to its paint (its own colours kept for that)
+function scorched(v, on) {
+  if (!!v.burnt === on) return;
+  if (on) {
+    v.paints = [];
+    v.model.traverse(o => { if (o.isMesh && o.material?.isMeshStandardMaterial) v.paints.push([o.material, o.material.color.clone(), o.material.roughness, o.material.metalness]); });
+    v.burn();
+  } else {
+    for (const [m, c, r, k] of v.paints || []) { m.color.copy(c); m.roughness = r; m.metalness = k; }
+    v.burnt = false;
+  }
+}
+// The smoke and flames, the rings and scorch marks, all gone
+function clearEffects() {
+  smoke.clear(); glow.clear();
+  for (const s of scorches) dropMesh(s);
+  scorches.length = 0;
+  for (const r of rings) dropMesh(r.m);
+  rings.length = 0;
+}
+
 // ---------- Looking into a replay ----------
 // (for debugging: rush.debug.replay(json) loads its level and its vehicles; then .seek(t) shows them at game
 // time t, from the camera that was used or from `view`: [x, y, z, lookX, lookY, lookZ])
@@ -2884,7 +2966,7 @@ function replay(R) {
   const sank = R.events?.find(e => e.type === 'sunk')?.t;
   return {
     frames: F.length, start: F[0].t, end: F[F.length - 1].t,
-    seek(t, view) {
+    seek(t, view, draw = true, fx = false) {
       let lo = 0, hi = F.length - 1;
       while (lo < hi) { const m = (lo + hi + 1) >> 1; if (F[m].t <= t) lo = m; else hi = m - 1; }
       const a = F[lo], b = F[Math.min(lo + 1, F.length - 1)], k = b.t > a.t ? clamp((t - a.t) / (b.t - a.t), 0, 1) : 0;
@@ -2896,6 +2978,8 @@ function replay(R) {
         v.car.q.set(e[4], e[5], e[6], e[7]).normalize().slerp(_q.set(f[4], f[5], f[6], f[7]).normalize(), k);
         v.pose();
         v.model.visible = !(e[8] & 8);
+        // (burnt black once it's gone up, with the effects on)
+        if (v.burn) scorched(v, fx && !!(e[8] & 4));
       }
       // (Tower Dive's boxed cars: where they stood, till they were let go)
       // (and their glass: the boxes were recorded in the order they were built, so the nth is this run's nth box)
@@ -2911,19 +2995,155 @@ function replay(R) {
       }
       G.boat?.reset();
       if (G.boat && sank != null && t > sank) { G.boat.sink(); G.boat.update(t - sank, () => {}); }
-      const c = view || a.cam.map((n, i) => n + (b.cam[i] - n) * k);
-      camera.position.set(c[0], c[1], c[2]);
-      camera.up.set(0, 1, 0);
-      camera.lookAt(look.set(c[3], c[4], c[5]));
-      camera.fov = stage.fitFov(56);
-      camera.updateProjectionMatrix();
-      stage.focusSun(look, 45);
-      post.render();
+      // (`view` false: the camera's left where it is, the free camera's)
+      if (view !== false) {
+        const c = view || a.cam.map((n, i) => n + (b.cam[i] - n) * k);
+        camera.position.set(c[0], c[1], c[2]);
+        camera.up.set(0, 1, 0);
+        camera.lookAt(look.set(c[3], c[4], c[5]));
+        camera.fov = stage.fitFov(56);
+        camera.updateProjectionMatrix();
+      }
+      stage.focusSun(camera.getWorldDirection(look).multiplyScalar(30).add(camera.position), 45);
+      if (draw) post.render();
       return { t: a.t, state: a.s, input: a.in, cars: a.b.length };
+    },
+    // The effects of what happened between game times `from` and `to` (playing on, `dt` of it): the blasts, the
+    // sparks where things were hit, and the fires on what's gone up
+    fx(from, to, dt) {
+      for (const e of R.events) {
+        if (e.t <= from || e.t > to) continue;
+        const v = cars[e.id];
+        if (e.type === 'boom' && v) {
+          // (older replays didn't say how big: a tanker's is twice a car's, and yours about full)
+          const big = e.big ?? (e.id === 'you' ? 1.4 : TRAFFIC[e.kind]?.explosive ? 2 : 1);
+          explosion(v.car.pos.clone(), big);
+          sound.boom(Math.min(1, 0.6 * big));
+        } else if (e.type === 'score' && e.at) sparks(_p.set(e.at[0], e.at[1], e.at[2]), 12);
+      }
+      for (const v of Object.values(cars)) {
+        if (!v.burnt || !v.model.visible) continue;
+        if (Math.random() < dt * 40) flame(_p.set((Math.random() - 0.5) * 1.6, 0.6, (Math.random() - 0.5) * v.len * 0.9).applyQuaternion(v.car.q).add(v.car.pos), 1.6);
+        if (Math.random() < dt * 8) puff(v.car.pos, '#3a3632', 1.2, 2.6, 3, 0.42);
+      }
+    },
+    // (its vehicles gone: yours goes with the run)
+    dispose() {
+      for (const v of Object.values(cars)) {
+        if (v === player) continue;
+        if (v instanceof Car) v.dispose();
+        else { scene.remove(v.model); v.model.geometry.dispose(); v.model.material.dispose(); }
+      }
     },
   };
 }
-G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, get standIns() { return standIns; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay, renderer, blowUp, heaps, report, startCrash };
+// ---------- Dev mode ----------
+// (see dev.js: the free camera, the medal lines and the run library)
+const free = new FreeCam(camera, renderer.domElement, keys);
+let watching = null, devUI = null, held = null;
+function toggleFree() {
+  if (free.on) {
+    free.leave();
+    // (back to what was up before: the menu, the pause card, the HUD)
+    if (held) { if (held.screen) showScreen(held.screen); $('hud').classList.toggle('hidden', held.hud); }
+    held = null;
+    if (G.state !== 'replay') { camera.fov = stage.fitFov(55); camera.updateProjectionMatrix(); }
+  } else {
+    if (G.state !== 'replay') {
+      held = { screen: ['menu', 'results', 'pause', 'help'].find(s => !$(s).classList.contains('hidden')), hud: $('hud').classList.contains('hidden') };
+      showScreen(null);
+      $('hud').classList.add('hidden');
+    }
+    devUI.lib.classList.add('hidden');
+    free.enter();
+  }
+  devUI.free.classList.toggle('on', free.on);
+  watching?.bar.camB.classList.toggle('on', free.on);
+  devUI.hint.classList.toggle('hidden', !free.on);
+  devUI.hint.textContent = matchMedia('(pointer: coarse)').matches
+    ? 'Drag to look · two fingers: slide, pinch to go forward'
+    : 'WASD fly · E/Q up/down · Shift fast · drag to look · wheel forward · F or Esc to leave';
+}
+function toggleLines() {
+  devS.lines = !devS.lines;
+  store.save('rush.devLines', devS.lines);
+  devUI.lines.classList.toggle('on', devS.lines);
+  drawLines();
+}
+function toggleRuns() {
+  const box = devUI.lib;
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML = '<p>Loading the run library…</p>';
+  const C = city;
+  library(true).then(list => { if (city === C) showRuns(box, C.level.name, list && runsOf(list, C.key, C.level.medals), watch); });
+}
+// Watch a kept run: its level, its traffic as it went, from the camera that was used (or the free one)
+async function watch(run) {
+  devUI.lib.innerHTML = '<p>Loading the run…</p>';
+  let R;
+  try { R = await loadRun(run.name); } catch (e) { devUI.lib.innerHTML = `<p>Couldn't load it: ${e.message}</p>`; return; }
+  devUI.lib.classList.add('hidden');
+  stopWatching();
+  if (free.on) toggleFree();
+  muteLoops();
+  const P = replay(R);
+  drawLines();
+  G.state = 'replay';
+  watching = { ...P, bar: replayBar(run, P.start, P.end, { free: toggleFree, close: () => { stopWatching(); toMenu(); } }) };
+}
+function stopWatching() {
+  if (!watching) return;
+  if (free.on) toggleFree();
+  watching.bar.dispose();
+  watching.dispose();
+  watching = null;
+}
+// A snapshot for Claude: the picture as it is now, what you say about it, and where everything is
+async function snap() {
+  post.render();
+  const canvas = renderer.domElement, image = canvas.toDataURL('image/jpeg', 0.88);
+  const note = prompt('What should Claude look at? (optional)');
+  if (note === null) return;
+  const v3 = v => [v.x, v.y, v.z].map(n => Math.round(n * 100) / 100);
+  const look = camera.getWorldDirection(new THREE.Vector3());
+  const meta = {
+    note, date: new Date().toISOString(), level: city.key, levelName: city.level.name, time, state: G.state,
+    screen: ['menu', 'results', 'pause', 'help'].find(s => !$(s).classList.contains('hidden')) || null,
+    hud: !$('hud').classList.contains('hidden'),
+    camera: { at: v3(camera.position), looking: v3(look), fov: Math.round(camera.fov), free: free.on },
+    view: [canvas.width, canvas.height], dpr: devicePixelRatio, agent: navigator.userAgent,
+    watching: watching && { run: watching.bar.run.name, t: Math.round(watching.bar.t * 100) / 100, fx: watching.bar.fx },
+    run: player && G.state !== 'menu' && !watching ? { car: settings.car, t: Math.round(G.t * 100) / 100, at: v3(player.car.pos), kmh: Math.round(Math.abs(player.car.speed) * 3.6), score: G.score, heat: G.heat } : null,
+  };
+  const hint = devUI.hint, was = hint.textContent;
+  hint.classList.remove('hidden');
+  hint.textContent = 'Saving the snapshot…';
+  try {
+    const name = await snapshot(image, meta);
+    hint.textContent = `Snapshot kept: ${name}`;
+  } catch (e) { hint.textContent = `Snapshot not kept: ${e.message}`; }
+  setTimeout(() => { hint.textContent = was; hint.classList.toggle('hidden', !free.on); }, 3000);
+}
+// Its keys: F free camera, L lines, V runs, K snapshot, X the effects of a run being watched, and P (or Space) to
+// play and pause it
+function devKey(e) {
+  if (e.code === 'KeyK') { snap(); return true; }
+  if (e.code === 'KeyX' && watching) { watching.bar.toggleFx(); return true; }
+  if (e.code === 'KeyF') { toggleFree(); return true; }
+  if (e.code === 'Escape' && free.on) { toggleFree(); return true; }
+  if (e.code === 'KeyL') { toggleLines(); return true; }
+  if (e.code === 'KeyV') { toggleRuns(); return true; }
+  if (G.state === 'replay' && (e.code === 'KeyP' || (e.code === 'Space' && !free.on))) { watching.bar.toggle(); return true; }
+  if (G.state === 'replay' && e.code === 'Escape') { stopWatching(); toMenu(); return true; }
+  return false;
+}
+if (DEV) {
+  devUI = devBar({ free: toggleFree, lines: toggleLines, runs: toggleRuns, snap });
+  devUI.lines.classList.toggle('on', devS.lines);
+}
+
+G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, get standIns() { return standIns; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay, watch, free, renderer, blowUp, heaps, report, startCrash };
 toMenu();
 if (!store.load('rush.seenHelp', false)) showScreen('help');
 requestAnimationFrame(frame);
