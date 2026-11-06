@@ -2887,7 +2887,7 @@ function tick(raw, draw = true) {
     return;
   }
   // (and Tanker Row's reel, before the tour: the world held, the chain played again)
-  if (G.tour?.reel && !free.on) {
+  if (G.tour?.reel && G.state === 'tour' && !free.on) {
     reelTick(raw);
     if (draw) post.render();
     return;
