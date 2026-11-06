@@ -404,7 +404,8 @@ function spawnPoint(i) {
 let race = null;
 
 function startRace() {
-  if (!game.path) return;
+  // (an unfinished track only drives as the editor's test drive: raced from the menu it could never finish)
+  if (!game.path || !(game.closed || game.fromEditor)) return;
   showScreen(null);
   $('hud').classList.remove('hidden');
   $('stunt-feed').innerHTML = '';
