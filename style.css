@@ -190,7 +190,7 @@ kbd { display: inline-block; min-width: 20px; text-align: center; font: 600 12px
 .row2 button { flex: 1; }
 #ed-status { font-size: 14px; padding: 8px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); }
 #ed-status.ok { color: #7ee08a; }
-#ed-status.bad { color: #ff8a80; }
+#ed-status.hint { color: #ffd27a; }
 
 /* Touch controls (shown on touch screens only) */
 #touch { display: none; }

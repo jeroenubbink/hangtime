@@ -65,7 +65,7 @@ addDutch({
   // the editor
   'Rotate brush (R)': 'Stuk draaien (R)', 'Name': 'Naam', 'My track': 'Mijn baan', 'Test drive ▸': 'Proefrit ▸', 'Save': 'Opslaan', 'Delete': 'Verwijderen',
   'Copy code': 'Code kopiëren', 'Paste code': 'Code plakken', 'Copy share link': 'Deellink kopiëren', 'Clear': 'Alles wissen', 'Load track…': 'Baan laden…',
-  'hang.editor': 'Klik om te plaatsen · klik op een geplaatst stuk om het te draaien · rechtsklik om te wissen · scrollwiel of R draait het stuk. Een baan moet één gesloten ronde zijn door het startstuk. Sprongen: Schans → Water → Schans de andere kant op. Kurkentrekkers willen zo\'n 50 km/u om over de top te komen; Schansen en Kickers lanceren alleen in de richting van de pijl.',
+  'hang.editor': 'Klik om te plaatsen · klik op een geplaatst stuk om het te draaien · rechtsklik om te wissen · scrollwiel of R draait het stuk. Een complete baan is één gesloten ronde door het startstuk, maar een proefrit kan al eerder, met of zonder startstuk. Sprongen: Schans → Water → Schans de andere kant op. Kurkentrekkers willen zo\'n 50 km/u om over de top te komen; Schansen en Kickers lanceren alleen in de richting van de pijl.',
   'Erase': 'Wissen', 'Start': 'Start', 'Straight': 'Recht', 'Curve': 'Bocht', 'Banked': 'Kombocht', 'Ramp': 'Schans', 'Water': 'Water', 'Loop': 'Looping', 'Hump': 'Bult',
   'Boost': 'Boost', 'Corkscrew': 'Kurkentrekker', 'Half-pipe': 'Halfpipe', 'Tunnel': 'Tunnel', 'Chicane': 'Chicane', 'Dirt': 'Zand', 'Ice': 'IJs', 'Kicker': 'Kicker',
   'Untitled': 'Naamloos', 'Give the track a name first': 'Geef de baan eerst een naam', 'Saved “{0}”': '“{0}” opgeslagen', 'Could not save (storage unavailable)': 'Opslaan lukt niet (geen opslag)',
@@ -76,4 +76,5 @@ addDutch({
   'Place a start/finish piece': 'Plaats een start/finish', 'Only one start/finish piece allowed': 'Maar één start/finish toegestaan',
   'Track ends at column {0}, row {1}': 'Baan houdt op bij kolom {0}, rij {1}', 'Pieces don\'t connect at column {0}, row {1}': 'Stukken sluiten niet aan bij kolom {0}, rij {1}',
   'Track runs into the start the wrong way': 'Baan komt verkeerd om bij de start uit', 'Track crosses itself': 'Baan kruist zichzelf', 'Track does not close': 'Baan is niet rond',
+  'Place a piece to test drive': 'Plaats een stuk voor een proefrit', 'a test drive works already': 'een proefrit kan al',
 });

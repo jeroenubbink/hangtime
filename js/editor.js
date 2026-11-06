@@ -1,6 +1,6 @@
 // 2D top-down track editor plus the shared tile drawing used by the minimap and palette.
 import { GRID, PIECES, PIECE_TYPES, chicaneX } from './pieces.js';
-import { emptyGrid, walk, serialize, deserialize, BUILTIN } from './track.js';
+import { emptyGrid, walk, drivePath, serialize, deserialize, BUILTIN } from './track.js';
 import * as store from './store.js';
 import { t } from './i18n.js';
 
@@ -225,8 +225,7 @@ export class Editor {
 
     $('ed-rotate').onclick = () => { this.rot = (this.rot + 1) % 4; this.draw(); };
     $('ed-test').onclick = () => {
-      const res = walk(this.grid);
-      if (res.ok) this.onTest(this.grid, this.nameInput.value || t('Untitled'));
+      if (this.drive) this.onTest(this.grid, this.nameInput.value || t('Untitled'));
     };
     $('ed-save').onclick = () => {
       const name = this.nameInput.value.trim();
@@ -288,12 +287,15 @@ export class Editor {
 
   changed() {
     this.result = walk(this.grid);
+    this.drive = drivePath(this.grid);
     const r = this.result;
-    document.getElementById('ed-test').disabled = !r.ok;
-    let msg = r.ok ? t('✔ Track OK — {0} tiles', r.path.length) + (r.unused ? t(' ({0} unconnected)', r.unused) : '') : '✖ ' + r.error;
+    // Any track can be test driven, finished or not (an unfinished one just doesn't end in a lap)
+    document.getElementById('ed-test').disabled = !this.drive;
+    let msg = r.ok ? t('✔ Track OK — {0} tiles', r.path.length) + (r.unused ? t(' ({0} unconnected)', r.unused) : '')
+      : !this.drive ? t('Place a piece to test drive') : r.error + ' · ' + t('a test drive works already');
     if (this.flashMsg) msg = this.flashMsg;
     this.status.textContent = msg;
-    this.status.className = r.ok ? 'ok' : 'bad';
+    this.status.className = r.ok ? 'ok' : 'hint';
     this.draw();
   }
 
@@ -346,17 +348,18 @@ export class Editor {
       ctx.beginPath(); ctx.moveTo(0, i * s + 0.5); ctx.lineTo(S, i * s + 0.5); ctx.stroke();
     }
     const r = this.result;
-    if (r && r.ok) {
-      // Direction arrows along the driving line
+    if (this.drive) {
+      // Direction arrows along the driving line (an unfinished track's too, so you see where a test drive goes)
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      for (const p of r.path) {
+      for (const p of this.drive.path) {
         ctx.save();
         ctx.translate((p.x + 0.5) * s, (p.z + 0.5) * s);
         ctx.rotate(p.hout * Math.PI / 2);
         ctx.beginPath(); ctx.moveTo(0, -s * 0.12); ctx.lineTo(s * 0.08, 0); ctx.lineTo(-s * 0.08, 0); ctx.fill();
         ctx.restore();
       }
-    } else if (r && r.at) {
+    }
+    if (r && !r.ok && r.at) {
       ctx.strokeStyle = '#ff3b30';
       ctx.lineWidth = 3;
       ctx.strokeRect(r.at.x * s + 2, r.at.z * s + 2, s - 4, s - 4);

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TILE, HALF, GRID, DIRS } from './pieces.js';
-import { World, walk, BUILTIN, cellOf, cellCenter, trackId, deserialize, medalFor, MEDALS } from './track.js';
+import { World, walk, drivePath, BUILTIN, cellOf, cellCenter, trackId, deserialize, medalFor, MEDALS } from './track.js';
 import { CarPhysics, buildCarModel, loadCarKits, poseCarModel, setCarLights, MASS, CARS, WHEELS, WHEEL_RADIUS, WHEEL_REST, LIVERIES, paintOf } from './car.js';
 import { Sound } from './audio.js';
 import { Editor, drawPiece, customTracks } from './editor.js';
@@ -304,8 +304,10 @@ function loadWorld(grid) {
   skids.clear();
   game.grid = grid;
   game.world = new World(scene, grid);
-  const res = walk(grid);
-  game.path = res.ok ? res.path : null;
+  // Unfinished tracks drive too (the editor's test drive), along whatever run of pieces there is
+  const res = drivePath(grid);
+  game.path = res && res.path;
+  game.closed = !!(res && res.closed);
   game.pathIndex = new Map();
   if (game.path) game.path.forEach((p, i) => game.pathIndex.set(p.x + ',' + p.z, i));
   game.trackId = trackId(grid);
@@ -386,6 +388,8 @@ function spawnPoint(i) {
     if (k >= 0) break;
   }
   if (k < 0) { k = i; while (k > 0 && !standable(path[k].t)) k--; }
+  // An unfinished track may begin on a jump or water: start on the first piece after it that holds the car
+  if (!standable(path[k].t)) k = Math.max(k, path.findIndex(p => standable(p.t)));
   const p = path[k];
   const [cx, cz] = cellCenter(p.x, p.z);
   const c = new THREE.Vector3(cx, 0.95, cz);
@@ -400,8 +404,7 @@ function spawnPoint(i) {
 let race = null;
 
 function startRace() {
-  const r = walk(game.grid);
-  if (!r.ok) return;
+  if (!game.path) return;
   showScreen(null);
   $('hud').classList.remove('hidden');
   $('stunt-feed').innerHTML = '';
@@ -413,12 +416,12 @@ function startRace() {
   const s = spawnPoint(0);
   const side = dirVec((s.heading + 1) % 4);
   const attack = game.gameMode === 'attack' && !game.fromEditor;
-  const withRival = game.rival !== 'off' && !attack;
+  const withRival = game.rival !== 'off' && !attack && game.closed;
   game.car.reset(s.pos.clone().addScaledVector(side, withRival ? -2.6 : 0), s.heading);
   race = {
     laps: game.fromEditor ? 1 : game.laps,
     lap: 0, time: 0, clock: 0, lapStart: 0, lapTimes: [],
-    next: 1 % game.path.length, last: 0,
+    next: (s.index + 1) % game.path.length, last: s.index,
     countdown: 3, crash: null, stuck: 0, steps: 0,
     frames: [], events: [], ghostRec: [],
     best: store.load('best.' + game.trackId, null),
@@ -661,7 +664,7 @@ function advance(st, pos) {
   if (idx === (st.next + skip) % n && (skip === 0 || idx !== 0)) {
     st.last = idx;
     st.next = (idx + 1) % game.path.length;
-    res = idx === 0 ? 'lap' : 'cp';
+    res = idx === 0 ? (game.closed ? 'lap' : null) : 'cp';   // an open track never finishes
   } else if (st.curIdx !== idx) res = 'missed';
   st.curIdx = idx;
   return res;

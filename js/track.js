@@ -103,6 +103,57 @@ export function walk(grid) {
   return { ok: false, error: t('Track does not close') };
 }
 
+// What a test drive follows, finished track or not: the circuit when it closes, else the run of connected
+// pieces out of the start piece, or (with no start) the longest run on the grid, driven the way its arrows
+// point. A run that closes on itself still counts laps; an open one never finishes. Null with no pieces.
+export function drivePath(grid) {
+  const r = walk(grid);
+  if (r.ok) return { path: r.path, closed: true };
+  const follow = (x, z, h, seen) => {
+    const out = [];
+    for (;;) {
+      x += DIRS[h][0]; z += DIRS[h][1];
+      const c = x >= 0 && x < GRID && z >= 0 && z < GRID ? grid[z][x] : null;
+      const back = (h + 2) % 4;
+      if (!c || seen.has(x + ',' + z) || !sidesOf(c.t, c.r).includes(back)) return out;
+      seen.add(x + ',' + z);
+      const sides = sidesOf(c.t, c.r), hout = sides[0] === back ? sides[1] : sides[0];
+      out.push({ x, z, hin: h, hout, t: c.t });
+      h = hout;
+    }
+  };
+  const cells = [];
+  grid.forEach((row, z) => row.forEach((c, x) => c && cells.push({ x, z, c })));
+  if (!cells.length) return null;
+  const start = cells.find(({ c }) => c.t === 'start');
+  if (start) {
+    const { x, z, c } = start;
+    return { path: [{ x, z, hin: c.r, hout: c.r, t: 'start' }, ...follow(x, z, c.r, new Set([x + ',' + z]))], closed: false };
+  }
+  // Every run of pieces, each way round; the longest wins, then the one that drives most arrowed pieces forwards
+  const runs = [], done = new Set();
+  const flip = p => ({ ...p, hin: (p.hout + 2) % 4, hout: (p.hin + 2) % 4 });
+  const score = path => path.reduce((s, p) => s + (['loop', 'corkscrew', 'boost', 'kicker'].includes(p.t) ? (grid[p.z][p.x].r === p.hin ? 1 : -1) : 0), 0);
+  for (const { x, z, c } of cells) {
+    if (done.has(x + ',' + z)) continue;
+    const [a, b] = sidesOf(c.t, c.r), seen = new Set([x + ',' + z]);
+    const ahead = follow(x, z, a, seen), behind = follow(x, z, b, seen);
+    const path = [...behind.reverse().map(flip), { x, z, hin: (b + 2) % 4, hout: a, t: c.t }, ...ahead];
+    const last = path[path.length - 1], [lx, lz] = [last.x + DIRS[last.hout][0], last.z + DIRS[last.hout][1]];
+    const closed = path.length > 2 && lx === path[0].x && lz === path[0].z && last.hout === path[0].hin;
+    seen.forEach(k => done.add(k));
+    for (const p of [path, path.slice().reverse().map(flip)]) runs.push({ path: p, closed, score: score(p) });
+  }
+  runs.sort((u, v) => v.path.length - u.path.length || v.score - u.score);
+  const best = runs[0];
+  // A closed run starts on a piece the car can stand on, which also makes it the line a lap ends on
+  if (best.closed) {
+    const k = Math.max(0, best.path.findIndex(p => ['straight', 'hump', 'boost', 'dirt', 'ice', 'tunnel'].includes(p.t)));
+    best.path = [...best.path.slice(k), ...best.path.slice(0, k)];
+  }
+  return { path: best.path, closed: best.closed };
+}
+
 export const BUILTIN = [
   { name: 'Sunday Drive', medals: [32.5, 35, 39.5], grid: () => fromTurtle(2, 8, 0, 'S S H S S R  S S S S S S BR  S S J W D S BR  S S S H S S R') },
   { name: 'Corkscrew Valley', medals: [66, 72, 80], grid: () => fromTurtle(1, 10, 0,
