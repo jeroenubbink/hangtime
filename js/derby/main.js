@@ -1438,7 +1438,7 @@ window.addEventListener('keydown', e => {
   }
   if (G.state !== 'play' && G.state !== 'countdown') return;
   if (e.code === 'KeyE' || e.code === 'Enter' || e.code === 'KeyF') pressItem();
-  if (e.code === 'KeyC') { G.camMode = (G.camMode + 1) % CAMS.length; cam.snap = true; callout(CAMS[G.camMode] + ' camera', 'item'); }
+  if (e.code === 'KeyC') { G.camMode = (G.camMode + 1) % CAMS.length; cam.snap = true; callout(t('{0} camera', CAMS[G.camMode]), 'item'); }
   if (e.code === 'KeyR' && G.match.guest) NET.room.send('act', 'flip', NET.host);
   else if (e.code === 'KeyR' && canUnflip(me)) unflip(me);
   if (e.code === 'KeyX' && !G.match.guest && G.match.type === 'spree' && me?.alive && me.score >= G.match.repairCost && me.hp < me.maxHp) {
