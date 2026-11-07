@@ -13,6 +13,8 @@ addDutch({
   // the depot, and the reel
   'NO': 'NIET', 'SMOKING': 'ROKEN', 'INFLAMMABLE': 'ONTVLAMBAAR', 'FLAMMABLE': 'BRANDBAAR', 'JUST DON\'T': 'GEWOON NIET DOEN',
   'SERIOUSLY.': 'ECHT WAAR.', 'PERMIT': 'ALLEEN', 'HOLDERS': 'VERGUNNING-', 'ONLY': 'HOUDERS', 'SPARKS FUEL DEPOT': 'SPARKS BRANDSTOFDEPOT',
+  // Bank Shot: the bank's slogan (solving, and dissolving, your hard-earned money: "zuurverdiend", so "zuurgemijnd")
+  'FIATMINE': 'FIATMINE', 'SOLVING YOUR HARD MINED FIAT': 'LOST UW ZUURGEMIJNDE FIAT OP',
   'REPLAY': 'HERHALING', 'AND AGAIN, FROM THE TOP': 'NOG EEN KEER, MET GEVOEL',
   'DRIFT': 'DRIFT', 'RETRY': 'OPNIEUW', 'BOOM': 'BOEM',
   'Haze': 'Heiig', 'Dawn': 'Dageraad',

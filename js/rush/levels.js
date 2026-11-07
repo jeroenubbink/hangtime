@@ -554,6 +554,10 @@ export const LEVELS = {
       { road: 'north', side: -1, i: 1, speed: [16, 20], stop: 163.3, queue: [null, 'lorry', null] },
     ],
     specials: [{ lane: 1, kind: 'tanker', eta: 7.2 }, { lane: 3, kind: 'bus', eta: 7.0 }],
+    // Across the avenue from the end of your road, the bank, on a stone forecourt where the shops were: what's coming
+    // out of your road at its angle goes into its front, and off it toward the big junction
+    bank: { x: 19, z: -19.2 },
+    lots: [{ rect: [-8, 46, -54, -14.4], colour: '#d9d2c0' }],
     medals: [40000, 120000, 300000],
   },
   canal: {

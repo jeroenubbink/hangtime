@@ -24,6 +24,7 @@ import { fixtures } from './fixtures.js';
 import { gateway } from './gateway.js';
 import { roadsign, warning } from './roadsign.js';
 import { depot } from './depot.js';
+import { bank } from './bank.js';
 import { filmset } from './filmset.js';
 import { RIDES, TRAFFIC, TRAFFIC_PAINTS } from './roster.js';
 import { Recorder, FLAGS, canSend, send } from './replay.js';
@@ -42,7 +43,7 @@ const files = new Set([...Object.values(RIDES), ...Object.values(TRAFFIC)].flatM
 await Promise.all([
   ...[...files, ...Object.values(DEBRIS)].map(f => loadCarKits([f]).catch(() => console.info('No model', f))),
   loadSceneryKit().catch(e => console.warn('Scenery not loaded:', e)), loadSceneryKit('derby').catch(() => {}),
-  loadSceneryKit('hotel').catch(() => {}), loadSceneryKit('docks').catch(() => {}), loadSceneryKit('works').catch(() => {}), loadSceneryKit('bridge').catch(() => {}), loadSceneryKit('film').catch(() => {}), loadSceneryKit('depot').catch(() => {}),
+  loadSceneryKit('hotel').catch(() => {}), loadSceneryKit('docks').catch(() => {}), loadSceneryKit('works').catch(() => {}), loadSceneryKit('bridge').catch(() => {}), loadSceneryKit('film').catch(() => {}), loadSceneryKit('depot').catch(() => {}), loadSceneryKit('bank').catch(() => {}),
 ]);
 $('loading').remove();
 
@@ -234,6 +235,8 @@ function loadLevel(key) {
   if (city.level.roadsign) city.group.add(roadsign(city, city.level.roadsign));
   // (and Tanker Row's depot, and the warnings on the way to it)
   if (city.level.depot) city.group.add(city.depot = depot(city, city.level.depot));
+  // (and Bank Shot's bank, across the avenue from the end of your road)
+  if (city.level.bank) city.group.add(bank(city, city.level.bank));
   for (const W of city.level.warnings || []) city.group.add(warning(city, W));
   // (and Short Cut's film shoot, and its two famous corners)
   if (city.level.filmset) city.group.add(filmset(city, city.level.filmset));
