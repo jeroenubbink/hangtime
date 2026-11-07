@@ -32,6 +32,8 @@ export const TRAFFIC = {
   tanker: { ...car('toy-tanker', 4600, [2.5, 8.4], 120, 3.6), explosive: true },
   lorry: car('toy-lorry', 4200, [2.5, 7.6], 150, 2.8),
   flatbed: car('toy-flatbed', 3900, [2.5, 7.8], 140, 2.6),
+  // (Bank Shot's: Fiatmine's armoured van, heavy, worth a lot, and full of money)
+  cash: { ...car('toy-brick', 2600, [2.1, 4.8], 150, 6), livery: 'rush-cash', cash: true },
 };
 // Paint for ordinary traffic: Rushtime's own family (see RUSH in car.js), none as hot as yours
 export const TRAFFIC_PAINTS = ['coral', 'amber', 'cream', 'slate', 'teal', 'navy'];

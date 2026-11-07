@@ -89,7 +89,7 @@ through them. Things to know:
 
 ## Rushtime
 
-- **Six junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
+- **Nine junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
   **Dockside Drop**, a downhill run with a crest that throws you, ending at a six-lane harbour road with the
   water behind it; **Gridlock Leap**, where your way is jammed solid back from the lights and the roadworks left
   a ramp: fly onto the jam and shove it into the busy junction; **Over the Edge**, a jam backed up across a bridge,
@@ -97,15 +97,32 @@ through them. Things to know:
   at an angle and the wrecks go through the crash barrier and down the banks into the traffic below; **Short Cut**,
   where your road bends right and you don't: across the corner's traffic, off a kicker on a building site and
   120-220 m through the air, down on the queue at the first of two busy crossings (or, with full rush, on the
-  queue at the second), to shove it through both; and
+  queue at the second), to shove it through both;
   **Last Chance Gas**, a T-junction with Fuel's Paradise straight across it, a petrol station with a
   sunset-and-flaming-palm logo on its roof. Anything that hits it hard enough sets it off: your car under the canopy at speed or through a pump or pillar, or, once
   you've crashed, the traffic you've thrown at it, or a blast beside it. Then the pumps go, the canopy and its logo
-  fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction.
-- **Three rough ones, for ideas** (not shown to players yet: open `rush.html?drafts`): **Tanker Row** (tankers parked nose to tail along the far kerb: light one and
-  the blasts run down the row both ways into two junctions); **Bank Shot** (your road comes in at 45° and stops
-  at the avenue: bounce the wreckage off the shops and down to the big junction); and **Mind the Gap** (the road stops at a
-  canal, the ramp doesn't: short and you're swimming, long and you land on the queue past the quay road).
+  fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction;
+  **Bank Shot**, your road comes in at 45° and stops
+  at the avenue, in the late afternoon, its right lane queued solid behind roadworks, indicators blinking, cars
+  pulling out onto the avenue one at a time as gaps come, so only the last few, a tanker, Fiatmine's cash van and a
+  bus, are still waiting when you get there down the empty left lane, the tanker pulling out round the corner as you
+  arrive; across the avenue, Fiatmine's bank, columns, dome and all: bounce the wreckage off it into something for a
+  BANK SHOT, and blow the van for the money; and beside the bank the roadworks' compound, its gas cage and tar boiler
+  yours to blow up;
+  **Mind the Gap**, at midday, the sun high over the water; the road stops at a
+  canal, the ramp doesn't: short and you're swimming, long and you land on the queue past the quay road; the signs on
+  the way in pleading with you to turn around, and the old steel bridge with its deck lifted out, its trusses either
+  side of you as you fly through, a floating crane lifting a piece of it out, a little of its deck still on at the
+  far end, and road-closed fences across both ends to smash through (they cost you nothing); a towpath
+  along the near bank with lanterns, benches and trees, and two boats moored out of the way, a houseboat on your side
+  and the SIGHTSEER tour boat across the water: anything in your crash going into one, or a blast reaching it, sinks
+  it for 5,000 and a heap of its own in the tour; and
+  **Tanker Row**, at dawn, the Sparks fuel depot's whole fleet parked in a row
+  of bays outside its gate (the next in turned to face it), under warnings that get more worried the nearer you get,
+  and more of it waiting in the yard at the two loading racks: light one and the blasts run down the row both ways
+  into two junctions, and mostly in through the gate too; the side streets wait at red lights, and now and then a
+  startled queue runs it, and once it's over the chain goes up again in slow motion, from the
+  depot's yard, before the tour of the wreckage.
 - **Tower Dive**: the biggest ramp in town, five ramps side by side, 30° to 50° at the lip (white fins
   between them keep you in yours). Off the 35° to 45° ones at full speed you
   come down on the first of three **sky decks**, the roofs of the Hotel California (its name in lights across the
@@ -126,10 +143,9 @@ through them. Things to know:
   stacks. Under your flight, between the avenue and the skyway, a park with a stream winding through it; round the
   hotel a drive lined with palms, a car park behind it, and a square of tall shops shutting it all in, with the town
   going on behind them as far as you can see from up there.
-- **Guide lines** (for testing only, not shown to players: open `rush.html?guides`): up to three coloured routes painted on the road
-  per junction, each the best of a different idea that route bots found (20 runs per junction: either lane, a late
-  swerve either way, rush or not, easing off), ending in a ring where the car first hit, labelled with what to do
-  ("Rush, left lane", "Steady, swerve left") and what the bot scored. Off the ground the line goes dashed.
+- **Medal lines** (dev mode only, see Run): the way the best bronze, silver and gold runs kept went, painted on the
+  road in their medal's colour, ending in a ring where the car first hit, labelled with the medal, the car and the
+  score. Off the ground the line goes dashed.
 - **The opening shot** pans across the junction from over the low roofs round it (only walk-ups near a junction),
   then flies back down the road to your car and round behind it for the countdown.
 - **The traffic is scripted:** the same every time, so a junction can be learned. Until you crash its drivers are
@@ -209,6 +225,27 @@ const R = rush.debug.replay(await (await fetch('replays/<name>.json')).json());
 R.seek(14.2);                          // the vehicles at game time 14.2 s, seen from the camera you had
 R.seek(14.2, [0, 30, 40, 0, 0, 0]);    // or from anywhere: [x, y, z, look x, y, z]
 ```
+
+### Rushtime's dev mode
+
+On by itself when the game comes from this machine or the local network (localhost, 192.168.…, 10.…, *.local),
+off on the published site (unless you open `rush.html?dev`); switched off and on again from the menu, under
+How to play. In dev mode:
+
+- the tracks are listed in two: **Released** and **In development** (the drafts, marked DEV);
+- **F**, or Free cam up in the corner: fly round, at any moment (the run holds still meanwhile). WASD or the
+  arrows, E/Q up and down, Shift for fast, drag to look round, the wheel to go forward; on a phone, drag to look
+  round, and two fingers to slide and to pinch forward. F or Esc to leave;
+- **L**, Lines: the medal lines (see Rushtime);
+- **V**, Runs: the run library, every run `serve.py` has kept for this track, best first, the bronze, silver
+  and gold ones on top. Pick one to watch it: play and pause (P), scrub, 0.25× to 2×, and Free cam to look round
+  while it plays, and FX (X) for its blasts, fires and smoke as in a run (✕ or Esc goes back to the menu);
+- **K**, Snap: a snapshot of what you see, with a note on what to look at, for Claude: the picture (the 3D view,
+  not the menus over it) and the game's state then (the track, the camera, the run or replay and its time), kept
+  by `serve.py` in `replays/snaps/`;
+- every run you finish is kept in the run library by itself (no need for Send replay).
+
+The run library comes from `serve.py` (`/replays/index`), so it needs `serve.py`, not just any static server.
 
 ## Hangtime controls
 
@@ -293,7 +330,13 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
 - `assets/cars/toy-*.glb`, `assets/scenery/nature.glb`, `assets/scenery/derby.glb`: both games' toy cars, the round
   trees, bushes and flowers, and Crunchtime's cones, drums, bales, tyre stacks, fence panels, barn and windmill,
   modelled in Blender (source: `assets/src/toys.blend`); `assets/scenery/hotel.glb`, Tower Dive's palm and fountain
-  (source: `assets/src/hotel.blend`)
+  (source: `assets/src/hotel.blend`); `assets/scenery/depot.glb`, Tanker Row's fuel depot (storage tanks, the loading
+  rack, the gate, the office, the fence, pipes), built by a script: `blender -b -P assets/src/depot.py` makes
+  `assets/src/depot.blend` and the .glb; `assets/scenery/bank.glb`, Bank Shot's bank, the same way from
+  `assets/src/bank.py`, and `assets/scenery/roadworks.glb`, its roadworks' gas cage and tar boiler, from
+  `assets/src/roadworks.py`, and `assets/scenery/canal.glb`, Mind the Gap's houseboat and tour boat, from
+  `assets/src/canal.py`, and `assets/scenery/canalbridge.glb`, its broken bridge and floating crane, from
+  `assets/src/canalbridge.py` (all five share `assets/src/kitlib.py`, the model builder and exporter)
 - `js/net.js`: online rooms over WebRTC, found through public Nostr relays (Trystero, loaded only when you go online)
 - `js/toon.js`: the shared toybox look for both games: two-tone shading, rim light and a colour boost, patched into three.js's shaders
 - `js/derby/`: Crunchtime
@@ -309,19 +352,30 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
 - `js/rush/`: Rushtime
   - `main.js`: your car's handling, the run-up (heat, rush, near misses), the crash (chains, explosions, slow motion,
     crash camera), speed effects (radial blur, streaks), HUD and menus
-  - `city.js`: streets as axis-aligned roads with lane markings, kerbs and pavements, buildings, the quay, and
-    bridges (the ground is one height everywhere, except over a bridge deck, where it depends on whether you're
-    above or below it)
+  - `city.js`: streets as axis-aligned roads with lane markings (and a parking lane, if a road has one), kerbs and
+    pavements, buildings, the quay, and bridges (the ground is one height everywhere, except over a bridge deck, where
+    it depends on whether you're above or below it)
   - `levels.js`: the junctions: roads, traffic lanes, red lights and queues, ramps, bridges, and the timed tanker and bus
-  - `traffic.js`: lanes and drivers (following, stopping at red, reacting late, swerving); far traffic glides along
-    its lane without physics
+  - `traffic.js`: lanes and drivers (following, stopping at red, reacting late, swerving, merging into a gap);
+    far traffic glides along its lane without physics
   - `props.js`: lamp posts, trees, traffic lights, bins, hydrants, bollards and crash barriers that get knocked flying
   - `stacks.js`: Tower Dive's stacks of cars in glass boxes, and how they come down
   - `hotel.js`: Tower Dive's grounds: the hotel's sign, the park's stream and footbridges, the drive, the car park's
     bays and the lawns (all paint and boards: nothing solid), and the shops' signs and awnings
+  - `depot.js`: Tanker Row's fuel depot: the yard's fence, gate, tanks and bund walls, the lines on it, and the
+    company's name on the gate and its biggest tank
+  - `bank.js`: Bank Shot's bank, Fiatmine: placed, made solid (columns and all), its name and slogan in gold and
+    its banners
+  - `banknotes.js`: what a cash van turns into when it goes up: notes blown high, fluttering down, left lying
+  - `blinkers.js`: the indicators on cars waiting to pull out of a merging lane
+  - `charges.js`: things that go up and aren't vehicles (Bank Shot's gas cage and tar boiler): a blast near enough
+    sets one off, a string of bangs, each a blast of its own
+  - `roadsign.js`: the signs by and over the road: Last Chance's distance to the station, Tanker Row's warnings,
+    Bank Shot's merge in turn
   - `standins.js`: a car park's cars, far off, as painted boxes (two draw calls instead of a few thousand triangles each)
   - `replay.js`: records each run for the Send replay button (see Run)
-  - `guides.js`, `routes.js`: the guide lines, and the bots' routes they draw (generated)
+  - `guides.js`: the medal lines
+  - `dev.js`: dev mode: the free camera, the run library and the bar to watch a run with
   - `roster.js`: your cars and the traffic
 - `assets/cars/toy-bus.glb`, `toy-tanker.glb`, `toy-lorry.glb`, `toy-flatbed.glb`: Rushtime's big vehicles, made in
   Blender (source: `assets/src/rush-vehicles.blend`)

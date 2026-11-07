@@ -1,22 +1,23 @@
 // Guide lines: a few coloured routes painted on the road, from the start towards a crash that's known to pay, so
-// a junction's ideas can be seen before they're found. The routes are the bots' best runs (see ROUTES): where the
-// car went, every fifth of a second, until it hit something. Off the ground (a ramp, the canal) the line goes
+// a junction's ideas can be seen before they're found. In dev mode, the best bronze, silver and gold runs kept (see
+// dev.js): where the car went, every fifth of a second, until it hit something. Off the ground (a ramp, the canal) the line goes
 // dashed; where it ends there's a ring and a label with the route's name and what the bot scored.
 import * as THREE from 'three';
-import { ROUTES } from './routes.js';
 
 const WIDTH = 0.8, LIFT = 0.14, STEP = 1.5;
 
 export class Guides {
-  constructor(scene, city) {
+  // `routes`: [{ name, colour, score, pts: [[x, z, y], …] }]
+  constructor(scene, city, routes) {
     this.scene = scene;
     this.group = new THREE.Group();
-    (ROUTES[city.key] || []).forEach((r, i, all) => this.route(city, r, (i - (all.length - 1) / 2) * 1.2));
+    routes.forEach((r, i, all) => this.route(city, r, (i - (all.length - 1) / 2) * 1.2, i));
     scene.add(this.group);
   }
 
   // One route, `shift` m to its right (so routes down the same lane sit side by side, not on top of each other)
-  route(city, R, shift) {
+  // (and its label `n` labels up, so runs that end in the same place can all be read)
+  route(city, R, shift, n) {
     // Resampled every STEP m, each point on the ground under the car (a deck where it was over one)
     const pts = [];
     for (let i = 0; i + 1 < R.pts.length; i++) {
@@ -56,7 +57,7 @@ export class Guides {
     ring.renderOrder = 2;
     this.group.add(ring);
     const label = this.label(`${R.name} · ${R.score.toLocaleString()}`, R.colour);
-    label.position.set(ex, gy + 6, ez);
+    label.position.set(ex, gy + 6 + n * 3.4, ez);
     this.group.add(label);
   }
 

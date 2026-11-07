@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { merge } from '../scenery.js';
 import { fixtures } from './fixtures.js';
+import { board, fit, onto } from './gateway.js';
 import { t } from '../i18n.js';
 
 const FONT = "'Titillium Web', Impact, sans-serif";
@@ -193,32 +194,8 @@ function clockFace(g, min) {
   hand((min % 60) / 60 * Math.PI * 2, 96, 7);
   g.fillStyle = '#1b1c1f'; g.beginPath(); g.arc(128, 128, 10, 0, Math.PI * 2); g.fill();
 }
-// A canvas drawn by `draw`, as a material (`lit`: glowing, not shaded)
-function board(w, h, draw, lit) {
-  const cv = document.createElement('canvas');
-  cv.width = w; cv.height = h;
-  draw(cv.getContext('2d'));
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  const o = { map: tex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
-  return lit ? new THREE.MeshBasicMaterial({ ...o, toneMapped: false }) : new THREE.MeshLambertMaterial(o);
-}
-// The font (`font`, its size as {}) at `px`, or smaller to fit `w`
-function fit(g, text, w, px, font) {
-  g.font = font.replace('{}', px);
-  const m = g.measureText(text).width;
-  if (m > w) g.font = font.replace('{}', Math.floor(px * w / m));
-}
 // (lx, lz) in the frame of something at (x, z) turned by `yaw`, in the world
 function local(x, z, yaw, lx, lz) {
   const s = Math.sin(yaw), k = Math.cos(yaw);
   return [x + lx * k + lz * s, z - lx * s + lz * k];
-}
-// `o` on something standing at (x, y, z) turned by `yaw`, at (lx, ly, lz) in its own frame
-function onto(o, x, y, z, yaw, lx, ly, lz) {
-  const [wx, wz] = local(x, z, yaw, lx, lz);
-  o.position.set(wx, y + ly, wz);
-  o.rotation.y = yaw;
-  return o;
 }

@@ -108,7 +108,7 @@ kbd { display: inline-block; min-width: 20px; text-align: center; font: 600 12px
 #boom { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); width: min(720px, 88vw);
   font: 15px 'Russo One', sans-serif; letter-spacing: 4px; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5); }
 /* (on a phone, above the thumb pads) */
-body.touch #boom { bottom: 172px; pointer-events: auto; }
+body.touch #boom { bottom: calc(20px + var(--tb) + var(--th) + 2 * var(--tg) + 8px); pointer-events: auto; }
 #boom-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; color: #ffb02e; }
 #boom-t { font: italic 26px 'Russo One', sans-serif; letter-spacing: 1px; color: #fff; }
 #boom-t.late { color: #ff3d1f; animation: blink .25s infinite alternate; }
@@ -156,6 +156,13 @@ body.touch #boom { bottom: 172px; pointer-events: auto; }
 .heap.gone { opacity: 0; }
 /* (on the tour the heaps' own scores say it all: the rest of the HUD steps aside) */
 #hud.touring #crashbox, #hud.touring #heatbox, #hud.touring #rush, #hud.touring #speedo { display: none; }
+/* Tanker Row's reel: a tape's REPLAY mark, and what it is */
+.reel { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; animation: heap .45s cubic-bezier(.2, 1.6, .4, 1) both; }
+.reel .rec { font: 900 15px 'Titillium Web', sans-serif; letter-spacing: 3px; color: #fff; background: #d8352b; padding: 2px 10px 2px 22px; border-radius: 3px; position: relative; }
+.reel .rec::before { content: ''; position: absolute; left: 8px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: #fff; animation: rec 1s steps(2) infinite; }
+.reel b { font: italic 900 34px 'Titillium Web', 'Russo One', sans-serif; letter-spacing: 1px; color: #fff; text-shadow: 0 3px 0 #0b3b44, 0 0 18px rgba(255, 138, 26, .55); white-space: nowrap; }
+@keyframes rec { to { visibility: hidden; } }
+@media (max-width: 600px) { .reel b { font-size: 22px; } }
 #callouts { position: absolute; left: 50%; top: 30%; transition: top .3s; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .call { font: italic 26px 'Russo One', sans-serif; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5); animation: pop 1.5s ease-out forwards; white-space: nowrap; }
 .call small { display: block; font: 600 14px Rubik, sans-serif; text-align: center; opacity: 0.9; font-style: normal; }
@@ -174,15 +181,30 @@ body.touch #boom { bottom: 172px; pointer-events: auto; }
 #touch { display: none; }
 body.touch #touch { display: block; }
 body.touch #hint { display: none; }
-#touch .pad { position: absolute; display: flex; gap: 10px; pointer-events: auto; }
-#touch .left { left: 16px; bottom: 20px; }
-#touch .right { right: 16px; bottom: 20px; flex-wrap: wrap; width: 200px; justify-content: flex-end; }
-#touch .top { right: 16px; top: 110px; }
-#touch button { width: 74px; height: 74px; font-size: 26px; border-radius: 50%; background: rgba(255, 255, 255, 0.12); }
-#touch button.small { width: 88px; height: 44px; font-size: 14px; border-radius: 10px; }
+/* The thumb pads, sized to the screen (a narrow phone, or a zoomed one, has four round buttons across it and room
+   between): `--tb` a round one, `--tw` and `--th` a small one; what sits above the pads is stacked on those */
+body.touch { --tb: min(74px, 17vw); --tw: min(88px, 20vw); --th: min(44px, 11vw); --tg: min(10px, 2.4vw); }
+#touch .pad { position: absolute; display: flex; gap: var(--tg); pointer-events: auto; }
+#touch .left { left: max(16px, env(safe-area-inset-left)); bottom: max(20px, env(safe-area-inset-bottom)); }
+#touch .right { right: max(16px, env(safe-area-inset-right)); bottom: max(20px, env(safe-area-inset-bottom)); flex-wrap: wrap;
+  width: calc(2 * var(--tw) + var(--tg)); justify-content: flex-end; }
+/* (retry and pause up on the left, out of the way of the score and the callouts) */
+#touch .top { left: max(12px, env(safe-area-inset-left)); top: 30%; gap: 6px; }
+#touch button { width: var(--tb); height: var(--tb); font-size: calc(var(--tb) * 0.35); border-radius: 50%; background: rgba(255, 255, 255, 0.12); }
+#touch button.small { width: var(--tw); height: var(--th); font-size: min(14px, 3.4vw); border-radius: 10px; }
+#touch .top button.small { width: 44px; height: 40px; font-size: 18px; }
 #touch button.down { background: rgba(46, 230, 255, 0.35); }
 #touch button.ready { background: linear-gradient(#ffd23a, #ff3d00); color: #fff; font-weight: 800; text-shadow: 1px 1px 0 #7a1500; animation: throb .3s ease-in-out infinite alternate; }
-body.touch #speedo { bottom: 120px; }
+/* (above the pads: the speed over the right one, the rush bar over the left, the explosion meter over them all) */
+body.touch #speedo { right: max(16px, env(safe-area-inset-right)); bottom: calc(20px + var(--tb) + var(--th) + 2 * var(--tg) + 4px);
+  font-size: min(64px, 12vw); }
+body.touch #speedo small { font-size: min(18px, 4vw); }
+body.touch #rush { left: max(16px, env(safe-area-inset-left)); bottom: calc(20px + var(--tb) + var(--tg) + 4px); transform: none;
+  width: calc(2 * var(--tb) + var(--tg)); font-size: 11px; letter-spacing: 2px; }
+body.touch #rush kbd { display: none; }
+body.touch #hud.crashing #callouts { top: min(150px, 28%); }
+/* (a phone on its side: up in the corner instead, clear of the explosion meter) */
+@media (orientation: landscape) and (max-height: 500px) { #touch .top { top: max(12px, env(safe-area-inset-top)); } }
 @media (max-width: 640px) {
   h1 { font-size: 40px; }
   .list.cars { grid-template-columns: 1fr; }
@@ -190,6 +212,24 @@ body.touch #speedo { bottom: 120px; }
   #heat { font-size: 34px; }
   #carnage { font-size: 40px; }
   #msg-main { font-size: 44px; }
+}
+/* (a very narrow one: a phone zoomed in) */
+@media (max-width: 360px) {
+  #heatbox { right: 12px; top: 14px; }
+  #heat { font-size: 26px; }
+  #crashbox { top: 12px; width: 100%; }
+  #carnage { font-size: 30px; }
+  #crash-sub { font-size: 12px; }
+  #countdown { font-size: 36px; }
+  #boom { letter-spacing: 2px; font-size: 12px; }
+  #boom-t { font-size: 20px; }
+  #boom-bar { height: 30px; }
+  #boom-txt { font-size: 12px; letter-spacing: 2px; }
+  .call, #hud.crashing .call { font-size: 16px; }
+  .call.big, #hud.crashing .call.big { font-size: 20px; }
+  body.touch #hud.crashing #callouts { top: 92px; }
+  #msg-main { font-size: 34px; }
+  h1 { font-size: 30px; }
 }
 /* Tower Dive: the bar's your nitro once you've picked some up */
 #rush.nitro #rush-fill { background: linear-gradient(90deg, #3aa8ff, #9fe4ff); }

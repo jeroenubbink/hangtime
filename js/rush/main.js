@@ -20,13 +20,20 @@ import { Traffic } from './traffic.js';
 import { Props } from './props.js';
 import { buildStation as stationModel, DEBRIS_COLOURS } from './station.js';
 import { crane, Boat } from './harbour.js';
+import { ruin } from './ruin.js';
 import { fixtures } from './fixtures.js';
 import { gateway } from './gateway.js';
-import { roadsign } from './roadsign.js';
+import { roadsign, warning } from './roadsign.js';
+import { depot, flame as sparksFlame } from './depot.js';
+import { bank, coin } from './bank.js';
+import { Banknotes } from './banknotes.js';
+import { Charges } from './charges.js';
+import { Blinkers } from './blinkers.js';
 import { filmset } from './filmset.js';
 import { RIDES, TRAFFIC, TRAFFIC_PAINTS } from './roster.js';
 import { Recorder, FLAGS, canSend, send } from './replay.js';
 import { Guides } from './guides.js';
+import { DEV, LOCAL, setDev, FreeCam, devBar, showRuns, replayBar, library, runsOf, asRoutes, loadRun, snapshot } from './dev.js';
 import { Oranges } from './oranges.js';
 import { t, tl, translatePage, langButton } from '../i18n.js';
 import './nl.js';
@@ -40,7 +47,7 @@ const files = new Set([...Object.values(RIDES), ...Object.values(TRAFFIC)].flatM
 await Promise.all([
   ...[...files, ...Object.values(DEBRIS)].map(f => loadCarKits([f]).catch(() => console.info('No model', f))),
   loadSceneryKit().catch(e => console.warn('Scenery not loaded:', e)), loadSceneryKit('derby').catch(() => {}),
-  loadSceneryKit('hotel').catch(() => {}), loadSceneryKit('docks').catch(() => {}), loadSceneryKit('works').catch(() => {}), loadSceneryKit('bridge').catch(() => {}), loadSceneryKit('film').catch(() => {}),
+  loadSceneryKit('hotel').catch(() => {}), loadSceneryKit('docks').catch(() => {}), loadSceneryKit('works').catch(() => {}), loadSceneryKit('bridge').catch(() => {}), loadSceneryKit('film').catch(() => {}), loadSceneryKit('depot').catch(() => {}), loadSceneryKit('bank').catch(() => {}), loadSceneryKit('roadworks').catch(() => {}), loadSceneryKit('canal').catch(() => {}), loadSceneryKit('canalbridge').catch(() => {}),
 ]);
 $('loading').remove();
 
@@ -87,9 +94,8 @@ const smoke = new Puffs(scene, 1800, { soft: 0.15 });
 const glow = new Puffs(scene, 1400, { additive: true, soft: 0.35 });
 const rain = makeRain(scene, '#a9bfc2');
 
-// The rough junctions still being tried out are only there with rush.html?drafts
-const DRAFTS = new URLSearchParams(location.search).has('drafts');
-const LEVELS = Object.fromEntries(Object.entries(ALL_LEVELS).filter(([, L]) => DRAFTS || !L.draft));
+// The tracks still in development (`draft`) are only there in dev mode (see dev.js)
+const LEVELS = Object.fromEntries(Object.entries(ALL_LEVELS).filter(([, L]) => DEV || !L.draft));
 
 // ---------- Settings & records ----------
 // The times of day: the stage's, and Gridlock Leap's own, a hot hazy afternoon, the far end of the street lost in it
@@ -99,6 +105,18 @@ const TIMES = { ...STAGE_TIMES,
   // and Short Cut's: rain, a low grey-teal sky, the streets wet and the lamps on early
   rain: { label: 'Rain', sky: ['#33474f', '#5f7a82', '#8ea2a4'], fog: ['#71878a', 60, 480], hemi: ['#b4ccd0', '#3a4642', 1.25],
     sun: ['#d8e6ea', 0.6, [50, 120, 30]], orb: '#8ea2a4', stars: 0, lamps: 0.6, rain: true },
+  // and Tanker Row's: first light, before the depot opens: a cold blue sky going peach low down, the sun just up and
+  // long shadows across the road, the last of the stars, the lamps not off yet
+  dawn: { label: 'Dawn', sky: ['#24406e', '#8fa8d0', '#ffcf9e'], fog: ['#c4c4d2', 130, 620], hemi: ['#b4c4e6', '#4a4252', 1.25],
+    sun: ['#ffc890', 1.9, [120, 32, 90]], orb: '#ffe0b8', stars: 0.15, lamps: 0.45 },
+  // and Bank Shot's: late afternoon, the rush hour, the sun low behind you and gold on the bank's front, the shadows
+  // long across the avenue, a warm haze down the streets
+  afternoon: { label: 'Afternoon', sky: ['#2a7fa2', '#8ec3c6', '#ffd49a'], fog: ['#e2cfae', 150, 650], hemi: ['#bcd6d6', '#7a5a3c', 1.35],
+    sun: ['#ffd29a', 2.2, [70, 42, 120]], orb: '#ffe6b8', stars: 0, lamps: 0 },
+  // and Mind the Gap's: a clear midday by the canal, the sun high and the shadows short under things, a deep clean
+  // blue overhead and the far end of the water sharp
+  noon: { label: 'Midday', sky: ['#0f6fb0', '#5fb6e0', '#cfeaf2'], fog: ['#cfe6ee', 200, 820], hemi: ['#bfe4f2', '#6e6450', 1.6],
+    sun: ['#fffaf0', 2.4, [25, 170, 30]], orb: '#ffffff', stars: 0, lamps: 0 },
 };
 const settings = Object.assign({ level: 'cross', car: 'comet', time: 'day' }, store.load('rush.settings', {}));
 const records = Object.assign({ best: {}, medals: {} }, store.load('rush.records', {}));
@@ -111,8 +129,8 @@ if (!TIMES[settings.time]) settings.time = 'day';
 settings.times = Object.fromEntries(Object.entries(settings.times || {}).filter(([k, t]) => ALL_LEVELS[k] && TIMES[t]));
 const timeFor = key => settings.times[key] || LEVELS[key].time || settings.time;
 let time = 'day';
-// The guide lines are for testing only: rush.html?guides
-const GUIDES = new URLSearchParams(location.search).has('guides');
+// The medal lines are dev mode's, and can be switched off (L)
+const devS = { lines: store.load('rush.devLines', true) };
 const saveSettings = () => store.save('rush.settings', settings);
 // Rushtime's own day and sunset: teal and orange, a cool sky and shade with a warm sun on the cars (and `grade`, how
 // far the picture's split, teal in the shadows and orange in the light)
@@ -122,18 +140,22 @@ const LOOKS = { ...TIMES,
   sunset: { ...TIMES.sunset, sky: ['#1f3460', '#b8678e', '#ffae66'], hemi: ['#ffc4a8', '#2f3c50', 1.1], grade: 0.5 },
   haze: { ...TIMES.haze, grade: 0.4 },
   rain: { ...TIMES.rain, grade: 0.6 },
+  dawn: { ...TIMES.dawn, grade: 0.7 },
+  afternoon: { ...TIMES.afternoon, grade: 0.9 },
+  noon: { ...TIMES.noon, grade: 0.45 },
   // (and night: a deep teal dark, the street lamps and windows and the bridge's own lights doing the rest)
   night: { ...TIMES.night, label: 'Night', sky: ['#020812', '#0a2236', '#163a4c'], fog: ['#0a1c26', 110, 560], hemi: ['#4a7896', '#14110e', 0.5], sun: ['#9fc4ff', 0.55, [25, 120, 18]], grade: 0.7 },
 };
 
 // ---------- World ----------
-let city = null, props = null, traffic = null, debris = null, oranges = null, player = null, guides = null, stacks = null, standIns = null;
+let city = null, props = null, traffic = null, debris = null, oranges = null, notes = null, blinkers = null, charges = null, player = null, guides = null, stacks = null, standIns = null;
 const crates = [];
 let halves = [];
 const G = { state: 'menu', t: 0, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0 };
 window.rush = G;
 
 // A traffic car: built plain, and only cut into small triangles (so it can crumple) when first hit
+const WRECKED = new THREE.Color('#7a7470');
 class Car extends Vehicle {
   build() {
     if (!this.def.lazy) return super.build();
@@ -167,7 +189,8 @@ class Car extends Vehicle {
   // A wreck keeps its colours, scorched darker (not the derby's charcoal: a pile-up should stay colourful)
   wreck() {
     super.wreck();
-    if (!this.burnt) this.model.userData.paint.color.set('#7a7470');
+    // (its paint as it was kept, for the reel to show it before)
+    if (!this.burnt) { this.fresh ??= this.model.userData.paint.color.clone(); this.model.userData.paint.color.set(WRECKED); }
   }
   // Blown up: burnt out, black all over (the livery's still there under the soot, just)
   burn() {
@@ -206,8 +229,72 @@ function makeTraffic(kind, R = G.rand) {
   v.gen = 0;
   v.colour = paintOf(paint);
   v.setLights(LOOKS[time].lamps);
+  if (def.cash) cashSides(v);
+  if (kind === 'tanker') sparksSides(v);
   return v;
 }
+
+// Every fuel tanker's the depot's: SPARKS on a panel along each side of its tank, the flame beside it
+let sparksTex = null;
+function sparksSides(v) {
+  if (!sparksTex) {
+    const cv = document.createElement('canvas');
+    cv.width = 1024; cv.height = 256;
+    const draw = () => {
+      const g = cv.getContext('2d');
+      g.fillStyle = '#11898c'; g.fillRect(0, 0, 1024, 256);
+      g.fillStyle = '#f4efe2'; g.fillRect(12, 12, 1000, 232);
+      g.fillStyle = '#ff8a1a'; g.fillRect(12, 214, 1000, 30);
+      sparksFlame(g, 150, 116, 1.75);
+      g.fillStyle = '#11898c'; g.textAlign = 'left'; g.textBaseline = 'middle';
+      fitText(g, 'SPARKS', 720, 170, "900 {}px 'Titillium Web', Impact, sans-serif");
+      g.fillText('SPARKS', 262, 118);
+    };
+    draw();
+    sparksTex = new THREE.CanvasTexture(cv);
+    sparksTex.colorSpace = THREE.SRGBColorSpace;
+    sparksTex.anisotropy = 4;
+    document.fonts?.load("900 50px 'Titillium Web'").then(() => { draw(); sparksTex.needsUpdate = true; }).catch(() => {});
+  }
+  // (round its middle, the flattest of it, between the cab and the hazard diamond at the back)
+  const mat = new THREE.MeshStandardMaterial({ map: sparksTex, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  for (const s of [-1, 1]) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(SPARKS.len, SPARKS.len / 4), mat);
+    m.rotation.y = s * Math.PI / 2;
+    m.position.set(s * SPARKS.x, SPARKS.y, SPARKS.z);
+    v.model.add(m);
+  }
+}
+const SPARKS = { x: 1.1, y: 1.15, z: 1.0, len: 2.9 };
+
+// Fiatmine's van: the coin and the name on its roof
+let cashTex = null;
+function cashSides(v) {
+  if (!cashTex) {
+    const cv = document.createElement('canvas');
+    cv.width = 512; cv.height = 160;
+    const draw = () => {
+      const g = cv.getContext('2d');
+      g.clearRect(0, 0, 512, 160);
+      coin(g, 80, 80, 62);
+      g.fillStyle = '#f2b632'; g.textAlign = 'left'; g.textBaseline = 'middle';
+      fitText(g, t('FIATMINE'), 340, 92, "900 {}px 'Cinzel', serif");
+      g.fillText(t('FIATMINE'), 160, 86);
+    };
+    draw();
+    cashTex = new THREE.CanvasTexture(cv);
+    cashTex.colorSpace = THREE.SRGBColorSpace;
+    document.fonts?.load("900 50px 'Cinzel'").then(() => { draw(); cashTex.needsUpdate = true; }).catch(() => {});
+  }
+  // (on the roof, across it, read from behind: where you see traffic from)
+  const w = v.def.size[0];
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.86, w * 0.27), new THREE.MeshStandardMaterial({ map: cashTex, transparent: true, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.set(0, ROOF, 0.4);
+  v.model.add(m);
+}
+const ROOF = 1.62;
+const fitText = (g, text, w, px, font) => { g.font = font.replace('{}', px); const m = g.measureText(text).width; if (m > w) g.font = font.replace('{}', Math.floor(px * w / m)); };
 
 function loadLevel(key) {
   if (city?.level === LEVELS[key]) return;
@@ -218,25 +305,51 @@ function loadLevel(key) {
   city.key = key;
   // (Dockside Drop's crane over the jetty, and the yacht beside it)
   if (city.level.crane) city.group.add(crane(city, city.level.crane));
+  // (and Mind the Gap's old bridge, what's left of it, and the crane lifting a piece of it out)
+  if (city.level.ruin) city.group.add(ruin(city, city.level.ruin));
   // (and Gridlock Leap's building site)
   if (city.level.fixtures) city.group.add(fixtures(city, city.level.fixtures));
   // (and Over the Edge's bridge, dressed up)
   if (city.level.gateway) city.group.add(city.gate = gateway(city, city.level.gateway));
   // (and Last Chance's sign up ahead, saying how far to the station)
   if (city.level.roadsign) city.group.add(roadsign(city, city.level.roadsign));
+  // (and Tanker Row's depot, and the warnings on the way to it)
+  if (city.level.depot) city.group.add(city.depot = depot(city, city.level.depot));
+  // (and Bank Shot's bank, across the avenue from the end of your road)
+  if (city.level.bank) city.group.add(bank(city, city.level.bank));
+  // (and its roadworks' gas and tar, waiting for a blast)
+  charges = city.level.charges ? new Charges(city, city.level.charges) : null;
+  if (charges) city.group.add(charges.group);
+  for (const W of city.level.warnings || []) city.group.add(warning(city, W));
   // (and Short Cut's film shoot, and its two famous corners)
   if (city.level.filmset) city.group.add(filmset(city, city.level.filmset));
-  G.boat?.dispose();
-  G.boat = city.level.boat ? new Boat(scene, city, city.level.boat) : null;
-  guides?.dispose();
-  guides = GUIDES ? new Guides(scene, city) : null;
+  for (const b of G.boats || []) b.dispose();
+  G.boats = [].concat(city.level.boat || []).map((B, i) => Object.assign(new Boat(scene, city, B), { i }));
+  drawLines();
   // (asked from half a metre up, about where a car's middle would be: a small piece lying on the quay has its middle
   // lower than the quay's edge takes for gone over it, see groundHeight, and would drop through the stone)
   debris = new Debris(scene, (x, z, y) => city.groundHeight(x, z, y + 0.5));
   oranges?.dispose();
   oranges = new Oranges(scene, (x, z, y) => city.groundHeight(x, z, y));
+  notes?.dispose();
+  notes = new Banknotes(scene, (x, z, y) => city.groundHeight(x, z, y));
+  blinkers?.dispose();
+  blinkers = new Blinkers(scene);
   time = timeFor(key);
   setLook(time);
+}
+
+// The medal lines: the way the best bronze, silver and gold runs kept went (from serve.py's run library)
+function drawLines() {
+  guides?.dispose();
+  guides = null;
+  if (!DEV || !devS.lines) return;
+  const C = city;
+  library().then(list => {
+    if (city !== C || guides || !devS.lines) return;
+    const routes = asRoutes(runsOf(list, C.key, C.level.medals));
+    if (routes.length) guides = new Guides(scene, C, routes);
+  });
 }
 
 function clearRun() {
@@ -252,11 +365,7 @@ function clearRun() {
   for (const h of halves) dropHalf(h);
   halves = [];
   debris?.clear();
-  smoke.clear(); glow.clear();
-  for (const s of scorches) dropMesh(s);
-  scorches.length = 0;
-  for (const r of rings) dropMesh(r.m);
-  rings.length = 0;
+  clearEffects();
 }
 // Take a one-off effect mesh out of the scene and free its geometry and material
 function dropMesh(m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
@@ -268,7 +377,6 @@ function startRun(pre) {
   const L = city.level;
   clearRun();
   dress(L);
-  G.boat?.reset();
   // Scripted: the same traffic every time, so a junction can be learned. The traffic always gets exactly
   // PRE_ALL seconds of driving before GO, however much of the intro you watch.
   G.rand = rng(L.seed * 7919 + 17);
@@ -391,6 +499,11 @@ function flame(p, size = 1) {
   glow.emit(p.x + (Math.random() - 0.5) * 0.6, p.y + 0.3, p.z + (Math.random() - 0.5) * 0.6, (Math.random() - 0.5), 2 + Math.random() * 2, (Math.random() - 0.5),
     { life: 0.35 + Math.random() * 0.3, size: size * (0.6 + Math.random() * 0.5), grow: -1.2, drag: 1, colour: Math.random() < 0.5 ? '#ff8a2e' : '#ffd060', alpha: 0.9 });
 }
+// A flame somewhere along a car that's gone up (it burns end to end)
+const _bf = new THREE.Vector3();
+function burning(v, size) {
+  flame(_bf.set((Math.random() - 0.5) * 1.6, 0.6, (Math.random() - 0.5) * v.len * 0.9).applyQuaternion(v.car.q).add(v.car.pos), size);
+}
 function glassBurst(p, n) {
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2, u = 2 + Math.random() * 5;
@@ -478,21 +591,21 @@ const DAMAGE = {
   fall: [t('Sky falls'), '#7fe0ff'],
   dent: [t('Dents'), '#ffd23a'], wreck: [t('Wrecked'), '#ff8a1e'], split: [t('Torn in half'), '#ff3d7a'],
   blast: [t('Blast'), '#ff2a2a'], splash: [t('Splashdown'), '#2ee6ff'], sunk: [t('Sunk'), '#3a7bff'], prop: [t('Street furniture'), '#9be36b'],
-  squeezed: [t('Squeezed'), '#ff9a1f'],
+  squeezed: [t('Squeezed'), '#ff9a1f'], bank: [t('Bank shot'), '#f2b632'],
 };
 const NAMES = Object.fromEntries(Object.entries({ hatch: 'Hatchback', coupe: 'Coupé', cab: 'Taxi', saloon: 'Saloon', suv: 'SUV', pickup: 'Pickup',
-  police: 'Police car', van: 'Van', garbage: 'Garbage truck', bus: 'Bus', tanker: 'Fuel tanker', lorry: 'Box lorry', flatbed: 'Flatbed' }).map(([k, n]) => [k, t(n)]));
+  police: 'Police car', van: 'Van', garbage: 'Garbage truck', bus: 'Bus', tanker: 'Fuel tanker', lorry: 'Box lorry', flatbed: 'Flatbed', cash: 'Cash van' }).map(([k, n]) => [k, t(n)]));
 function tally(v, type, p, pos) {
   const C = G.crash;
   // (`v`: a vehicle, the yacht, something with a row of its own in the ledger (`own`), or null for street furniture)
-  const key = v || 'props', boat = v && v === G.boat, own = v?.own;
+  const key = v || 'props', boat = v && G.boats.includes(v), own = v?.own;
   let e = C.ledger.get(key);
   if (!e) C.ledger.set(key, e = boat ? { name: t(v.B.name), colour: '#f4f2ec', gen: 0, by: {}, total: 0 }
     : own ? { name: t(own), colour: v.colour, gen: 0, by: {}, total: 0 }
     : v ? { name: NAMES[v.kind] || v.kind, colour: v.colour, gen: v.gen, by: {}, total: 0 } : { name: DAMAGE.prop[0], colour: '#9be36b', gen: 0, by: {}, total: 0 });
   e.by[type] = (e.by[type] || 0) + p;
   e.total += p;
-  G.rec?.event(G.t, 'score', { id: boat ? 'boat' : v ? v.id : 'props', what: type, pts: p, at: [pos.x, pos.y, pos.z].map(n => Math.round(n * 10) / 10) });
+  G.rec?.event(G.t, 'score', { id: boat ? 'boat' + (v.i || '') : v ? v.id : 'props', what: type, pts: p, at: [pos.x, pos.y, pos.z].map(n => Math.round(n * 10) / 10) });
   if (!v || own) C.spots.push({ pos: pos.clone(), p });
   let inc = C.incidents.find(i => !i.el && i.pos.distanceTo(pos) < 9);
   if (!inc) C.incidents.push(inc = { pos: pos.clone(), at: C.rt, total: 0, by: {}, n: 0 });
@@ -637,8 +750,8 @@ function blowUp(X) {
   X.boomT = null;
   X.blown = true;
   X.blownAt = G.t;
-  X.burn();
-  G.rec?.event(G.t, 'boom', { id: X.id, kind: X.kind });
+  scorched(X, true);
+  G.rec?.event(G.t, 'boom', { id: X.id, kind: X.kind, big: X.def.explosive ? 2 : 1 });
   // (a forecourt car: thrown up and out, and wrecked by it)
   if (X.launch) { launch(X); X.launchT = G.t; if (!X.wrecked && !X.halved) wreck(X, false); }
   const p = X.car.pos.clone(), big = X.def.explosive ? 2 : 1, R = 8 * big;
@@ -648,7 +761,9 @@ function blowUp(X) {
     X.car.vel.y += 7;
     X.car.w.add(_kick.set(G.rand() - 0.5, 0, G.rand() - 0.5).multiplyScalar(4));
   }
-  scoreEvent(X, 1500 * X.value, X.def.explosive ? 'TANKER BLAST' : 'BLAST', true, 'blast');
+  // (a cash van: the money everywhere, and a callout of its own)
+  if (X.def.cash) notes.burst(p, X.car.vel);
+  scoreEvent(X, 1500 * X.value, X.def.explosive ? 'TANKER BLAST' : X.def.cash ? 'CASH OUT' : 'BLAST', true, 'blast');
   blast(X, p, R, big);
 }
 
@@ -675,13 +790,43 @@ function blast(X, p, R, big) {
     }
   }
   startle(p, 70);
-  // (a blast beside the petrol station sets it off)
+  // (a blast beside the petrol station sets it off; or beside the roadworks' gas, or its tar)
   if (canLight(X) && atStation(p, 4)) ignite(p, X);
-  // (and a tanker going up beside the yacht sends it down)
-  if (X.def.explosive && G.boat && G.boat.dist(p) < SINK && G.boat.sink()) sunk(X);
+  if (charges && !G.ended) for (const k of charges.near(p, R)) charge(k, X);
+  // (and a tanker going up beside the yacht sends it down; the canal's boats, any blast that reaches them)
+  for (const b of G.boats) if ((b.B.frail ? b.dist(p) < R + 2 : X.def.explosive && b.dist(p) < SINK) && b.sink()) sunk(b, X);
   if (G.crash) spike(0.2, 1.1);
   G.shake = Math.max(G.shake, player && player.car.pos.distanceTo(p) < 40 ? 1 : 0.4);
 }
+
+// One of the level's charges going up (see charges.js), set off by X's blast: gone, and its bangs to come, each a blast
+// of its own (from it, one further down the chain than X); worth something once you've crashed, if it's yours
+function charge(k, X) {
+  charges.hide(k.i);
+  const gen = X === player ? 1 : X.gen ? X.gen + 1 : 0;
+  const src = { id: k.id, gen, car: { pos: k.p, vel: new THREE.Vector3(), w: new THREE.Vector3() }, def: {} };
+  for (const [delay, big, dx = 0, dz = 0] of k.pops) G.pops.push({ t: G.t + delay, k, src, big, at: k.p.clone().add(_kick.set(dx, 0, dz)) });
+  if (G.state === 'crash' && gen > 0 && k.pts) {
+    G.score += k.pts;
+    G.crash.quiet = 0;
+    tally({ own: k.name, id: k.id, colour: '#ff6a1a' }, 'blast', k.pts, k.p);
+    callout(`${t(k.callout)}<small>+${k.pts.toLocaleString()}</small>`, 'big');
+  }
+}
+function pops() {
+  for (let i = G.pops.length - 1; i >= 0; i--) {
+    const P = G.pops[i];
+    if (G.t < P.t) continue;
+    G.pops.splice(i, 1);
+    G.rec?.event(G.t, 'charge', { i: P.k.i, big: P.big, at: [P.at.x, P.at.y, P.at.z].map(n => Math.round(n * 10) / 10) });
+    explosion(P.at, P.big);
+    sound.boom(Math.min(1, 0.6 * P.big));
+    blast(P.src, P.at, 8 * P.big, P.big);
+  }
+}
+
+// (a bank shot: so long after coming off the bank, and what it's worth)
+const BANK_T = 3, BANK_PTS = 6000;
 
 // Down goes the yacht: its own score, its own line in the wreck report and its own heap on the tour
 const SINK = 22;
@@ -708,10 +853,10 @@ function fruit(at) {
   tally(STAND, 'squeezed', STAND_PTS, at);
   callout(`${t('FRESH SQUEEZED')}<small>+${STAND_PTS.toLocaleString()}</small>`, 'big');
 }
-function sunk(X) {
-  const B = G.boat, p = B.spot;
-  G.rec?.event(G.t, 'sunk', { by: X.id });
-  if (G.crash) G.crash.boatFrom = X.car.pos.clone();
+function sunk(B, X) {
+  const p = B.spot;
+  G.rec?.event(G.t, 'sunk', { by: X.id, boat: B.i });
+  if (G.crash) { G.crash.boatFrom = X.car.pos.clone(); G.crash.sank = B; }
   splash(p, 70);
   sound.splash();
   if (G.state !== 'crash' || G.ended) return;
@@ -719,7 +864,7 @@ function sunk(X) {
   G.score += pts;
   G.crash.quiet = 0;
   tally(B, 'sunk', pts, p);
-  callout(`${t('SHIP SUNK')}<small>+${pts.toLocaleString()}</small>`, 'big');
+  callout(`${t(B.B.callout || 'SHIP SUNK')}<small>+${pts.toLocaleString()}</small>`, 'big');
 }
 
 // The crash zone: around where you crashed, and the junction
@@ -765,6 +910,13 @@ function collided(A, B, h) {
     for (const v of [va, vb]) if (v && !v.gen) v.gen = 1;
   }
   if (base > 6) startle(h.point, base);
+  // A bank shot: off the bank and into something, within a few seconds (once each, for what came off it)
+  for (const [X, O] of [[A, B], [B, A]]) {
+    if (X.bankT == null || X.banked || G.t - X.bankT > BANK_T || base < 4 || O.half) continue;
+    X.banked = true;
+    const paid = O === player ? X : O;
+    scoreEvent(paid, BANK_PTS, 'BANK SHOT', true, 'bank');
+  }
   if (G.crash && base > 35 && G.t - (G.crash.lastSpike || 0) > 1.2) { G.crash.lastSpike = G.t; spike(0.3, 0.6); }
   if (base <= 0) return;
   if (va && vb) {
@@ -780,6 +932,9 @@ function collided(A, B, h) {
 
 function wallHit(v, w) {
   const dmg = damageFrom(w.impulse) * 0.6;
+  // (off Bank Shot's bank: what's thrown into it and comes off it into something else is a bank shot, see collided)
+  const K = city.level.bank;
+  if (K && G.crash && w.speed > 6 && Math.abs(w.point.x - K.x) < 23 && w.point.z < K.z + 5 && w.point.z > K.z - 31) v.bankT = G.t;
   if (v === player && G.state === 'run' && w.speed > 14) startCrash({ point: w.point, speed: w.speed, normal: w.normal }, null);
   if (w.speed > 4) { sparks(w.point, Math.min(30, 3 + dmg)); if (camera.position.distanceTo(w.point) < 40) sound.crunch(Math.min(1, dmg / 25)); }
   // (the city hands back the wall's normal pointing out of the wall, into the car: the way hurt() wants it)
@@ -797,12 +952,17 @@ function pillars(S) {
   if (!S) return [];
   return [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([i, k]) => ['pillar', S.x + i * (S.w / 2 - 1.2), S.z + k * (S.d / 2 - 1.2), 0]);
 }
-// The level's street furniture (the station's pumps and pillars among it) and its petrol station, fresh
+// The level's street furniture (the station's pumps and pillars among it) and its petrol station, fresh (and the
+// yacht afloat again: behind the menu too, not only in a run)
 function dress(L) {
   props?.dispose();
   props = new Props(scene, city, [...(L.props || []), ...pillars(L.station)]);
   props.lamps(LOOKS[time].lamps);
   oranges?.clear();
+  notes?.clear();
+  charges?.reset();
+  G.pops = [];
+  for (const b of G.boats) b.reset();
   buildStation(L.station);
 }
 // (its materials and textures are made once and kept: see station.js)
@@ -988,14 +1148,15 @@ function paid(v) {
   // (every fifth: there are a lot of them, and they go fast)
   else if (G.stacksDown % 5 === 0) callout(t('STACKS {0}/{1}', G.stacksDown, stacks.total));
 }
-// A long way down: hitting the ground (or what's on it) hard hurts, and from high up it's worth something
+// A long way down: hitting the ground (or what's on it) hard hurts, the harder the higher it came from, anything thrown
+// about in a crash (you too); and from high up, for something in yours, it's worth something
 function fall(v, ev) {
-  if (!G.crash || !v.gen || !ev) return;
+  if (!G.crash || !ev) return;
   // (coming down onto the ground, or a deck: not into a wall, see wallHit)
   const hit = Math.max(ev.under || 0, ev.ground || 0);
-  if (hit < 12) return;
-  hurt(v, null, (hit - 10) * 2, v.car.pos.clone(), DOWN);
-  if (hit > 20) scoreEvent(v, Math.round((hit - 18) * 60 * v.value), hit > 28 ? 'SKYFALL' : null, false, 'fall');
+  if (hit < 8) return;
+  hurt(v, null, (hit - 6) * 2, v.car.pos.clone(), DOWN);
+  if (v.gen && hit > 20) scoreEvent(v, Math.round((hit - 18) * 60 * v.value), hit > 28 ? 'SKYFALL' : null, false, 'fall');
 }
 // In the air off the big ramp: see DIVE_SLOW
 // (`vy0`, `sp0`: how you were going before this step's physics, which a landing has taken most of by now)
@@ -1150,10 +1311,10 @@ function detonate(full) {
   A.done = true;
   A.endT = G.crash.rt;
   const c = player.car, p = c.pos.clone(), big = full ? 2 : 0.6 + 1.4 * A.meter, R = 8 * big;
-  G.rec?.event(G.t, 'boom', { id: 'you', kind: settings.car });
+  G.rec?.event(G.t, 'boom', { id: 'you', kind: settings.car, big: Math.round(big * 100) / 100 });
   player.blown = true;
   player.blownAt = G.t;
-  player.burn();
+  scorched(player, true);
   // (a fat one: the fireball and two more bursting round it, a second shock wave, and a white-out)
   explosion(p, big);
   for (const s of [-1, 1]) explosion(new THREE.Vector3(G.rand() - 0.5, 0, G.rand() - 0.5).normalize().multiplyScalar(2.5 * s).add(p), big * 0.5);
@@ -1198,7 +1359,7 @@ function endCrash() {
   G.rec?.event(G.t, 'end', { score: G.score, heat: G.heat, total, medal, wrecked: G.wrecked, chain: G.chain });
   if (G.rec) { G.rec.next = 0; record(); }
   $('btn-send').classList.add('hidden');
-  if (G.rec) canSend().then(ok => { $('btn-send').classList.toggle('hidden', !ok); $('btn-send').disabled = false; $('btn-send').textContent = t('Send replay'); });
+  if (G.rec) canSend().then(ok => { $('btn-send').classList.toggle('hidden', !ok); $('btn-send').disabled = false; $('btn-send').textContent = t('Send replay'); if (ok && DEV) $('btn-send').onclick(); });
   startTour();
 }
 // This step for the replay: every vehicle, your inputs, and where the camera is looking
@@ -1386,7 +1547,7 @@ function step() {
   const running = G.state === 'run' || G.state === 'crash' || G.state === 'tour' || G.state === 'results';
   const c = player.car;
   const fwd = player.forward;
-  const focus = G.crash ? { x: G.crash.origin.x, z: G.crash.origin.z, dx: 0, dz: 0 } : { x: c.pos.x, z: c.pos.z, dx: fwd.x, dz: fwd.z };
+  const focus = G.crash ? { x: G.crash.origin.x, z: G.crash.origin.z, dx: 0, dz: 0 } : { x: c.pos.x, z: c.pos.z, dx: fwd.x, dz: fwd.z, sp: G.state === 'run' ? c.speed : 0 };
   const B = bodies();
   // (in a crash, whatever it's thrown about wakes the traffic it's heading for, however far it flies, and still does
   // once it's lying in the road: a sleeper glides on its lane, through anything that isn't)
@@ -1397,7 +1558,7 @@ function step() {
   else if (running) {
     const steering = G.crash?.aim && !G.crash.aim.done;
     if (steering) aim(G.crash.aim, c);
-    c.step(DT, steering ? NONE : coast(c));
+    fall(player, c.step(DT, steering ? NONE : coast(c)));
   }
   {
     for (const v of traffic.list) {
@@ -1406,13 +1567,14 @@ function step() {
       if (v.rest) { if (v.boomT != null && (v.boomT -= DT) <= 0) { v.rest = false; blowUp(v); } continue; }
       v.car.wallHit = null;
       const ev = v.car.step(DT, v.wrecked || !v.alive ? coast(v.car) : v.input || NONE);
-      if (stacks) fall(v, ev);
+      fall(v, ev);
       if (v.stack) settle(v);
       if (v.car.wallHit) wallHit(v, v.car.wallHit);
       water(v);
       if (v.boomT != null && (v.boomT -= DT) <= 0) blowUp(v);
     }
     if (running && c.wallHit) { wallHit(player, c.wallHit); c.wallHit = null; }
+    if (G.pops?.length) pops();
     if (running) water(player);
     for (const h of halves) { h.car.step(DT, coast(h.car)); water(h); }
     const all = bodies();
@@ -1465,7 +1627,13 @@ function step() {
       if ((k.prop.kind === 'pump' || k.prop.kind === 'pillar') && canLight(k.vehicle) && k.vehicle.car.vel.length() > 8) ignite(k.vehicle.car.pos, k.vehicle);
     }
     station(all);
-    G.boat?.update(DT, (p, n) => splash(p, n));
+    for (const b of G.boats) {
+      b.update(DT, (p, n) => splash(p, n));
+      // (the canal's boats go down under a wreck too: anything in your crash coming down on one, or going into it)
+      if (!b.B.frail || b.sunk || G.state !== 'crash' || G.ended) continue;
+      const X = all.find(o => (o === player || o.gen > 0) && b.dist(o.car.pos) < 0.4 && o.car.pos.y < b.y + Math.max(...b.B.parts.map(P => P.up)) + 2);
+      if (X && b.sink()) sunk(b, X);
+    }
     if (G.state === 'run') {
       G.oncoming = oncoming();
       nearMisses();
@@ -1519,7 +1687,8 @@ window.addEventListener('keydown', e => {
   keys.add(e.code);
   sound.init();
   if (e.repeat) return;
-  if (e.code === 'KeyR' && city && G.state !== 'menu') startRun(PRE_RETRY);
+  if (DEV && devKey(e)) return;
+  if (e.code === 'KeyR' && city && G.state !== 'menu' && G.state !== 'replay') startRun(PRE_RETRY);
   if (e.code === 'Escape') { if (G.state === 'paused') resume(); else if (['run', 'crash', 'count', 'intro'].includes(G.state)) pause(); }
   if (e.code === 'KeyM') sound.setMuted(!sound.muted);
   if (G.state === 'intro' && ['Space', 'Enter', 'ArrowUp', 'KeyW'].includes(e.code)) { skipTo(PRE_COUNT); G.state = 'count'; }
@@ -1666,6 +1835,31 @@ function together(all, ks, anchor) {
   for (const { p } of big) r = Math.max(r, Math.hypot(p.x - _wc.x, p.z - _wc.z));
   return { at: _wc, r: r + 5, pts: big.map(i => i.p) };
 }
+// On a level whose crash is spread wide (a chain going off all along a street, `overview.after` seconds after your car's
+// gone up, seen from `overview.from`, the way round it the camera stays: 0 from +z): everything the crash has touched, the latest most (the last few seconds' worth, a fuse burning along), its
+// middle and how far it spreads, for one shot over all of it instead of cutting from blast to blast
+const OVERVIEW_MIN = 24, OVERVIEW_MAX = 52;
+function overview() {
+  _wc.set(0, 0, 0);
+  const pts = [];
+  let w = 0;
+  for (const v of traffic.list) {
+    if (!(v.gen > 0) || v.touchT == null) continue;
+    const k = 1 / (1 + Math.max(0, G.t - v.touchT) / 3);
+    _wc.addScaledVector(v.car.pos, k);
+    w += k;
+    pts.push([v.car.pos, k]);
+  }
+  if (!w) return null;
+  _wc.divideScalar(w);
+  // (how far out: past the middle of the weight, the fresh ones counting, the long-done ends of the street not)
+  let r = 0;
+  for (const [p, k] of pts) if (k > 0.35) r = Math.max(r, Math.hypot(p.x - _wc.x, p.z - _wc.z));
+  pts.sort((a, b) => b[1] - a[1]);
+  // (what has to be in sight: the freshest few, in the frame; not a wreck thrown off over the roofs)
+  const R = clamp(r + 8, OVERVIEW_MIN, OVERVIEW_MAX);
+  return { at: _wc, r: R, max: OVERVIEW_MAX, pts: pts.filter(([p]) => Math.hypot(p.x - _wc.x, p.z - _wc.z) < R).slice(0, 5).map(([p]) => p) };
+}
 // For the opening shot: the junction, which way your road runs to it (u), and which way is the middle of the
 // road from your car (w)
 function intro() {
@@ -1700,7 +1894,7 @@ function heaps() {
   for (const [v, e] of C.ledger) {
     if (v === 'props') continue;
     // (the yacht: a heap of its own, where it went down)
-    if (v === G.boat) { items.push({ pos: v.spot, pts: e.total, by: e.by, boat: true }); continue; }
+    if (G.boats.includes(v)) { items.push({ pos: v.spot, pts: e.total, by: e.by, boat: v }); continue; }
     const hs = halves.filter(h => h.owner === v);
     // (not one that's driven on out of it and gone: there's nothing left there to see)
     if (!hs.length && !traffic.list.includes(v)) continue;
@@ -1714,7 +1908,7 @@ function heaps() {
   const D = city.deck, over = y => !D || y > D.y - 1.6;
   // (and the yacht's never one with anything else)
   const apart = (a, b) => Math.hypot(a.x - b.x, a.z - b.z) + (over(a.y) !== over(b.y) || Math.abs(a.y - b.y) > 6 || a.boat !== b.boat ? 1000 : 0);
-  let gs = items.map(i => ({ items: [i], x: i.pos.x, y: i.pos.y, z: i.pos.z, boat: !!i.boat }));
+  let gs = items.map(i => ({ items: [i], x: i.pos.x, y: i.pos.y, z: i.pos.z, boat: i.boat || null }));
   for (;;) {
     let bi = -1, bj = -1, bd = Infinity;
     for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++) {
@@ -1767,7 +1961,8 @@ function heapName(g, top, used) {
   const C = G.crash, n = g.cars.length, by = t => (g.by[t] || 0) / g.pts;
   const far = Math.hypot(g.c.x - C.origin.x, g.c.z - C.origin.z) > 35;
   const out = [];
-  if (g.items.some(i => i.boat)) out.push(['Abandon Ship', 'Not So Unsinkable', 'Davy Jones', 'Man Overboard', 'Sleeping with the Fishes']);
+  const boat = g.items.find(i => i.boat)?.boat;
+  if (boat) out.push(boat.B.titles || ['Abandon Ship', 'Not So Unsinkable', 'Davy Jones', 'Man Overboard', 'Sleeping with the Fishes']);
   if (top && n >= 8) out.push(['The Big Pile', 'Mount Crumple', 'Rush Hour Lasagne', 'The Insurance Claim', 'Scrapheap Summit']);
   if (top && n >= 3) out.push(['The Pile', 'The Car Salad', 'Knotted Up', 'Stacked Deck', 'Some Assembly Required']);
   if (by('splash') > 0.3) out.push(n > 1 ? ['The Deep End', 'Swimming Lessons', 'Park and Swim', 'Sunk Costs', 'Car Wash Deluxe']
@@ -1831,6 +2026,8 @@ function startTour() {
   }
   const T = G.tour = { gs, t: -HOLD, end: gs.length > 1 ? gs.length * HEAP : gs.length, centre, D: clamp(14 + spread * 1.1, 20, 60), from: p.clone(), fromLook: (C.look || C.focus).clone(),
     fromD: Math.hypot(p.x - first.x, p.z - first.z), az0: Math.atan2(p.x - first.x, p.z - first.z), look: centre.clone(), max: Math.max(1, ...gs.map(g => g.pts)) };
+  // (on Tanker Row, first the chain going up again: see the reel)
+  T.reel = startReel();
   // How high each move to a heap has to go to clear the roofs under the way it takes (the way it would take down at
   // street level, followed through: every building it would cross, and anything beside them)
   const look = new THREE.Vector3(), at = new THREE.Vector3(), was = new THREE.Vector3(), each = T.end / Math.max(1, gs.length);
@@ -1857,7 +2054,105 @@ function outOfBlocks(p) {
   return p;
 }
 // Enter (or Start) skips the rest of it, to the results
-function skipTour() { G.tour.t = Math.max(G.tour.t, G.tour.end); }
+function skipTour() {
+  // (the reel first, if it's on: then the tour)
+  if (G.tour.reel) return endReel();
+  G.tour.t = Math.max(G.tour.t, G.tour.end);
+}
+
+// ---------- The reel ----------
+// A level's `reel` ({ kind, min, eyes: [[x, y, z]] }): when the crash set off a chain of `min` or more of `kind`, before
+// the tour the chain goes up again, slowed down, from whichever of the `eyes` is nearer where it started (on Tanker
+// Row, up in a corner of the depot's yard, along the row with the town behind), a long lens following it along; then
+// everything's put back the way it ended up. It's the run's own recording (see replay.js), and the world stands still
+// for the tour: posing the wrecks from it disturbs nothing.
+const REEL_SPEED = 0.45;
+function startReel() {
+  const R = city.level.reel, rec = G.rec;
+  if (!R || !rec?.frames.length) return null;
+  const booms = rec.events.filter(e => e.type === 'boom' && e.kind === R.kind);
+  if (booms.length < R.min) return null;
+  const t0 = booms[0].t - 0.6, t1 = Math.min(booms[booms.length - 1].t, booms[0].t + 3.5) + 1.2;
+  const byId = new Map([['you', player], ...traffic.list.map(v => [v.id, v]), ...halves.map(h => [h.id, h])]);
+  // (where each of them is now, to go back to)
+  const saved = [...byId.values()].map(v => [v, v.car.pos.clone(), v.car.q.clone(), v.model.visible]);
+  // Where they went up: the first, and the middle of them all
+  const at = booms.filter(e => e.t <= t1).map(e => reelFrame(rec, e.t).b.find(b => b[0] === e.id)).filter(Boolean).map(b => new THREE.Vector3(b[1], b[2], b[3]));
+  const centre = at.reduce((c, p) => c.add(p), new THREE.Vector3()).divideScalar(at.length);
+  const eye = new THREE.Vector3(...R.eyes.reduce((e, f) => (_w.set(f[0], at[0].y, f[2]).distanceTo(at[0]) < _rp.set(e[0], at[0].y, e[2]).distanceTo(at[0]) ? f : e)));
+  // (the smoke and fire the crash left hanging, cleared: the chain's own come back as it goes)
+  clearEffects();
+  const el = document.createElement('div');
+  el.className = 'reel';
+  el.innerHTML = `<span class="rec">${t('REPLAY')}</span><b>${t('AND AGAIN, FROM THE TOP')}</b>`;
+  $('pops').appendChild(el);
+  $('hud').classList.add('touring');
+  return { t: t0, t0, t1, booms: booms.filter(e => e.t <= t1), next: 0, byId, saved, eye, first: at[0], centre, look: at[0].clone(), el };
+}
+// The recorded frame at or before t
+function reelFrame(rec, t) {
+  const F = rec.frames;
+  let lo = 0, hi = F.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (F[m].t <= t) lo = m; else hi = m - 1; }
+  return F[lo];
+}
+const _rq = new THREE.Quaternion(), _rp = new THREE.Vector3();
+function reelTick(raw) {
+  const L = G.tour.reel, rec = G.rec, dt = raw * REEL_SPEED;
+  L.t += dt;
+  if (L.t >= L.t1) return endReel();
+  // Everything where it was then (between two frames), burnt or not yet
+  const a = reelFrame(rec, L.t), b = rec.frames[Math.min(rec.frames.indexOf(a) + 1, rec.frames.length - 1)];
+  const k = b.t > a.t ? clamp((L.t - a.t) / (b.t - a.t), 0, 1) : 0, next = new Map(b.b.map(e => [e[0], e]));
+  for (const v of L.byId.values()) v.model.visible = false;
+  for (const e of a.b) {
+    const v = L.byId.get(e[0]), f = next.get(e[0]) || e;
+    if (!v) continue;
+    v.car.pos.set(e[1], e[2], e[3]).lerp(_rp.set(f[1], f[2], f[3]), k);
+    v.car.q.set(e[4], e[5], e[6], e[7]).normalize().slerp(_rq.set(f[4], f[5], f[6], f[7]).normalize(), k);
+    if (v.pose) v.pose(); else { v.model.position.copy(v.car.pos); v.model.quaternion.copy(v.car.q); }
+    v.model.visible = !(e[8] & FLAGS.halved);
+    reelLook(v, e[8]);
+  }
+  // and each blast as it comes
+  while (L.next < L.booms.length && L.booms[L.next].t <= L.t) {
+    const e = L.booms[L.next++], v = L.byId.get(e.id);
+    if (!v) continue;
+    explosion(v.car.pos, e.big || 2);
+    sound.boom(0.6);
+  }
+  // The camera: a long lens on the first, easing round and opening out to take in the rest as they go, and drifting
+  // in a little
+  const u = clamp((L.t - L.t0) / (L.t1 - L.t0), 0, 1), e = u * u * (3 - 2 * u);
+  L.look.lerpVectors(L.first, L.centre, e);
+  camera.position.copy(L.eye).lerp(L.look, u * 0.08);
+  camera.up.set(0, 1, 0);
+  camera.lookAt(_rp.copy(L.look).setY(L.look.y + 1));
+  camera.fov = stage.fitFov(30 + 18 * e);
+  camera.updateProjectionMatrix();
+  stage.focusSun(L.look, 70);
+  smoke.update(dt, camera, renderer.domElement.height);
+  glow.update(dt, camera, renderer.domElement.height);
+  spreadRings(dt);
+}
+// How it looked by its `flags` then: burnt out, or wrecked (greyed), or as it came
+function reelLook(v, flags) {
+  if (v.paints) scorched(v, !!(flags & FLAGS.blown));
+  if (v.fresh && !(flags & FLAGS.blown)) v.model.userData.paint.color.copy(flags & FLAGS.wrecked ? WRECKED : v.fresh);
+}
+// Everything back the way it ended up, and on with the tour
+function endReel() {
+  const L = G.tour.reel;
+  for (const [v, p, q, shown] of L.saved) {
+    v.car.pos.copy(p); v.car.q.copy(q);
+    if (v.pose) v.pose(); else { v.model.position.copy(p); v.model.quaternion.copy(q); }
+    v.model.visible = shown;
+    reelLook(v, (v.wrecked ? FLAGS.wrecked : 0) | (v.blown ? FLAGS.blown : 0));
+  }
+  L.el.remove();
+  clearEffects();
+  G.tour.reel = null;
+}
 // Where the camera looks at a heap from: `a` round it, `D` out and up (`up`: 0, at the usual angle; 1, much more
 // steeply down on it)
 const tourSpot = (c, a, D, out, up = 0) => out.set(c.x + Math.sin(a) * D * (1 - 0.6 * up), c.y + 3 + D * (0.5 + 0.7 * up), c.z + Math.cos(a) * D * (1 - 0.6 * up));
@@ -1918,9 +2213,10 @@ function tourCamera(rawDt) {
 function heapLabel(g) {
   const el = document.createElement('div'), k = g.pts / G.tour.max;
   el.className = 'heap';
-  const cars = g.cars.length, props = g.items.length - cars;
+  // (the yacht's no street furniture: it's named)
+  const cars = g.cars.length, boat = g.items.some(i => i.boat), props = g.items.length - cars - (boat ? 1 : 0);
   const what = cars === 1 ? NAMES[g.cars[0].v.kind] + (g.wrecked ? t(' · wrecked') : '') : cars ? t('{0} vehicles', cars) + (g.wrecked ? t(' · {0} wrecked', g.wrecked) : '') : '';
-  const sub = [what, props ? t('{0} street furniture', props) : ''].filter(Boolean).join(' · ');
+  const sub = [boat ? t(g.items.find(i => i.boat).boat.B.name) : '', what, props ? t('{0} street furniture', props) : ''].filter(Boolean).join(' · ');
   el.innerHTML = `<div class="in"><b>${g.name}</b><span style="font-size:${Math.round(34 + 30 * k)}px;color:hsl(${Math.round(52 - 50 * k)}, 100%, ${Math.round(62 - 8 * k)}%)">+${g.pts.toLocaleString()}</span><small>${sub}</small></div>`;
   for (const o of G.tour.gs) o.el?.classList.add('old');
   $('pops').appendChild(el);
@@ -2035,17 +2331,18 @@ function liftOver(p, b, cap = Infinity) {
 // its name is), drifting in a little; then a cut back to the crash cam
 const _bs = new THREE.Vector3();
 function boatShot(rawDt) {
-  const C = G.crash, b = G.boat.B, f = C.boatFrom, W = city.water.y;
+  const C = G.crash, b = C.sank.B, f = C.boatFrom, W = city.water.y;
   if (!C.boatCam) {
     let dx = b.x - f.x, dz = b.z - f.z;
     const l = Math.hypot(dx, dz) || 1;
     dx /= l; dz /= l;
     // (square to that, the way that's toward the shore: the water's on the -z side of it)
     const k = dx < 0 ? 1 : -1, px = dz * k, pz = -dx * k;
-    C.boatCam = { p: new THREE.Vector3(b.x + dx * 16 + px * 14, W + 7, b.z + dz * 16 + pz * 14), l: new THREE.Vector3(b.x * 0.75 + f.x * 0.25, W + 1.5, b.z * 0.75 + f.z * 0.25) };
+    // (or out over the open water from it, for a boat moored along a wall)
+    C.boatCam = { p: b.out ? new THREE.Vector3(b.x + b.out[0] * 20 - dx * 6, W + 7, b.z + b.out[1] * 20 - dz * 6) : new THREE.Vector3(b.x + dx * 16 + px * 14, W + 7, b.z + dz * 16 + pz * 14), l: new THREE.Vector3(b.x * 0.75 + f.x * 0.25, W + 1.5, b.z * 0.75 + f.z * 0.25) };
     camera.position.copy(C.boatCam.p);
   }
-  const k = G.boat.sunk.t / BOAT_SHOT;
+  const k = C.sank.sunk.t / BOAT_SHOT;
   _bs.copy(C.boatCam.p).lerp(C.boatCam.l, 0.18 * k);
   camera.position.lerp(_bs, 1 - Math.exp(-rawDt * 4));
   clear(C.boatCam.l, camera.position);
@@ -2197,7 +2494,7 @@ function updateCamera(dt, rawDt) {
     _l.copy(c.pos).addScaledVector(cam.dir, 12).setY(c.pos.y);
     camera.lookAt(_l);
     fov = 68;
-  } else if (G.crash && G.state !== 'run' && G.boat?.sunk && G.boat.sunk.t < BOAT_SHOT && G.crash.boatFrom) {
+  } else if (G.crash && G.state !== 'run' && G.crash.sank?.sunk && G.crash.sank.sunk.t < BOAT_SHOT && G.crash.boatFrom) {
     boatShot(rawDt);
     fov = 50;
   } else if (G.crash && G.state !== 'run') {
@@ -2220,9 +2517,12 @@ function updateCamera(dt, rawDt) {
     // (round what it's framing already, so it can drift along with the action; else round what it's watching)
     // (each shot held a while, wide or not: none in for under 2 s, out again, and in again)
     C.wideT = (C.wideT || 0) + rawDt;
-    const T = together(all, ks, C.wide ? C.wide.at : C.subject ? C.subject.car.pos : C.focus);
+    const over = city.level.overview && since >= city.level.overview.after;
+    const T = over ? overview() : together(all, ks, C.wide ? C.wide.at : C.subject ? C.subject.car.pos : C.focus);
+    // (overview: once it's up there it stays, the whole crash long)
+    if (over) { if (T && !C.wide) { C.wide = { at: T.at.clone(), r: T.r, max: T.max, from: city.level.overview.from }; C.wideA = null; } C.wideT = C.wideOff = 0; }
     // (but never for long: past WIDE_HOLD it's back in, for a full shot, however much is still going on)
-    if (T && (C.wide ? C.wideT <= WIDE_HOLD : C.wideT > 2 && C.cutT > (C.wideBack || 2))) { if (!C.wide) { C.wide = { at: T.at.clone(), r: T.r }; C.wideT = 0; C.wideBack = 0; } C.wideOff = 0; }
+    else if (T && (C.wide ? C.wideT <= WIDE_HOLD : C.wideT > 2 && C.cutT > (C.wideBack || 2))) { if (!C.wide) { C.wide = { at: T.at.clone(), r: T.r }; C.wideT = 0; C.wideBack = 0; } C.wideOff = 0; }
     else if (C.wide && ((C.wideOff = (C.wideOff || 0) + rawDt) > 1.5 && C.wideT > SHOT || C.wideT > WIDE_HOLD)) {
       if (C.wideT > WIDE_HOLD) C.wideBack = SHOT;
       C.wide = null;
@@ -2236,7 +2536,8 @@ function updateCamera(dt, rawDt) {
       C.cutT = C.cutS = C.restT = 0;
     }
     // (and it drifts with the action slowly: a gentle move, not a lurch each time the crashes regroup)
-    if (C.wide && T) { C.wide.at.lerp(T.at, 1 - Math.exp(-rawDt * 0.8)); C.wide.r += (T.r - C.wide.r) * (1 - Math.exp(-rawDt * 1)); C.wide.pts = T.pts.map(p => p.clone()); }
+    // (the overview slower still: it's following a fuse along a street, not a scuffle)
+    if (C.wide && T) { const q = over ? 0.45 : 1; C.wide.at.lerp(T.at, 1 - Math.exp(-rawDt * 0.8 * q)); C.wide.r += (T.r - C.wide.r) * (1 - Math.exp(-rawDt * q)); C.wide.pts = T.pts.map(p => p.clone()); }
     if (since < FOLLOW_YOU) {
       if (C.subject !== player) { C.subject = player; C.side = 1; }
     } else {
@@ -2272,10 +2573,11 @@ function updateCamera(dt, rawDt) {
     let look;
     if (C.wide) {
       // From up and back, on the side the camera's already on, turning slowly; far enough out to fit it all
-      const W = C.wide, r = Math.min(WIDE_MAX, W.r), D = r / Math.sin(THREE.MathUtils.degToRad(camera.fov) / 2) + 4;
-      if (C.wideA == null) { C.wideA = C.wideGoal = Math.atan2(camera.position.x - W.at.x, camera.position.z - W.at.z); C.wideLook = 0; }
-      C.wideA += rawDt * 0.08;
-      C.wideGoal += rawDt * 0.08;
+      const W = C.wide, r = Math.min(W.max || WIDE_MAX, W.r), D = r / Math.sin(THREE.MathUtils.degToRad(camera.fov) / 2) + 4;
+      // (the overview from the level's side of it, still: a slow turn about the whole street only swings the smoke
+      // across it)
+      if (C.wideA == null) { C.wideA = C.wideGoal = W.from ?? Math.atan2(camera.position.x - W.at.x, camera.position.z - W.at.z); C.wideLook = 0; }
+      if (W.from == null) { C.wideA += rawDt * 0.08; C.wideGoal += rawDt * 0.08; }
       _l.copy(W.at);
       // (`up`: 0, up and back; 1, nearly straight down)
       const spot = (a, up) => _c.set(W.at.x + Math.sin(a) * D * (0.8 - 0.6 * up), W.at.y + D * (0.55 + 0.4 * up), W.at.z + Math.cos(a) * D * (0.8 - 0.6 * up));
@@ -2292,7 +2594,10 @@ function updateCamera(dt, rawDt) {
         if (lower != null) C.wideUpGoal = lower;
         else if (hidden(C.wideGoal, up0)) {
           let up = 0, a0 = C.wideGoal;
-          search: for (const u of [0, 0.5, 1]) {
+          // (the overview higher first, where it is, before it goes round: it's there to keep its side)
+          const still = W.from != null && [0.5, 1].find(u => u > up0 && !hidden(a0, u));
+          if (still) up = still;
+          else search: for (const u of [0, 0.5, 1]) {
             for (let i = 0; i <= 8; i++) {
               const a = a0 + Math.ceil(i / 2) * 0.4 * (i % 2 ? 1 : -1);
               if (!hidden(a, u)) { C.wideGoal = a; up = u; break search; }
@@ -2431,7 +2736,7 @@ function updateLines(k) {
   lines.g.attributes.color.needsUpdate = true;
 }
 
-const setLook = key => { stage.setTime(key, LOOKS[key]); post.mat.uniforms.grade.value = LOOKS[key].grade; city?.gate?.lamps(LOOKS[key].lamps); props?.lamps(LOOKS[key].lamps);
+const setLook = key => { stage.setTime(key, LOOKS[key]); post.mat.uniforms.grade.value = LOOKS[key].grade; city?.gate?.lamps(LOOKS[key].lamps); city?.depot?.lamps(LOOKS[key].lamps); props?.lamps(LOOKS[key].lamps);
   rain.lines.visible = !!LOOKS[key].rain;
   if (city) city.wet = !!LOOKS[key].rain;
 };
@@ -2495,7 +2800,7 @@ function effects(dt, rawDt) {
     // A blown one burns end to end, roaring at first and dying down to flickers
     if (v.blown) {
       const roar = G.t - v.blownAt < 8;
-      if (Math.random() < dt * (roar ? 70 : 25)) flame(_w.set((Math.random() - 0.5) * 1.6, 0.6, (Math.random() - 0.5) * v.len * 0.9).applyQuaternion(c.q).add(c.pos), roar ? 2 : 1.2);
+      if (Math.random() < dt * (roar ? 70 : 25)) burning(v, roar ? 2 : 1.2);
     }
     if (!v.alive) {
       const age = G.t - v.diedAt;
@@ -2535,6 +2840,9 @@ function effects(dt, rawDt) {
     for (let k = 0; k < 3; k++) smoke.emit(g.p.x, g.p.y + 0.5, g.p.z, (Math.random() - 0.5) * 1.5, 9 + Math.random() * 4, (Math.random() - 0.5) * 1.5,
       { life: 1.3, size: 0.5, grow: 1.2, gravity: 9, colour: '#dff3ff', alpha: 0.7 });
   }
+  spreadRings(dt);
+}
+function spreadRings(dt) {
   for (let i = rings.length - 1; i >= 0; i--) {
     const r = rings[i];
     r.t += dt;
@@ -2619,6 +2927,7 @@ function updateHud(dt) {
 // ---------- Screens ----------
 function showScreen(id) {
   for (const s of ['menu', 'results', 'pause', 'help']) $(s).classList.toggle('hidden', s !== id);
+  document.body.classList.toggle('screen', !!id);
 }
 // The engine, skid and boost are loops: silence them whenever the game stops updating them
 function muteLoops() { sound.engine(0, 0, false); sound.skid(0); sound.boost(0); }
@@ -2648,13 +2957,19 @@ function startTraffic() {
 function renderMenu() {
   const box = $('levels');
   box.innerHTML = '';
+  // (in dev mode, the released tracks and then the ones in development)
+  const order = DEV ? [['Released', false], ['In development', true]] : [[null, false]];
+  for (const [head, draft] of order) {
+  if (head) box.insertAdjacentHTML('beforeend', `<h4>${head}</h4>`);
   for (const [key, L] of Object.entries(LEVELS)) {
+    if (!!L.draft !== draft) continue;
     const b = document.createElement('button');
     const medal = records.medals[key] || 0, best = records.best[key];
-    b.className = key === settings.level ? 'active' : '';
+    b.className = (key === settings.level ? 'active' : '') + (L.draft ? ' dev-only' : '');
     b.innerHTML = `<b>${t(L.name)}</b><span>${t(L.blurb)}</span><em class="m${medal}">${best ? best.toLocaleString() : t('not played')}</em>`;
     b.onclick = () => { settings.level = key; saveSettings(); loadLevel(key); startTraffic(); renderMenu(); };
     box.appendChild(b);
+  }
   }
   const cars = $('cars');
   cars.innerHTML = '';
@@ -2692,13 +3007,22 @@ $('btn-send').onclick = async () => {
   if (!rec) return;
   b.disabled = true;
   b.textContent = t('Sending…');
-  try { b.textContent = t('Sent ✓ {0}', await send(rec)); } catch (e) { b.textContent = t('Not sent: {0}', e.message); b.disabled = false; }
+  try { b.textContent = t('Sent ✓ {0}', await send(rec)); } catch (e) { b.textContent = t('Not sent: {0}', e.message); b.disabled = false; return; }
+  // (and into the run library: the medal lines may have changed)
+  if (DEV) { library(true); drawLines(); }
 };
 $('btn-resume').onclick = resume;
 $('btn-quit').onclick = toMenu;
 $('btn-help').onclick = () => showScreen('help');
+// (dev mode's switch: where it would come on by itself, or wherever it's on)
+if (LOCAL || DEV) {
+  const b = Object.assign(document.createElement('button'), { className: 'link', textContent: DEV ? 'Dev mode: on (switch off)' : 'Dev mode: off (switch on)' });
+  b.style.marginLeft = '16px';
+  b.onclick = () => setDev(!DEV);
+  $('btn-help').after(b);
+}
 $('btn-help-close').onclick = () => { store.save('rush.seenHelp', true); showScreen(G.state === 'menu' ? 'menu' : null); };
-window.addEventListener('keydown', e => { if (G.state === 'menu' && e.code === 'Enter' && $('help').classList.contains('hidden')) $('btn-go').onclick(); });
+window.addEventListener('keydown', e => { if (G.state === 'menu' && !free.on && e.code === 'Enter' && $('help').classList.contains('hidden')) $('btn-go').onclick(); });
 
 // ---------- Main loop ----------
 let last = performance.now(), acc = 0;
@@ -2716,7 +3040,44 @@ function frame(now) {
 function tick(raw, draw = true) {
   // (the guide lines show up to the crash, not over the wreckage)
   // (paused, by what it was paused from)
-  if (guides) guides.group.visible = ['menu', 'intro', 'count', 'run'].includes(G.state === 'paused' ? G.paused : G.state);
+  if (guides) guides.group.visible = ['menu', 'intro', 'count', 'run', 'replay'].includes(G.state === 'paused' ? G.paused : G.state);
+  // A run being watched (dev mode): from the camera that was used, or the free one
+  if (G.state === 'replay') {
+    // (`shown`: the time the last frame showed, before the bar's slider or play button moved it; `from`, before this
+    // frame's playing on)
+    const W = watching, shown = W.shown ?? W.bar.t, from = W.bar.t, fx = W.bar.fx;
+    W.bar.advance(raw);
+    W.seek(W.bar.t, free.on ? false : null, false, fx);
+    // (with its effects on: the blasts and sparks it went through as it played, the fires, the smoke; back, or off,
+    // and they're cleared)
+    if (W.bar.t < shown || (W.fxWas && !fx)) clearEffects();
+    W.fxWas = fx;
+    W.shown = W.bar.t;
+    if (fx) {
+      const dt = raw * W.bar.speed;
+      if (W.bar.t > from) W.fx(from, W.bar.t, dt);
+      smoke.update(dt, camera, renderer.domElement.height);
+      glow.update(dt, camera, renderer.domElement.height);
+      spreadRings(dt);
+    }
+    if (free.on) free.update(raw);
+    rain.update(raw, camera.position);
+    if (draw) post.render();
+    return;
+  }
+  // (and Tanker Row's reel, before the tour: the world held, the chain played again)
+  if (G.tour?.reel && G.state === 'tour' && !free.on) {
+    reelTick(raw);
+    if (draw) post.render();
+    return;
+  }
+  // (and the free camera: the run held where it is while you look round)
+  if (free.on && G.state !== 'menu') {
+    free.update(raw);
+    rain.update(raw, camera.position);
+    if (draw) post.render();
+    return;
+  }
   if (G.state === 'menu') {
     // The junction, from above, with its traffic going about its business
     cam.menuA += raw * 0.05;
@@ -2735,11 +3096,14 @@ function tick(raw, draw = true) {
     mark.update();
     // (from over the roofs: Tower Dive's junction is a sky deck)
     const gy = city.groundHeight(jx, jz, 1e4);
-    camera.position.set(jx + Math.sin(cam.menuA) * 46, gy + 24, jz + Math.cos(cam.menuA) * 46);
-    camera.up.set(0, 1, 0);
-    camera.lookAt(jx, gy, jz);
-    camera.fov = stage.fitFov(55);
-    camera.updateProjectionMatrix();
+    if (free.on) free.update(raw);
+    else {
+      camera.position.set(jx + Math.sin(cam.menuA) * 46, gy + 24, jz + Math.cos(cam.menuA) * 46);
+      camera.up.set(0, 1, 0);
+      camera.lookAt(jx, gy, jz);
+      camera.fov = stage.fitFov(55);
+      camera.updateProjectionMatrix();
+    }
     stage.focusSun(new THREE.Vector3(jx, 0, jz), 60);
     post.mat.uniforms.amount.value = 0;
     smoke.update(raw, camera, renderer.domElement.height);
@@ -2786,11 +3150,13 @@ function tick(raw, draw = true) {
   lead(acc);
   for (const v of traffic.list) if (!v.halved) v.pose();
   player.pose();
+  blinkers.update(traffic.list, G.t);
   for (const h of halves) { h.model.position.copy(h.car.pos); h.model.quaternion.copy(h.car.q); }
   effects(dt, raw);
   for (const k of crates) { k.m.rotation.y += raw * 1.6; k.m.position.y = k.y + Math.sin(G.t * 2.4 + k.x) * 0.2; }
   debris.update(dt);
   oranges.update(dt);
+  notes.update(dt);
   smoke.update(dt, camera, renderer.domElement.height);
   glow.update(dt, camera, renderer.domElement.height);
   rain.update(dt, camera.position);
@@ -2855,6 +3221,27 @@ Object.assign(flashEl.style, { position: 'fixed', inset: 0, pointerEvents: 'none
   background: 'radial-gradient(ellipse at center, transparent 45%, rgba(220,30,20,0.55) 100%)' });
 document.body.appendChild(flashEl);
 
+// A car in a replay burnt black, or back to its paint (its own colours kept for that)
+function scorched(v, on) {
+  if (!!v.burnt === on) return;
+  if (on) {
+    v.paints = [];
+    v.model.traverse(o => { if (o.isMesh && o.material?.isMeshStandardMaterial) v.paints.push([o.material, o.material.color.clone(), o.material.roughness, o.material.metalness]); });
+    v.burn();
+  } else {
+    for (const [m, c, r, k] of v.paints || []) { m.color.copy(c); m.roughness = r; m.metalness = k; }
+    v.burnt = false;
+  }
+}
+// The smoke and flames, the rings and scorch marks, all gone
+function clearEffects() {
+  smoke.clear(); glow.clear();
+  for (const s of scorches) dropMesh(s);
+  scorches.length = 0;
+  for (const r of rings) dropMesh(r.m);
+  rings.length = 0;
+}
+
 // ---------- Looking into a replay ----------
 // (for debugging: rush.debug.replay(json) loads its level and its vehicles; then .seek(t) shows them at game
 // time t, from the camera that was used or from `view`: [x, y, z, lookX, lookY, lookZ])
@@ -2864,6 +3251,7 @@ function replay(R) {
   time = R.time;
   setLook(time);
   startRun(0);
+  charges?.reset();
   for (const v of traffic.list.slice()) traffic.remove(v);
   standIns?.dispose();
   standIns = null;
@@ -2881,10 +3269,10 @@ function replay(R) {
   }
   const F = R.frames, _q = new THREE.Quaternion(), _p = new THREE.Vector3(), look = new THREE.Vector3();
   // (and the yacht, afloat till it went down)
-  const sank = R.events?.find(e => e.type === 'sunk')?.t;
+  const sank = G.boats.map(b => R.events?.find(e => e.type === 'sunk' && (e.boat || 0) === b.i)?.t);
   return {
     frames: F.length, start: F[0].t, end: F[F.length - 1].t,
-    seek(t, view) {
+    seek(t, view, draw = true, fx = false) {
       let lo = 0, hi = F.length - 1;
       while (lo < hi) { const m = (lo + hi + 1) >> 1; if (F[m].t <= t) lo = m; else hi = m - 1; }
       const a = F[lo], b = F[Math.min(lo + 1, F.length - 1)], k = b.t > a.t ? clamp((t - a.t) / (b.t - a.t), 0, 1) : 0;
@@ -2896,6 +3284,8 @@ function replay(R) {
         v.car.q.set(e[4], e[5], e[6], e[7]).normalize().slerp(_q.set(f[4], f[5], f[6], f[7]).normalize(), k);
         v.pose();
         v.model.visible = !(e[8] & 8);
+        // (burnt black once it's gone up, with the effects on)
+        if (v.burn) scorched(v, fx && !!(e[8] & 4));
       }
       // (Tower Dive's boxed cars: where they stood, till they were let go)
       // (and their glass: the boxes were recorded in the order they were built, so the nth is this run's nth box)
@@ -2909,21 +3299,173 @@ function replay(R) {
         v.pose();
         v.model.visible = true;
       }
-      G.boat?.reset();
-      if (G.boat && sank != null && t > sank) { G.boat.sink(); G.boat.update(t - sank, () => {}); }
-      const c = view || a.cam.map((n, i) => n + (b.cam[i] - n) * k);
-      camera.position.set(c[0], c[1], c[2]);
-      camera.up.set(0, 1, 0);
-      camera.lookAt(look.set(c[3], c[4], c[5]));
-      camera.fov = stage.fitFov(56);
-      camera.updateProjectionMatrix();
-      stage.focusSun(look, 45);
-      post.render();
+      for (const b of G.boats) {
+        b.reset();
+        if (sank[b.i] != null && t > sank[b.i]) { b.sink(); b.update(t - sank[b.i], () => {}); }
+      }
+      // (`view` false: the camera's left where it is, the free camera's)
+      if (view !== false) {
+        const c = view || a.cam.map((n, i) => n + (b.cam[i] - n) * k);
+        camera.position.set(c[0], c[1], c[2]);
+        camera.up.set(0, 1, 0);
+        camera.lookAt(look.set(c[3], c[4], c[5]));
+        camera.fov = stage.fitFov(56);
+        camera.updateProjectionMatrix();
+      }
+      stage.focusSun(camera.getWorldDirection(look).multiplyScalar(30).add(camera.position), 45);
+      if (draw) post.render();
       return { t: a.t, state: a.s, input: a.in, cars: a.b.length };
+    },
+    // The effects of what happened between game times `from` and `to` (playing on, `dt` of it): the blasts, the
+    // sparks where things were hit, and the fires on what's gone up
+    fx(from, to, dt) {
+      for (const e of R.events) {
+        if (e.t <= from || e.t > to) continue;
+        const v = cars[e.id];
+        if (e.type === 'boom' && v) {
+          // (older replays didn't say how big: a tanker's is twice a car's, and yours about full)
+          const big = e.big ?? (e.id === 'you' ? 1.4 : TRAFFIC[e.kind]?.explosive ? 2 : 1);
+          explosion(v.car.pos.clone(), big);
+          sound.boom(Math.min(1, 0.6 * big));
+        } else if (e.type === 'charge') {
+          charges?.hide(e.i);
+          explosion(_p.set(e.at[0], e.at[1], e.at[2]).clone(), e.big);
+          sound.boom(Math.min(1, 0.6 * e.big));
+        } else if (e.type === 'score' && e.at) sparks(_p.set(e.at[0], e.at[1], e.at[2]), 12);
+      }
+      for (const v of Object.values(cars)) {
+        if (!v.burnt || !v.model.visible) continue;
+        if (Math.random() < dt * 40) burning(v, 1.6);
+        if (Math.random() < dt * 8) puff(v.car.pos, '#3a3632', 1.2, 2.6, 3, 0.42);
+      }
+    },
+    // (its vehicles gone: yours goes with the run)
+    dispose() {
+      for (const v of Object.values(cars)) {
+        if (v === player) continue;
+        if (v instanceof Car) v.dispose();
+        else { scene.remove(v.model); v.model.geometry.dispose(); v.model.material.dispose(); }
+      }
     },
   };
 }
-G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, get standIns() { return standIns; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay, renderer, blowUp, heaps, report, startCrash };
+// ---------- Dev mode ----------
+// (see dev.js: the free camera, the medal lines and the run library)
+const free = new FreeCam(camera, renderer.domElement, keys);
+let watching = null, devUI = null, held = null;
+function toggleFree() {
+  if (free.on) {
+    free.leave();
+    // (back to what was up before: the menu, the pause card, the HUD; not if the game's moved on meanwhile, a run
+    // restarted from the pad, say: that put up what it needs)
+    if (held && held.state === G.state) { if (held.screen) showScreen(held.screen); $('hud').classList.toggle('hidden', held.hud); }
+    held = null;
+    if (G.state !== 'replay') { camera.fov = stage.fitFov(55); camera.updateProjectionMatrix(); }
+  } else {
+    if (G.state !== 'replay') {
+      held = { state: G.state, screen: ['menu', 'results', 'pause', 'help'].find(s => !$(s).classList.contains('hidden')), hud: $('hud').classList.contains('hidden') };
+      showScreen(null);
+      $('hud').classList.add('hidden');
+    }
+    devUI.lib.classList.add('hidden');
+    // (the run's held still: so is its engine)
+    muteLoops();
+    free.enter();
+  }
+  devUI.free.classList.toggle('on', free.on);
+  watching?.bar.camB.classList.toggle('on', free.on);
+  devUI.hint.classList.toggle('hidden', !free.on);
+  devUI.hint.textContent = matchMedia('(pointer: coarse)').matches
+    ? 'Drag to look · two fingers: slide, pinch to go forward'
+    : 'WASD fly · E/Q up/down · Shift fast · drag to look · wheel forward · F or Esc to leave';
+}
+function toggleLines() {
+  devS.lines = !devS.lines;
+  store.save('rush.devLines', devS.lines);
+  devUI.lines.classList.toggle('on', devS.lines);
+  drawLines();
+}
+function toggleRuns() {
+  const box = devUI.lib;
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML = '<p>Loading the run library…</p>';
+  const C = city;
+  library(true).then(list => { if (city === C) showRuns(box, C.level.name, list && runsOf(list, C.key, C.level.medals), watch); });
+}
+// Watch a kept run: its level, its traffic as it went, from the camera that was used (or the free one)
+async function watch(run) {
+  devUI.lib.innerHTML = '<p>Loading the run…</p>';
+  let R;
+  try { R = await loadRun(run.name); } catch (e) { devUI.lib.innerHTML = `<p>Couldn't load it: ${e.message}</p>`; return; }
+  devUI.lib.classList.add('hidden');
+  stopWatching();
+  if (free.on) toggleFree();
+  muteLoops();
+  // (your own car, kept: replay() puts the run's in the settings, only for watching it)
+  const car = settings.car;
+  const P = replay(R);
+  drawLines();
+  G.state = 'replay';
+  watching = { ...P, car, bar: replayBar(run, P.start, P.end, { free: toggleFree, close: () => { stopWatching(); toMenu(); } }) };
+}
+function stopWatching() {
+  if (!watching) return;
+  if (free.on) toggleFree();
+  watching.bar.dispose();
+  watching.dispose();
+  // (back to your car, and the track's time of day: the menu's loadLevel keeps what it finds on the same track)
+  settings.car = watching.car;
+  time = timeFor(city.key);
+  setLook(time);
+  watching = null;
+}
+// A snapshot for Claude: the picture as it is now, what you say about it, and where everything is
+async function snap() {
+  post.render();
+  const canvas = renderer.domElement, image = canvas.toDataURL('image/jpeg', 0.88);
+  const note = prompt('What should Claude look at? (optional)');
+  if (note === null) return;
+  const v3 = v => [v.x, v.y, v.z].map(n => Math.round(n * 100) / 100);
+  const look = camera.getWorldDirection(new THREE.Vector3());
+  const meta = {
+    note, date: new Date().toISOString(), level: city.key, levelName: city.level.name, time, state: G.state,
+    screen: ['menu', 'results', 'pause', 'help'].find(s => !$(s).classList.contains('hidden')) || null,
+    hud: !$('hud').classList.contains('hidden'),
+    camera: { at: v3(camera.position), looking: v3(look), fov: Math.round(camera.fov), free: free.on },
+    view: [canvas.width, canvas.height], dpr: devicePixelRatio, agent: navigator.userAgent,
+    watching: watching && { run: watching.bar.run.name, t: Math.round(watching.bar.t * 100) / 100, fx: watching.bar.fx },
+    run: player && G.state !== 'menu' && !watching ? { car: settings.car, t: Math.round(G.t * 100) / 100, at: v3(player.car.pos), kmh: Math.round(Math.abs(player.car.speed) * 3.6), score: G.score, heat: G.heat } : null,
+  };
+  const hint = devUI.hint, was = hint.textContent;
+  hint.classList.remove('hidden');
+  hint.textContent = 'Saving the snapshot…';
+  try {
+    const name = await snapshot(image, meta);
+    hint.textContent = `Snapshot kept: ${name}`;
+  } catch (e) { hint.textContent = `Snapshot not kept: ${e.message}`; }
+  setTimeout(() => { hint.textContent = was; hint.classList.toggle('hidden', !free.on); }, 3000);
+}
+// Its keys: F free camera, L lines, V runs, K snapshot, X the effects of a run being watched, and P (or Space) to
+// play and pause it
+function devKey(e) {
+  if (e.code === 'KeyK') { snap(); return true; }
+  if (e.code === 'KeyX' && watching) { watching.bar.toggleFx(); return true; }
+  if (e.code === 'KeyF') { toggleFree(); return true; }
+  if (e.code === 'Escape' && free.on) { toggleFree(); return true; }
+  if (e.code === 'KeyL') { toggleLines(); return true; }
+  if (e.code === 'KeyV') { toggleRuns(); return true; }
+  if (G.state === 'replay' && (e.code === 'KeyP' || (e.code === 'Space' && !free.on))) { watching.bar.toggle(); return true; }
+  if (G.state === 'replay' && e.code === 'Escape') { stopWatching(); toMenu(); return true; }
+  // (and while the free camera's flying, the run holds still: its keys fly, they don't skip the intro or restart it)
+  return free.on && e.code !== 'KeyM';
+}
+if (DEV) {
+  devUI = devBar({ free: toggleFree, lines: toggleLines, runs: toggleRuns, snap });
+  devUI.lines.classList.toggle('on', devS.lines);
+}
+
+G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, get standIns() { return standIns; }, get notes() { return notes; }, get charges() { return charges; }, get props() { return props; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay, watch, free, renderer, blowUp, heaps, report, startCrash };
 toMenu();
 if (!store.load('rush.seenHelp', false)) showScreen('help');
 requestAnimationFrame(frame);

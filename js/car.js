@@ -473,6 +473,7 @@ export const RUSH = {
   'rush-taxi': { name: 'Taxi', c: ['#f6be3a', '#1f2a33', '#ffffff', '#1f2a33', '#ffffff'] },
   'rush-council': { name: 'Council', c: ['#2f9a86', '#f08a3a', '#fff1d6', '#173f38', '#ffffff'] },
   'rush-bus': { name: 'Bus', c: ['#efe3c8', '#e8743a', '#239ea2', '#24343e', '#ffffff'] },
+  'rush-cash': { name: 'Fiatmine', c: ['#34434a', '#f2b632', '#ff8a1a', '#151c20', '#f2b632'] },
   // yours
   blaze: { name: 'Blaze', c: ['#ff2e1a', '#ffe11a', '#22e6ff', '#1c1630', '#ffe11a'] },
   volt: { name: 'Volt', c: ['#ff2a8e', '#1ee8ff', '#ffe11a', '#1c1630', '#1ee8ff'] },
