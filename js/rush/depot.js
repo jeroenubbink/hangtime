@@ -17,6 +17,7 @@ const BUND = 1.3;
 // x, z, yaw]] (as fixtures; the kit's models face +z at yaw 0), bunds: [[x0, x1, z0, z1]] (walls round tanks), lines:
 // [[[x, z], ...]] (painted on the yard), masts: [[x, z, yaw]] (the floodlights, facing the way yaw turns them), slabs: [x0, x1, z0, z1] (the yard, its joints drawn), lettered: [x, z, r, y] (the tank with the name on it:
 // where it stands, its radius, and how high the name's middle is) }
+export { flame };
 export function depot(city, D) {
   const group = new THREE.Group(), gy = (x, z) => city.groundHeight(x, z, 1);
   group.add(fixtures(city, [['depot_gate', ...D.gate, 0], ...D.kit, ...(D.masts || []).map(M => ['depot_mast', ...M])]));

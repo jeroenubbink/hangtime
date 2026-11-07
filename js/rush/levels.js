@@ -24,6 +24,10 @@ const busy = (road, gap = [1.6, 3.0]) => [1, -1].flatMap(side => [0, 1].map(i =>
 const fade = x => { const t = Math.min(1, Math.max(0, (Math.abs(x) - 50) / 170)); return 1 - t * t * (3 - 2 * t); };
 const rails = (x, z0, z1) => Array.from({ length: Math.floor((z1 - z0) / 3) + 1 }, (_, i) => ['rail', x, z0 + i * 3, Math.PI / 2]);
 const D45 = Math.SQRT1_2;
+// (Tanker Row: how far in through the gate the first of the tankers waiting in the yard are: just far enough that the
+// one at the gate going up mostly, not always, takes them with it)
+const YARD_IN = -27.2;
+const CUE = 4.5, QN = 6;
 // (Bank Shot's road, in from the corner at 45°: a point s down it, off to the right of its middle)
 const diag = (s, off) => ({ x: -300 + D45 * (s + off), z: 300 - D45 * s + D45 * off });
 
@@ -474,15 +478,20 @@ export const LEVELS = {
       { name: 'west', x0: -90, z0: 420, x1: -90, z1: -175, right: 2, left: 2 },
       { name: 'east', x0: 90, z0: 420, x1: 90, z1: -175, right: 2, left: 2 },
     ],
-    // In the parking lane, a bay each, 11 m apart: each one's blast is just enough to set off the next
-    parked: [...Array.from({ length: 13 }, (_, i) => ({ kind: 'tanker', x: -66 + i * 11, z: -9, yaw: Math.PI / 2, hp: 20 })),
-      // (and one in the yard, filling up under the rack)
-      { kind: 'tanker', x: -44, z: -36.2, yaw: Math.PI / 2, hp: 20 }],
+    // In the parking lane, a bay each, 11 m apart: each one's blast is just enough to set off the next. The middle one
+    // is next in, turned to face the gate, its back clear of the traffic (and still near enough both its neighbours)
+    parked: [...Array.from({ length: 13 }, (_, i) => i === 6 ? { kind: 'tanker', x: 0, z: -12.2, hp: 20 } : { kind: 'tanker', x: -66 + i * 11, z: -9, yaw: Math.PI / 2, hp: 20 }),
+      // (and in the yard, why the rest are waiting out there: both racks full, a tanker filling in each bay and three
+      // more waiting behind, nose to tail, and two more each side just in through the gate, waiting to get round to
+      // them: near enough each other to go up together, the first two only just too far from the one at the gate)
+      ...[-1, 1].flatMap(s => [[44, -36.2], [44, -43.8], [33, -36.2], [22, -36.2], [12, -36.2]].map(([x, z]) => ({ kind: 'tanker', x: s * x, z, yaw: -s * Math.PI / 2, hp: 20 }))),
+      ...[-1, 1].flatMap(s => [YARD_IN, YARD_IN - 11].map(z => ({ kind: 'tanker', x: s * 5, z, hp: 20 })))],
     lanes: [
       { road: 'main', side: 1, i: 0, speed: [19, 23], gap: [50, 100], stop: 410.3, queue: 2 },
       { road: 'main', side: 1, i: 1, speed: [21, 25], gap: [60, 120], stop: 410.3, queue: 1 },
       { road: 'main', side: -1, i: 0, speed: [18, 22], fill: [20, 400], gap: [50, 100] },
-      ...busy('depot'), ...busy('west', [2.0, 3.6]), ...busy('east', [2.0, 3.6]),
+      // (the side streets wait at the depot road's crossings, red for them for good: they'd only go through each other)
+      ...busy('depot'), ...['west', 'east'].flatMap(r => busy(r, [2.0, 3.6]).map(l => ({ ...l, stop: l.side === 1 ? 410.3 : 165.3, hold: true, queue: 3 }))),
     ],
     specials: [{ lane: 4, kind: 'bus', eta: 7.6 }],
     // Across the end of your road, the depot: its yard paved from the far pavement back, between the side streets
@@ -497,8 +506,9 @@ export const LEVELS = {
         ['depot_tank_big', -52, -96, 0.4], ['depot_tank_mid', -56, -145, 2.6], ['depot_tank_small', -38, -126, -1.2],
         ['depot_tank_mid', 52, -90, -0.8], ['depot_tank_mid', 52, -122, 2.2], ['depot_tank_small', 40, -153, 1.4], ['depot_tank_small', 62, -153, -2.4],
         ['depot_bullet', 0, -147], ['depot_bullet', 0, -157],
-        // up front, the loading rack (a tanker filling up under it), the office, and the gas in its white bullets
-        ['depot_gantry', -44, -40], ['depot_office', 26, -27], ['depot_bullet', 56, -34], ['depot_bullet', 56, -43],
+        // up front, the loading racks, one each side (tankers filling up under them), the office, and the gas in its
+        // white bullets along the side
+        ['depot_gantry', -44, -40], ['depot_gantry', 44, -40], ['depot_office', 26, -27], ['depot_bullet', 67.5, -36, Math.PI / 2], ['depot_bullet', 73, -36, Math.PI / 2],
         // the pipes across the yard from the tanks to the rack
         ...[-66, -54, -42, -30, -18, -6, 6, 18, 30, 42, 54, 66].map(x => ['depot_pipes', x, -62]),
         ...[-74, -86].flatMap(z => [['depot_pipes', -26, z, Math.PI / 2], ['depot_pipes', 26, z, Math.PI / 2]]),
@@ -506,8 +516,8 @@ export const LEVELS = {
       ],
       // the low concrete walls round the tanks (to hold what they'd spill): [x0, x1, z0, z1]
       bunds: [[-22, 22, -86, -132], [-74, -30, -70, -168], [30, 74, -70, -168]],
-      // yellow lines on the yard: the way in from the gate, round to the rack, and along the pipes
-      lines: [[[-5, -19], [-5, -52], [-30, -52]], [[5, -19], [5, -52], [70, -52]], [[-30, -52], [-58, -52], [-58, -28], [-30, -28], [-30, -52]]],
+      // yellow lines on the yard: the way in from the gate, round to the racks, and along the pipes
+      lines: [[[-5, -19], [-5, -52], [-30, -52]], [[5, -19], [5, -52], [70, -52]], [[-30, -52], [-58, -52], [-58, -28], [-30, -28], [-30, -52]], [[30, -52], [58, -52], [58, -28], [30, -28], [30, -52]]],
       // the floodlights, two at the front lighting the yard in from the gate, two in the back corners over the tanks
       masts: [[-64, -22, 2.76], [64, -22, -2.76], [-73, -167, 0.79], [73, -167, -0.79]],
       slabs: [-77.8, 77.8, -172, -15.8],
@@ -524,7 +534,7 @@ export const LEVELS = {
       { kind: 'smoking', x: 5.4, z: 340, over: 4.8 }, { kind: 'flammable', x: 5.4, z: 220, over: 4.8 }, { kind: 'seriously', x: 5.4, z: 110, over: 4.8 },
       { kind: 'permit', x: -30, z: -13.4 },
     ],
-    medals: [60000, 180000, 400000],
+    medals: [150000, 350000, 650000],
   },
   bank: {
     draft: true,
@@ -547,9 +557,9 @@ export const LEVELS = {
       // Your road's right lane, queued back from the avenue, every one of them waiting to pull out onto it and going
       // when there's a gap, one at a time: by the time you get there, only the last few are left
       { road: 'main', side: 1, i: 1, then: { road: 'avenue', side: 1, i: 1 }, bend: 10, speed: [14, 18], stop: 414,
-        merge: { every: [0.7, 1.1], after: 1.5, keep: 3 },
+        merge: { every: [0.7, 1.1], after: 1.5, keep: 3, cue: { kind: 'tanker', eta: CUE } },
         // (the back of it, the ones still there when you are: a tanker, Fiatmine's cash van and a bus)
-        queue: [null, null, null, null, null, null, null, null, null, null, 'tanker', 'cash', 'bus'] },
+        queue: [...Array(QN).fill(null), 'tanker', 'cash', 'bus'] },
       // The big junction: queues both ways on the cross street, waiting for the avenue
       { road: 'north', side: 1, i: 0, speed: [16, 20], stop: 412.3, queue: [null, null, 'bus', null, null] },
       { road: 'north', side: 1, i: 1, speed: [16, 20], stop: 412.3, queue: [null, 'tanker', null, null] },
@@ -560,16 +570,28 @@ export const LEVELS = {
     // Across the avenue from the end of your road, the bank, on a stone forecourt where the shops were: what's coming
     // out of your road at its angle goes into its front, and off it toward the big junction
     bank: { x: 19, z: -19.2 },
+    // and beside it, the roadworks' compound (behind barriers, in what was the next shop along): the cabin, the skip, the
+    // roller, the sand, and what goes up when a blast comes near enough: the gas bottles in their cage, and the tar
+    // boiler with its fire lit. Yours to send the wreck over to and set off, while the tanker goes the other way
+    fixtures: [['cabin', -47, -22, 0, 2], ['skip', -44, -36, 0.2, 1.5], ['sand', -16, -40, 0, 1.5], ['roller', -53, -43, 1.2, 1.5], ['pipes', -32, -44, Math.PI / 2, 1.5], ['worksign', -10.5, -16.2, 0, 1.5]],
+    charges: [
+      { kind: 'works_gascage', x: -16, z: -21, yaw: 0, scale: 2, r: 5, name: 'Gas cage', callout: 'GAS CAGE', pts: 6000,
+        pops: [[0, 1.4], [0.25, 0.8, 1.1, 0.3], [0.45, 0.9, -1.2, 0.4], [0.7, 0.7, 0.6, -0.5], [1.0, 1.2, -0.4, 0], [1.4, 0.6, 1.3, 0.6]] },
+      { kind: 'works_tar', x: -27, z: -29, yaw: Math.PI / 2, scale: 1.5, r: 4, name: 'Tar boiler', callout: 'TAR BOILER', pts: 5000, pops: [[0, 1.6], [0.6, 1.0, 1.2, 0]] },
+    ],
     // Roadworks on your road, the reason for the queue: merge in turn, hung over it a way back, and cones between it
     // and your lane down to the end (`diag(s, off)`: a point s down your road, off to the right of its middle)
     warnings: [{ kind: 'merge', ...diag(290, 5.4), over: 4.8, yaw: -Math.PI / 4 }],
-    props: Array.from({ length: 12 }, (_, i) => ['cone', ...Object.values(diag(330 + i * 7, 3.6)), 0]),
-    lots: [{ rect: [-8, 46, -54, -14.4], colour: '#d9d2c0' }],
-    medals: [40000, 120000, 300000],
+    props: [...Array.from({ length: 12 }, (_, i) => ['cone', ...Object.values(diag(330 + i * 7, 3.6)), 0]),
+      // (the compound's barriers along the pavement, a gap for the way in)
+      ...Array.from({ length: 19 }, (_, i) => -56 + i * 2.5).filter(x => x < -40 || x > -34).map(x => ['barrier', x, -15.6, 0])],
+    lots: [{ rect: [-8, 46, -54, -14.4], colour: '#d9d2c0' }, { rect: [-58, -8, -50, -14.4], colour: '#8d8a82' }],
+    medals: [80000, 160000, 320000],
   },
   canal: {
     draft: true,
     name: 'Mind the Gap', blurb: 'The road stops at the canal. The ramp doesn\'t. Too slow and you\'re swimming; fast enough and the quay road\'s yours.',
+    time: 'noon',
     seed: 103,
     bounds: [-440, 440, -210, 470],
     start: { x: 5.4, z: 380, speed: 28 },
@@ -584,7 +606,39 @@ export const LEVELS = {
     water: { rect: [-440, 440, -34.8, 20], walls: [[19, 20], [-34.8, -33.8]], y: -1.6, floor: -5, below: (x, z) => z < 20 && z > -34.8 },
     ramps: [{ x: 3.6, z: 33, len: 9, h: 0.58, w: 7.2 }],
     blocks: [{ x: 0, z: -192, w: 40, d: 30, h: 26, fixed: true }],
-    props: [...[-9, -6, 9.5].map(x => ['bollard', x, 21.5, 0]), ...[-9, -4.5, 9].map(x => ['bollard', x, -36, 0])],
+    // The towpath along the near bank, either side of the end of your road: paved, the lanterns along the water's edge
+    // and benches looking out over it, and trees behind past the buildings
+    // (and your road carried on to the water's edge, and across the pavement on the far side from the bridge's deck to
+    // the quay road)
+    grounds: { paths: [...[-1, 1].map(s => ({ pts: [[s * 13, 22], [s * 430, 22]], w: 3.6, y: 0.22, colour: '#c9a47e' })),
+      { pts: [[0, 24.2], [0, 20.05]], w: 14, y: 0.175, colour: '#3b3e44' }, { pts: [[0, -34.05], [0, -40.6]], w: 14, y: 0.175, colour: '#3b3e44' }] },
+    // (the road closed at both ends of the bridge: fences across it, there to be driven through)
+    props: [...[-9, 9.5].map(x => ['bollard', x, 21.5, 0]), ...[-9, 9].map(x => ['bollard', x, -36, 0]),
+      ...[22.4, -30.2].flatMap(z => Array.from({ length: 7 }, (_, i) => ['stopfence', -7.8 + i * 2.6, z, 0])),
+      ...[-1, 1].flatMap(s => [16, 40, 64, 88, 112, 136, 160].map(x => ['lantern', s * x, 20.5, 0])),
+      ...[-1, 1].flatMap(s => [28, 52, 76, 100, 124, 148].filter(x => s > 0 || x !== 28).map(x => ['bench', s * x, 23.2, 0])),
+      ...[-1, 1].flatMap(s => [46, 58, 82, 94, 118, 130, 154].map((x, i) => ['tree', s * x, 27.5, i])),
+      ...[-1, 1].flatMap(s => [52, 100, 148].map(x => ['bin', s * (x + 3), 23.6, 0]))],
+    // Moored along the walls, out of the way of the jump: a houseboat on your side, a little way along; and across the
+    // water the canal tour boat, waiting for its next lot. Neither's any sturdier than it looks: anything in your crash
+    // coming down on one or going into it, or a blast reaching it, sends it down
+    boat: [
+      { model: 'houseboat', name: 'Houseboat', callout: 'HOUSEBOAT SUNK', x: -30, z: 16.4, yaw: Math.PI / 2, out: [0, -1], pts: 5000, frail: true, board: null,
+        parts: [{ dz: 0, w: 4.6, d: 15, up: 1.6 }, { dz: -1.4, w: 4.2, d: 10.4, up: 4.2 }],
+        titles: ['Underwater Living', 'Moving Day', 'Waterbed', 'Home and Dry', 'Flooded Basement'] },
+      { model: 'tourboat', name: 'SIGHTSEER', callout: 'TOUR CANCELLED', x: 62, z: -31.6, yaw: Math.PI / 2, out: [0, 1], pts: 5000, frail: true,
+        parts: [{ dz: 0, w: 3.8, d: 17, up: 1.05 }, { dz: 0.9, w: 3.4, d: 12, up: 2.7 }], board: [1.82, 1.3, 0.9, '#f1efe6'],
+        titles: ['Tour Cancelled', 'Glass Bottom Boat', 'Last Tour of the Day', 'No Refunds', 'Sights Seen'] },
+    ],
+    // The old bridge, its deck gone: you fly through between its trusses, under the steel overhead; a piece of the
+    // right-hand one going up on the floating crane's hook beside it
+    ruin: { x: 0, z0: 20, z1: -7, z2: -34, side: 11, crane: { x: 36 } },
+    // and on the way to it, the warnings, more and more insistent
+    warnings: [
+      { kind: 'closed', x: 5.4, z: 330, over: 4.8 }, { kind: 'bridgeout', x: 5.4, z: 270, over: 4.8 },
+      { kind: 'deadend', x: 5.4, z: 205, to: 20, over: 4.8 }, { kind: 'noway', x: 5.4, z: 140, over: 4.8 },
+      { kind: 'gap', x: 5.4, z: 80, over: 4.8 },
+    ],
     lanes: [
       { road: 'main', side: -1, i: 0, speed: [18, 22], fill: [20, 380], gap: [50, 100] },
       ...busy('quay'), ...busy('back', [2.0, 3.6]),
@@ -592,7 +646,7 @@ export const LEVELS = {
       { road: 'far', side: 1, i: 1, speed: [16, 20], stop: 50.6, queue: [null, 'bus', null] },
     ],
     specials: [{ lane: 1, kind: 'tanker', eta: 6.4 }],
-    medals: [40000, 120000, 300000],
+    medals: [60000, 130000, 220000],
   },
   tower: {
     name: 'Tower Dive', blurb: 'The biggest ramp in town, five angles wide. Up, over the avenue, and down onto the sky decks, where the cars are stacked in glass.',

@@ -82,6 +82,50 @@ const WARNINGS = {
     g.font = FONT(150); g.fillText(t('MERGE'), 680, 220, 560);
     g.font = FONT(120); g.fillText(t('IN TURN'), 680, 420, 560);
   },
+  // Mind the Gap's, on the way to the canal: the road closed, the bridge out, how far to the end, and then just pleading
+  closed: g => {
+    g.fillStyle = '#f4f2ea'; g.fillRect(0, 0, 1024, 640);
+    // (red and white stripes along the bottom, like the barrier it'd be on)
+    g.save(); g.beginPath(); g.rect(24, 470, 976, 146); g.clip();
+    for (let x = -200; x < 1100; x += 120) { g.fillStyle = '#c8281e'; g.beginPath(); g.moveTo(x, 616); g.lineTo(x + 60, 616); g.lineTo(x + 206, 470); g.lineTo(x + 146, 470); g.fill(); }
+    g.restore();
+    g.strokeStyle = '#c8281e'; g.lineWidth = 24; g.strokeRect(24, 24, 976, 592);
+    g.fillStyle = '#1b1b1f'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = FONT(150); g.fillText(t('ROAD CLOSED'), 512, 190, 900);
+    g.font = FONT(100); g.fillText(t('AHEAD'), 512, 360, 900);
+  },
+  bridgeout: g => {
+    g.fillStyle = '#ff8a1a'; g.fillRect(0, 0, 1024, 640);
+    g.strokeStyle = '#1b1b1f'; g.lineWidth = 24; g.strokeRect(24, 24, 976, 592);
+    g.fillStyle = '#1b1b1f'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = FONT(170); g.fillText(t('BRIDGE OUT'), 512, 220, 920);
+    g.font = FONT(110); g.fillText(t('TURN AROUND'), 512, 440, 900);
+  },
+  deadend: (g, S) => {
+    const n = Math.round(Math.abs(S.z - S.to) / 50) * 50;
+    g.fillStyle = '#1f4f9a'; g.fillRect(0, 0, 1024, 640);
+    g.strokeStyle = '#ffffff'; g.lineWidth = 18; g.strokeRect(24, 24, 976, 592);
+    // (the dead end's sign: a white T, its top bar red)
+    g.fillStyle = '#ffffff'; g.fillRect(150, 230, 90, 300);
+    g.fillStyle = '#c8281e'; g.fillRect(80, 140, 230, 90);
+    g.fillStyle = '#ffffff'; g.textAlign = 'left'; g.textBaseline = 'middle';
+    g.font = FONT(130); g.fillText(t('DEAD END'), 380, 250, 590);
+    g.fillStyle = '#ff8a1a'; g.font = 'italic ' + FONT(150); g.fillText(t('in {0} m', n), 380, 430, 590);
+  },
+  noway: g => {
+    g.fillStyle = '#ffd23a'; g.fillRect(0, 0, 1024, 640);
+    g.strokeStyle = '#1b1b1f'; g.lineWidth = 24; g.strokeRect(24, 24, 976, 592);
+    g.fillStyle = '#1b1b1f'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = FONT(170); g.fillText(t('NO, REALLY.'), 512, 220, 900);
+    g.fillStyle = '#c8281e'; g.font = 'italic ' + FONT(120); g.fillText(t('TURN AROUND'), 512, 440, 900);
+  },
+  gap: g => {
+    g.fillStyle = '#1b1b1f'; g.fillRect(0, 0, 1024, 640);
+    g.strokeStyle = '#ffd23a'; g.lineWidth = 24; g.strokeRect(24, 24, 976, 592);
+    g.fillStyle = '#ffd23a'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = FONT(190); g.fillText(t('MIND'), 512, 200, 900);
+    g.font = FONT(190); g.fillText(t('THE GAP'), 512, 420, 900);
+  },
   // a parking sign: the blue P, and who may
   permit: g => {
     g.fillStyle = '#f4f2ea'; g.fillRect(0, 0, 1024, 640);
@@ -93,7 +137,7 @@ const WARNINGS = {
     g.fillText(t('PERMIT'), 700, 170, 540); g.fillText(t('HOLDERS'), 700, 320, 540); g.fillText(t('ONLY'), 700, 470, 540);
   },
 };
-export function warning(city, S) { return board(city, S, WARNINGS[S.kind]); }
+export function warning(city, S) { return board(city, S, g => WARNINGS[S.kind](g, S)); }
 
 // A board on two posts (or out on an arm, `S.over`), `draw(g)` painting its face on a 1024 by 640 canvas (redrawn when
 // the font's in)

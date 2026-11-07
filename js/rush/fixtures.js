@@ -17,24 +17,28 @@ const SOLID = {
   // (Tanker Row's depot: the tanks a little inside their round sides)
   depot_tank_huge: [29.6, 29.6, 20.2, 0], depot_tank_big: [24, 24, 17, 0], depot_tank_mid: [16.6, 16.6, 13.6, 0], depot_tank_small: [9.4, 9.4, 10.2, 0], depot_bullet: [18, 4.2, 5.4, 0],
   depot_office: [12, 4, 5.8, 0], depot_mast: [1.6, 1.6, 22, 0], depot_gate: null, depot_gantry: null, depot_pipes: null, depot_firepoint: null,
+  // (Bank Shot's roadworks' gas and tar: not solid, as they go up, see charges.js)
+  works_gascage: null, works_tar: null,
 };
 const STAND_IN = { excavator: '#f2b51c', cabin: '#e8ecef', sand: '#d8b56c', skip: '#e0761c', roller: '#f2b51c', pipes: '#a9a8a2', worksign: '#d42a2a', pylon: '#ddd2bd', billboard: '#2c3036',
-  filmcrane: '#f07a1a', lights: '#f2b51c', trailer: '#f1f0ea', catering: '#f4c430', clocktower: '#d8c7a6', clapper: '#23262b', chairs: '#d94a3a' };
+  filmcrane: '#f07a1a', lights: '#f2b51c', trailer: '#f1f0ea', catering: '#f4c430', clocktower: '#d8c7a6', clapper: '#23262b', chairs: '#d94a3a',
+  works_gascage: '#a9b1b6', works_tar: '#1c1d1f' };
 
 // `list`: [[kind, x, z, yaw]] (a model faces -z at yaw 0); the group of them
 export function fixtures(city, list) {
   const group = new THREE.Group();
-  for (const [kind, x, z, yaw = 0] of list) {
+  for (const [kind, x, z, yaw = 0, k = 1] of list) {
     const S = SOLID[kind], y = city.groundHeight(x, z, 1);
     let geo = sceneryGeo(kind);
     if (!geo) { const [w, d, h] = S || [0.8, 0.1, 1.8]; geo = new THREE.BoxGeometry(w, h, d).translate(0, h / 2, 0); }
     const m = new THREE.Mesh(geo, geo.attributes.color ? MAT : new THREE.MeshLambertMaterial({ color: STAND_IN[kind] }));
     m.position.set(x, y, z);
     m.rotation.y = yaw;
+    m.scale.setScalar(k);
     m.castShadow = m.receiveShadow = true;
     group.add(m);
     if (!S) continue;
-    const [w, d, h, back] = S, ca = Math.cos(yaw), sa = -Math.sin(yaw);
+    const [w, d, h, back] = S.map(n => n * k), ca = Math.cos(yaw), sa = -Math.sin(yaw);
     const b = { x: x - back * sa, z: z + back * ca, w, d, ca, sa, top: y + h, h };
     const r = Math.hypot(w, d) / 2;
     city.addToGrid(b, b.x - r, b.x + r, b.z - r, b.z + r);

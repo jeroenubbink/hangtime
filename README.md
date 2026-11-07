@@ -103,14 +103,24 @@ through them. Things to know:
   you've crashed, the traffic you've thrown at it, or a blast beside it. Then the pumps go, the canopy and its logo
   fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction.
 - **Three rough ones, for ideas** (not shown to players yet: in dev mode only, see Run): **Tanker Row** (at dawn, the Sparks fuel depot's whole fleet parked in a row
-  of bays outside its gate, under warnings that get more worried the nearer you get: light one and the blasts run
-  down the row both ways into two junctions, and once it's over the chain goes up again in slow motion, from the
+  of bays outside its gate (the next in turned to face it), under warnings that get more worried the nearer you get,
+  and more of it waiting in the yard at the two loading racks: light one and the blasts run down the row both ways
+  into two junctions, and mostly in through the gate too; the side streets wait at red lights, and now and then a
+  startled queue runs it, and once it's over the chain goes up again in slow motion, from the
   depot's yard, before the tour of the wreckage); **Bank Shot** (your road comes in at 45° and stops
   at the avenue, in the late afternoon, its right lane queued solid behind roadworks, indicators blinking, cars
   pulling out onto the avenue one at a time as gaps come, so only the last few, a tanker, Fiatmine's cash van and a
-  bus, are still waiting when you get there down the empty left lane; across the avenue, Fiatmine's bank, columns,
-  dome and all: bounce the wreckage off it and down to the big junction, and blow the van for the money); and **Mind the Gap** (the road stops at a
-  canal, the ramp doesn't: short and you're swimming, long and you land on the queue past the quay road).
+  bus, are still waiting when you get there down the empty left lane, the tanker pulling out round the corner as you
+  arrive; across the avenue, Fiatmine's bank, columns, dome and all: bounce the wreckage off it into something for a
+  BANK SHOT, and blow the van for the money; and beside the bank the roadworks' compound, its gas cage and tar boiler
+  yours to blow up); and **Mind the Gap** (at midday, the sun high over the water; the road stops at a
+  canal, the ramp doesn't: short and you're swimming, long and you land on the queue past the quay road; the signs on
+  the way in pleading with you to turn around, and the old steel bridge with its deck lifted out, its trusses either
+  side of you as you fly through, a floating crane lifting a piece of it out, a little of its deck still on at the
+  far end, and road-closed fences across both ends to smash through (they cost you nothing); a towpath
+  along the near bank with lanterns, benches and trees, and two boats moored out of the way, a houseboat on your side
+  and the SIGHTSEER tour boat across the water: anything in your crash going into one, or a blast reaching it, sinks
+  it for 5,000 and a heap of its own in the tour).
 - **Tower Dive**: the biggest ramp in town, five ramps side by side, 30° to 50° at the lip (white fins
   between them keep you in yours). Off the 35° to 45° ones at full speed you
   come down on the first of three **sky decks**, the roofs of the Hotel California (its name in lights across the
@@ -321,7 +331,10 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
   (source: `assets/src/hotel.blend`); `assets/scenery/depot.glb`, Tanker Row's fuel depot (storage tanks, the loading
   rack, the gate, the office, the fence, pipes), built by a script: `blender -b -P assets/src/depot.py` makes
   `assets/src/depot.blend` and the .glb; `assets/scenery/bank.glb`, Bank Shot's bank, the same way from
-  `assets/src/bank.py` (the two share `assets/src/kitlib.py`, the model builder and exporter)
+  `assets/src/bank.py`, and `assets/scenery/roadworks.glb`, its roadworks' gas cage and tar boiler, from
+  `assets/src/roadworks.py`, and `assets/scenery/canal.glb`, Mind the Gap's houseboat and tour boat, from
+  `assets/src/canal.py`, and `assets/scenery/canalbridge.glb`, its broken bridge and floating crane, from
+  `assets/src/canalbridge.py` (all five share `assets/src/kitlib.py`, the model builder and exporter)
 - `js/net.js`: online rooms over WebRTC, found through public Nostr relays (Trystero, loaded only when you go online)
 - `js/toon.js`: the shared toybox look for both games: two-tone shading, rim light and a colour boost, patched into three.js's shaders
 - `js/derby/`: Crunchtime
@@ -353,6 +366,8 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
     its banners
   - `banknotes.js`: what a cash van turns into when it goes up: notes blown high, fluttering down, left lying
   - `blinkers.js`: the indicators on cars waiting to pull out of a merging lane
+  - `charges.js`: things that go up and aren't vehicles (Bank Shot's gas cage and tar boiler): a blast near enough
+    sets one off, a string of bangs, each a blast of its own
   - `roadsign.js`: the signs by and over the road: Last Chance's distance to the station, Tanker Row's warnings,
     Bank Shot's merge in turn
   - `standins.js`: a car park's cars, far off, as painted boxes (two draw calls instead of a few thousand triangles each)

@@ -115,12 +115,19 @@ const MODELS = {
     [new THREE.BoxGeometry(0.08, 0.9, 0.08).translate(-0.9, 0.45, 0), '#3a3a40'],
     [new THREE.BoxGeometry(0.08, 0.9, 0.08).translate(0.9, 0.45, 0), '#3a3a40'],
   ]),
+  // Mind the Gap's road-closed fences, across the road at both ends of the bridge: two boards of red and white on a
+  // pair of legs, a lamp on top; light, there to be driven through
+  stopfence: () => merge([
+    ...[1.05, 0.5].flatMap(y => Array.from({ length: 6 }, (_, i) => [new THREE.BoxGeometry(0.4, 0.34, 0.05).translate(-1.0 + i * 0.4, y, 0), i % 2 ? '#f4f4f0' : '#e8352b'])),
+    ...[-1.2, 1.2].flatMap(x => [[new THREE.BoxGeometry(0.07, 1.3, 0.07).translate(x, 0.65, 0), '#3a3a40'], [new THREE.BoxGeometry(0.1, 0.06, 0.7).translate(x, 0.03, 0), '#3a3a40']]),
+    [new THREE.BoxGeometry(0.16, 0.16, 0.12).translate(-1.2, 1.38, 0), '#ffb21a'],
+  ]),
 };
 // r: how close a car has to come (m); slow: speed a car loses knocking it over; h: how tall (for the flight)
 const KINDS = {
   lamp: { r: 0.3, slow: 0.1, h: 6 }, lantern: { r: 0.3, slow: 0.1, h: 5 }, light: { r: 0.3, slow: 0.1, h: 4.6 }, tree: { r: 0.45, slow: 0.22, h: 4 },
   bin: { r: 0.35, slow: 0.02, h: 1 }, hydrant: { r: 0.25, slow: 0.05, h: 0.8 }, bollard: { r: 0.25, slow: 0.08, h: 0.9 },
-  cone: { r: 0.35, slow: 0, h: 0.8 }, barrier: { r: 1.1, slow: 0.03, h: 1 }, rail: { r: 1.5, slow: 0.04, h: 0.8 },
+  cone: { r: 0.35, slow: 0, h: 0.8 }, barrier: { r: 1.1, slow: 0.03, h: 1 }, stopfence: { r: 1.25, slow: 0, h: 1.4 }, rail: { r: 1.5, slow: 0.04, h: 0.8 },
   bench: { r: 0.8, slow: 0.04, h: 0.9 }, bush: { r: 0.8, slow: 0.03, h: 0.9 }, palm: { r: 0.4, slow: 0.22, h: 8.5 }, fountain: { r: 2.5, slow: 0.6, h: 3.9 },
   pump: { r: 0.5, slow: 0.12, h: 2.1 }, sign: { r: 0.3, slow: 0.15, h: 11.5 }, pillar: { r: 0.45, slow: 0.25, h: 5.4 },
   fruitstand: { r: 1.5, slow: 0.15, h: 3.2 },
@@ -141,7 +148,9 @@ export class Props {
   }
 
   add(kind, x, z, rot = 0) {
-    const y = this.city.groundHeight(x, z);
+    // (asked from a metre up: what's low and solid under it counts, a step or what's left of a bridge's deck over the
+    // water, not a building's roof)
+    const y = this.city.groundHeight(x, z, 1);
     this.list.push({ kind, x, y, z, rot, alive: true, ...KINDS[kind] });
   }
 

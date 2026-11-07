@@ -201,8 +201,9 @@ export class City {
   // its edges
   roadBase(r, x, z) { return !r.under && this.inDeck(x, z, 0.05) ? this.deck.y : this.base(x, z); }
   // The ground under (x, z), from height y: on a bridge, the deck from anywhere near or above it, and the road
-  // under it from below. (py: the height of the point itself, of a body whose middle is at y)
-  groundHeight(x, z, y = Infinity, py = y) {
+  // under it from below. (py: the height of the point itself, of a body whose middle is at y; `tyre`, for a wheel's
+  // ray, where its tyre is, for whether it's up on scenery)
+  groundHeight(x, z, y = Infinity, py = y, tyre = py) {
     // (for something already down below the quay's top (its middle lower than anything lying on it), going in over the edge, the quay's edge is water too: else the
     // end of it that's still over the quay is pushed out of it, and throws it metres out across the harbour)
     // (from the ground there, not from 0: a quay needn't stand at street level)
@@ -233,8 +234,9 @@ export class City {
     // (a flat roof holds what comes down on it from above; a tower's tiers don't, and it slides off into the street)
     if (y < Infinity) for (const b of this.near(x, z)) {
       if (b.tiers || b.floor != null || y <= b.top - 0.6) continue;
-      const roof = b.top + (ROOF[b.type] ?? 0.7), dist = this.blockDist(b, x, z, _g);
-      if (dist < 0 && onTop(roof - py, -dist)) h = Math.max(h, roof);
+      // (a building's roof is up over its walls' top; anything else that's solid, scenery, is as high as it is)
+      const roof = b.top + (b.type ? ROOF[b.type] ?? 0.7 : 0), dist = this.blockDist(b, x, z, _g);
+      if (dist < 0 && (b.type ? onTop(roof - py, -dist) : roof - tyre < 0.2)) h = Math.max(h, roof);
     }
     return h;
   }
@@ -252,10 +254,15 @@ export class City {
 
   raycast(origin, dir, far, withGround = true) {
     if (!withGround || dir.y > -1e-6) return null;
-    let t = (this.groundHeight(origin.x, origin.z, origin.y) - origin.y) / dir.y;
+    // (whether it's on top of scenery, a step or a pier, from down where the tyre is, not from the mount the ray starts
+    // at, and only if it's no higher over that than a kerb: else the bank's steps, higher than a wheel, are taken for
+    // the road under it, the spring's crushed flat in one go, and the car's thrown sixty metres up. What's higher, the
+    // body climbs onto first (see contain). Buildings' roofs, the sky decks, as they always were)
+    const tyre = origin.y - far;
+    let t = (this.groundHeight(origin.x, origin.z, origin.y, origin.y, tyre) - origin.y) / dir.y;
     for (let i = 0; i < 2; i++) {
       const px = origin.x + dir.x * Math.max(0, t), pz = origin.z + dir.z * Math.max(0, t);
-      t = (this.groundHeight(px, pz, origin.y) - origin.y) / dir.y;
+      t = (this.groundHeight(px, pz, origin.y, origin.y, tyre) - origin.y) / dir.y;
     }
     if (t < -0.3 || t > far) return null;
     const point = new THREE.Vector3().copy(origin).addScaledVector(dir, t);
@@ -265,7 +272,7 @@ export class City {
     // every launch off one has always gone)
     const [ra, rb, rc, rd] = this.rampBox, M = 6;
     const ramp = point.x > ra - M && point.x < rb + M && point.z > rc - M && point.z < rd + M;
-    const h = this.groundHeight(point.x, point.z, origin.y);
+    const h = this.groundHeight(point.x, point.z, origin.y, origin.y, tyre);
     if (!ramp && Math.abs(h - point.y) > 0.5) return null;
     return { dist: Math.max(0, t), point, normal: this.groundNormal(point.x, point.z, undefined, origin.y, origin.y, h) };
   }

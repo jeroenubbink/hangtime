@@ -379,9 +379,24 @@ export class Traffic {
         const first = L.cars[0];
         if (!first || first.s > L.from + 14) this.add(this.kind(L), L, L.from, L.speed[0] + this.rand() * (L.speed[1] - L.speed[0]));
       }
+      // A held light's queue: one driver in twenty startled by the crash runs it, a moment later, and the rest follow
+      if (L.hold && crashT != null) {
+        if (L.loose == null) L.loose = L.cars.some(v => v.s < L.stop && this.rand() < 0.05) ? 0.5 + this.rand() * 3 : Infinity;
+        if ((L.loose -= dt) <= 0) L.hold = false;
+      }
       // A merging lane lets its first car go, once it's at the line and there's a gap, and not two at once (`merge`:
       // { every: [s, s] between them, after: s it leaves before the next on that lane, keep: how many are left waiting
-      // for good })
+      // for good, cue: { kind, eta } the one of that kind that goes, gap or no gap, when you're `eta` seconds from the
+      // junction, and whatever's still ahead of it: round the corner in front of you as you get there })
+      const Q = L.merge?.cue;
+      if (Q && !L.cued && crashT == null && focus.sp > 5) {
+        const [jx, jz] = this.city.level.junction;
+        if (Math.hypot(jx - focus.x, jz - focus.z) / focus.sp < Q.eta) {
+          L.cued = true;
+          const k = L.cars.find(v => v.special === Q.kind && !v.go && v.s < L.stop);
+          if (k) for (const v of L.cars) if (v.s >= k.s && v.s < L.stop) v.go = true;
+        }
+      }
       if (L.into && (L.mergeT -= dt) <= 0 && (crashT == null)) {
         let head = null, left = 0;
         for (const v of L.cars) if (!v.go && v.s < L.stop) { head = v; left++; }
@@ -402,8 +417,9 @@ export class Traffic {
         if (!v.asleep) continue;
         let ahead = L.cars[k + 1], as = ahead?.s;
         if (extra) for (const [s, o] of extra) if (o !== v && s > v.s && (as == null || s < as)) { ahead = o; as = s; }
-        // (in a crash they don't see what's waiting for them: they'll be awake, and too late, by the time they get there)
-        const wild = crashT != null && crashT < v.driver.wakesAt;
+        // (in a crash they don't see what's waiting for them: they'll be awake, and too late, by the time they get there;
+        // not on a lane that's `hold`, out of the way of it all, its drivers minding their own business)
+        const wild = !L.hold && crashT != null && crashT < v.driver.wakesAt;
         let want = v.driver.cruise;
         if (ahead && !(wild && !ahead.asleep)) want = Math.min(want, Math.max(0, (ahead.asleep ? ahead.glide : Math.max(0, ahead.car.speed)) + (as - v.s - (ahead.len + v.len) / 2 - 6) * 0.5));
         if (!wild && L.stop != null && v.s < L.stop && !v.go) want = Math.min(want, Math.max(0, (L.stop - v.s - v.len / 2 - 1) * 0.5));
@@ -426,7 +442,7 @@ export class Traffic {
         this.input.throttle = 0;
         // (a parked one has nobody at the wheel: brakes on until it's hit, then it rolls where it's knocked)
         if (v.lane.parked) Object.assign(this.input, { throttle: 0, brake: v.touched || v.wrecked ? 0.04 : 1, steer: 0, handbrake: false, boost: false, stop: true });
-        else v.driver.drive(v, bodies, dt, this.input, crashT == null || crashT > v.driver.wakesAt);
+        else v.driver.drive(v, bodies, dt, this.input, crashT == null || crashT > v.driver.wakesAt || v.lane.hold);
         v.input = { ...this.input };
       }
       const behind = (p.x - focus.x) * focus.dx + (p.z - focus.z) * focus.dz < -150;
