@@ -512,6 +512,10 @@ export const LEVELS = {
       lettered: [0, -108, 16, 9.2],
     },
     // (and once the tour comes, the chain going up again: from up in a front corner of the yard, along the row)
+    // (and while it goes, the camera up over the whole row, a second and a half after your car's gone up, from back up
+    // your road: the chain runs both ways at once, and cutting between its ends is just a scrap for the shot; from
+    // across the row, its smoke goes up beside it, not in front)
+    overview: { after: 1.5, from: 0 },
     reel: { kind: 'tanker', min: 4, eyes: [[-72, 21, -64], [72, 21, -64]] },
     // The warnings on the way down, each more worried than the last, and the sign over the bays
     warnings: [

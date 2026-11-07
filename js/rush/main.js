@@ -1692,6 +1692,31 @@ function together(all, ks, anchor) {
   for (const { p } of big) r = Math.max(r, Math.hypot(p.x - _wc.x, p.z - _wc.z));
   return { at: _wc, r: r + 5, pts: big.map(i => i.p) };
 }
+// On a level whose crash is spread wide (a chain going off all along a street, `overview.after` seconds after your car's
+// gone up, seen from `overview.from`, the way round it the camera stays: 0 from +z): everything the crash has touched, the latest most (the last few seconds' worth, a fuse burning along), its
+// middle and how far it spreads, for one shot over all of it instead of cutting from blast to blast
+const OVERVIEW_MIN = 24, OVERVIEW_MAX = 52;
+function overview() {
+  _wc.set(0, 0, 0);
+  const pts = [];
+  let w = 0;
+  for (const v of traffic.list) {
+    if (!(v.gen > 0) || v.touchT == null) continue;
+    const k = 1 / (1 + Math.max(0, G.t - v.touchT) / 3);
+    _wc.addScaledVector(v.car.pos, k);
+    w += k;
+    pts.push([v.car.pos, k]);
+  }
+  if (!w) return null;
+  _wc.divideScalar(w);
+  // (how far out: past the middle of the weight, the fresh ones counting, the long-done ends of the street not)
+  let r = 0;
+  for (const [p, k] of pts) if (k > 0.35) r = Math.max(r, Math.hypot(p.x - _wc.x, p.z - _wc.z));
+  pts.sort((a, b) => b[1] - a[1]);
+  // (what has to be in sight: the freshest few, in the frame; not a wreck thrown off over the roofs)
+  const R = clamp(r + 8, OVERVIEW_MIN, OVERVIEW_MAX);
+  return { at: _wc, r: R, max: OVERVIEW_MAX, pts: pts.filter(([p]) => Math.hypot(p.x - _wc.x, p.z - _wc.z) < R).slice(0, 5).map(([p]) => p) };
+}
 // For the opening shot: the junction, which way your road runs to it (u), and which way is the middle of the
 // road from your car (w)
 function intro() {
@@ -2347,9 +2372,12 @@ function updateCamera(dt, rawDt) {
     // (round what it's framing already, so it can drift along with the action; else round what it's watching)
     // (each shot held a while, wide or not: none in for under 2 s, out again, and in again)
     C.wideT = (C.wideT || 0) + rawDt;
-    const T = together(all, ks, C.wide ? C.wide.at : C.subject ? C.subject.car.pos : C.focus);
+    const over = city.level.overview && since >= city.level.overview.after;
+    const T = over ? overview() : together(all, ks, C.wide ? C.wide.at : C.subject ? C.subject.car.pos : C.focus);
+    // (overview: once it's up there it stays, the whole crash long)
+    if (over) { if (T && !C.wide) { C.wide = { at: T.at.clone(), r: T.r, max: T.max, from: city.level.overview.from }; C.wideA = null; } C.wideT = C.wideOff = 0; }
     // (but never for long: past WIDE_HOLD it's back in, for a full shot, however much is still going on)
-    if (T && (C.wide ? C.wideT <= WIDE_HOLD : C.wideT > 2 && C.cutT > (C.wideBack || 2))) { if (!C.wide) { C.wide = { at: T.at.clone(), r: T.r }; C.wideT = 0; C.wideBack = 0; } C.wideOff = 0; }
+    else if (T && (C.wide ? C.wideT <= WIDE_HOLD : C.wideT > 2 && C.cutT > (C.wideBack || 2))) { if (!C.wide) { C.wide = { at: T.at.clone(), r: T.r }; C.wideT = 0; C.wideBack = 0; } C.wideOff = 0; }
     else if (C.wide && ((C.wideOff = (C.wideOff || 0) + rawDt) > 1.5 && C.wideT > SHOT || C.wideT > WIDE_HOLD)) {
       if (C.wideT > WIDE_HOLD) C.wideBack = SHOT;
       C.wide = null;
@@ -2363,7 +2391,8 @@ function updateCamera(dt, rawDt) {
       C.cutT = C.cutS = C.restT = 0;
     }
     // (and it drifts with the action slowly: a gentle move, not a lurch each time the crashes regroup)
-    if (C.wide && T) { C.wide.at.lerp(T.at, 1 - Math.exp(-rawDt * 0.8)); C.wide.r += (T.r - C.wide.r) * (1 - Math.exp(-rawDt * 1)); C.wide.pts = T.pts.map(p => p.clone()); }
+    // (the overview slower still: it's following a fuse along a street, not a scuffle)
+    if (C.wide && T) { const q = over ? 0.45 : 1; C.wide.at.lerp(T.at, 1 - Math.exp(-rawDt * 0.8 * q)); C.wide.r += (T.r - C.wide.r) * (1 - Math.exp(-rawDt * q)); C.wide.pts = T.pts.map(p => p.clone()); }
     if (since < FOLLOW_YOU) {
       if (C.subject !== player) { C.subject = player; C.side = 1; }
     } else {
@@ -2399,10 +2428,11 @@ function updateCamera(dt, rawDt) {
     let look;
     if (C.wide) {
       // From up and back, on the side the camera's already on, turning slowly; far enough out to fit it all
-      const W = C.wide, r = Math.min(WIDE_MAX, W.r), D = r / Math.sin(THREE.MathUtils.degToRad(camera.fov) / 2) + 4;
-      if (C.wideA == null) { C.wideA = C.wideGoal = Math.atan2(camera.position.x - W.at.x, camera.position.z - W.at.z); C.wideLook = 0; }
-      C.wideA += rawDt * 0.08;
-      C.wideGoal += rawDt * 0.08;
+      const W = C.wide, r = Math.min(W.max || WIDE_MAX, W.r), D = r / Math.sin(THREE.MathUtils.degToRad(camera.fov) / 2) + 4;
+      // (the overview from the level's side of it, still: a slow turn about the whole street only swings the smoke
+      // across it)
+      if (C.wideA == null) { C.wideA = C.wideGoal = W.from ?? Math.atan2(camera.position.x - W.at.x, camera.position.z - W.at.z); C.wideLook = 0; }
+      if (W.from == null) { C.wideA += rawDt * 0.08; C.wideGoal += rawDt * 0.08; }
       _l.copy(W.at);
       // (`up`: 0, up and back; 1, nearly straight down)
       const spot = (a, up) => _c.set(W.at.x + Math.sin(a) * D * (0.8 - 0.6 * up), W.at.y + D * (0.55 + 0.4 * up), W.at.z + Math.cos(a) * D * (0.8 - 0.6 * up));
@@ -2419,7 +2449,10 @@ function updateCamera(dt, rawDt) {
         if (lower != null) C.wideUpGoal = lower;
         else if (hidden(C.wideGoal, up0)) {
           let up = 0, a0 = C.wideGoal;
-          search: for (const u of [0, 0.5, 1]) {
+          // (the overview higher first, where it is, before it goes round: it's there to keep its side)
+          const still = W.from != null && [0.5, 1].find(u => u > up0 && !hidden(a0, u));
+          if (still) up = still;
+          else search: for (const u of [0, 0.5, 1]) {
             for (let i = 0; i <= 8; i++) {
               const a = a0 + Math.ceil(i / 2) * 0.4 * (i % 2 ? 1 : -1);
               if (!hidden(a, u)) { C.wideGoal = a; up = u; break search; }

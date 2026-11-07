@@ -261,7 +261,8 @@ def office(at):
     W, D = 12.0, 4.0
     for z, c in ((0, WHITE), (2.9, WHITE)):
         M.box(0, 0, z + 0.1, W, D, 2.8, c)
-        M.box(0, 0, z + 2.75, W + 0.2, D + 0.2, 0.15, TEAL)
+        # (the trim stands a little proud of the roof, so the two never share a face)
+        M.box(0, 0, z + 2.75, W + 0.2, D + 0.2, 0.2, TEAL)
         for x in (-4.2, -1.4, 1.4, 4.2):
             M.box(x, -D / 2 - 0.01, z + 1.0, 1.6, 0.05, 1.1, GLASS)
             M.box(x, -D / 2 - 0.03, z + 0.95, 1.8, 0.05, 0.08, DARK)
@@ -273,8 +274,8 @@ def office(at):
     M.beam((W / 2 + 1.3, -D / 2 + 0.5, 1.3), (W / 2 + 1.3, -D / 2 + 3.5, 4.1), 0.07, YELLOW)
     M.box(W / 2 + 1.3, -D / 2 + 0.5, 0.3, 0.06, 0.06, 1.0, YELLOW)
     # an air conditioner on the roof, a flagpole, and the company's colours
-    M.box(-3, 0.5, 5.8, 1.6, 1.2, 0.8, ROOF)
-    M.cyl(W / 2 - 0.6, D / 2 - 0.4, 5.8, 0.06, 5.0, STEEL2, seg=6)
+    M.box(-3, 0.5, 5.95, 1.6, 1.2, 0.8, ROOF)
+    M.cyl(W / 2 - 0.6, D / 2 - 0.4, 5.95, 0.06, 5.0, STEEL2, seg=6)
     M.box(W / 2 - 0.6 - 0.9, D / 2 - 0.4, 9.9, 1.8, 0.04, 1.0, ORANGE)
     M.box(W / 2 - 0.6 - 0.9, D / 2 - 0.4 - 0.03, 10.25, 1.8, 0.04, 0.3, TEAL)
     M.box(0, 0, 0, W + 1.0, D + 1.0, 0.1, CONCRETE)
