@@ -545,8 +545,8 @@ export const LEVELS = {
       // when there's a gap, one at a time: by the time you get there, only the last few are left
       { road: 'main', side: 1, i: 1, then: { road: 'avenue', side: 1, i: 1 }, bend: 10, speed: [14, 18], stop: 414,
         merge: { every: [0.7, 1.1], after: 1.5, keep: 3 },
-        // (the back of it, the ones still there when you are: a tanker and a bus among them)
-        queue: [null, null, null, null, null, null, null, null, null, null, 'tanker', null, 'bus'] },
+        // (the back of it, the ones still there when you are: a tanker, Fiatmine's cash van and a bus)
+        queue: [null, null, null, null, null, null, null, null, null, null, 'tanker', 'cash', 'bus'] },
       // The big junction: queues both ways on the cross street, waiting for the avenue
       { road: 'north', side: 1, i: 0, speed: [16, 20], stop: 412.3, queue: [null, null, 'bus', null, null] },
       { road: 'north', side: 1, i: 1, speed: [16, 20], stop: 412.3, queue: [null, 'tanker', null, null] },

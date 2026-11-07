@@ -14,7 +14,7 @@ addDutch({
   'NO': 'NIET', 'SMOKING': 'ROKEN', 'INFLAMMABLE': 'ONTVLAMBAAR', 'FLAMMABLE': 'BRANDBAAR', 'JUST DON\'T': 'GEWOON NIET DOEN',
   'SERIOUSLY.': 'ECHT WAAR.', 'PERMIT': 'ALLEEN', 'HOLDERS': 'VERGUNNING-', 'ONLY': 'HOUDERS', 'SPARKS FUEL DEPOT': 'SPARKS BRANDSTOFDEPOT',
   // Bank Shot: the bank's slogan (solving, and dissolving, your hard-earned money: "zuurverdiend", so "zuurgemijnd")
-  'FIATMINE': 'FIATMINE', 'SOLVING YOUR HARD MINED FIAT': 'LOST UW ZUURGEMIJNDE FIAT OP',
+  'FIATMINE': 'FIATMINE', 'CASH OUT': 'UITBETAALD', 'SOLVING YOUR HARD MINED FIAT': 'LOST UW ZUURGEMIJNDE FIAT OP',
   'REPLAY': 'HERHALING', 'AND AGAIN, FROM THE TOP': 'NOG EEN KEER, MET GEVOEL',
   'DRIFT': 'DRIFT', 'RETRY': 'OPNIEUW', 'BOOM': 'BOEM',
   'Haze': 'Heiig', 'Dawn': 'Dageraad',
@@ -73,7 +73,7 @@ addDutch({
   'Sky falls': 'Vrije val', 'Dents': 'Deuken', 'Wrecked': 'Total loss', 'Torn in half': 'Doormidden', 'Blast': 'Knal',
   'Splashdown': 'Plons', 'Sunk': 'Gezonken', 'Street furniture': 'Straatspul',
   'Hatchback': 'Hatchback', 'Coupé': 'Coupé', 'Taxi': 'Taxi', 'Saloon': 'Sedan', 'SUV': 'SUV', 'Pickup': 'Pick-up', 'Police car': 'Politieauto',
-  'Van': 'Busje', 'Garbage truck': 'Vuilniswagen', 'Bus': 'Bus', 'Fuel tanker': 'Tankwagen', 'Box lorry': 'Vrachtwagen', 'Flatbed': 'Dieplader',
+  'Van': 'Busje', 'Garbage truck': 'Vuilniswagen', 'Bus': 'Bus', 'Fuel tanker': 'Tankwagen', 'Box lorry': 'Vrachtwagen', 'Flatbed': 'Dieplader', 'Cash van': 'Geldwagen',
 
   // the tour and the results
   ' · wrecked': ' · total loss', '{0} vehicles': '{0} voertuigen', ' · {0} wrecked': ' · {0} total loss', '{0} street furniture': '{0} straatspul',

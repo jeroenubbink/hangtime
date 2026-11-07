@@ -24,7 +24,8 @@ import { fixtures } from './fixtures.js';
 import { gateway } from './gateway.js';
 import { roadsign, warning } from './roadsign.js';
 import { depot } from './depot.js';
-import { bank } from './bank.js';
+import { bank, coin } from './bank.js';
+import { Banknotes } from './banknotes.js';
 import { filmset } from './filmset.js';
 import { RIDES, TRAFFIC, TRAFFIC_PAINTS } from './roster.js';
 import { Recorder, FLAGS, canSend, send } from './replay.js';
@@ -134,7 +135,7 @@ const LOOKS = { ...TIMES,
 };
 
 // ---------- World ----------
-let city = null, props = null, traffic = null, debris = null, oranges = null, player = null, guides = null, stacks = null, standIns = null;
+let city = null, props = null, traffic = null, debris = null, oranges = null, notes = null, player = null, guides = null, stacks = null, standIns = null;
 const crates = [];
 let halves = [];
 const G = { state: 'menu', t: 0, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0 };
@@ -215,8 +216,38 @@ function makeTraffic(kind, R = G.rand) {
   v.gen = 0;
   v.colour = paintOf(paint);
   v.setLights(LOOKS[time].lamps);
+  if (def.cash) cashSides(v);
   return v;
 }
+
+// Fiatmine's van: the coin and the name on its roof
+let cashTex = null;
+function cashSides(v) {
+  if (!cashTex) {
+    const cv = document.createElement('canvas');
+    cv.width = 512; cv.height = 160;
+    const draw = () => {
+      const g = cv.getContext('2d');
+      g.clearRect(0, 0, 512, 160);
+      coin(g, 80, 80, 62);
+      g.fillStyle = '#f2b632'; g.textAlign = 'left'; g.textBaseline = 'middle';
+      fitText(g, t('FIATMINE'), 340, 92, "900 {}px 'Cinzel', serif");
+      g.fillText(t('FIATMINE'), 160, 86);
+    };
+    draw();
+    cashTex = new THREE.CanvasTexture(cv);
+    cashTex.colorSpace = THREE.SRGBColorSpace;
+    document.fonts?.load("900 50px 'Cinzel'").then(() => { draw(); cashTex.needsUpdate = true; }).catch(() => {});
+  }
+  // (on the roof, across it, read from behind: where you see traffic from)
+  const w = v.def.size[0];
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.86, w * 0.27), new THREE.MeshStandardMaterial({ map: cashTex, transparent: true, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.set(0, ROOF, 0.4);
+  v.model.add(m);
+}
+const ROOF = 1.62;
+const fitText = (g, text, w, px, font) => { g.font = font.replace('{}', px); const m = g.measureText(text).width; if (m > w) g.font = font.replace('{}', Math.floor(px * w / m)); };
 
 function loadLevel(key) {
   if (city?.level === LEVELS[key]) return;
@@ -248,6 +279,8 @@ function loadLevel(key) {
   debris = new Debris(scene, (x, z, y) => city.groundHeight(x, z, y + 0.5));
   oranges?.dispose();
   oranges = new Oranges(scene, (x, z, y) => city.groundHeight(x, z, y));
+  notes?.dispose();
+  notes = new Banknotes(scene, (x, z, y) => city.groundHeight(x, z, y));
   time = timeFor(key);
   setLook(time);
 }
@@ -507,7 +540,7 @@ const DAMAGE = {
   squeezed: [t('Squeezed'), '#ff9a1f'],
 };
 const NAMES = Object.fromEntries(Object.entries({ hatch: 'Hatchback', coupe: 'Coupé', cab: 'Taxi', saloon: 'Saloon', suv: 'SUV', pickup: 'Pickup',
-  police: 'Police car', van: 'Van', garbage: 'Garbage truck', bus: 'Bus', tanker: 'Fuel tanker', lorry: 'Box lorry', flatbed: 'Flatbed' }).map(([k, n]) => [k, t(n)]));
+  police: 'Police car', van: 'Van', garbage: 'Garbage truck', bus: 'Bus', tanker: 'Fuel tanker', lorry: 'Box lorry', flatbed: 'Flatbed', cash: 'Cash van' }).map(([k, n]) => [k, t(n)]));
 function tally(v, type, p, pos) {
   const C = G.crash;
   // (`v`: a vehicle, the yacht, something with a row of its own in the ledger (`own`), or null for street furniture)
@@ -674,7 +707,9 @@ function blowUp(X) {
     X.car.vel.y += 7;
     X.car.w.add(_kick.set(G.rand() - 0.5, 0, G.rand() - 0.5).multiplyScalar(4));
   }
-  scoreEvent(X, 1500 * X.value, X.def.explosive ? 'TANKER BLAST' : 'BLAST', true, 'blast');
+  // (a cash van: the money everywhere, and a callout of its own)
+  if (X.def.cash) notes.burst(p, X.car.vel);
+  scoreEvent(X, 1500 * X.value, X.def.explosive ? 'TANKER BLAST' : X.def.cash ? 'CASH OUT' : 'BLAST', true, 'blast');
   blast(X, p, R, big);
 }
 
@@ -830,6 +865,7 @@ function dress(L) {
   props = new Props(scene, city, [...(L.props || []), ...pillars(L.station)]);
   props.lamps(LOOKS[time].lamps);
   oranges?.clear();
+  notes?.clear();
   G.boat?.reset();
   buildStation(L.station);
 }
@@ -3013,6 +3049,7 @@ function tick(raw, draw = true) {
   for (const k of crates) { k.m.rotation.y += raw * 1.6; k.m.position.y = k.y + Math.sin(G.t * 2.4 + k.x) * 0.2; }
   debris.update(dt);
   oranges.update(dt);
+  notes.update(dt);
   smoke.update(dt, camera, renderer.domElement.height);
   glow.update(dt, camera, renderer.domElement.height);
   rain.update(dt, camera.position);
@@ -3314,7 +3351,7 @@ if (DEV) {
   devUI.lines.classList.toggle('on', devS.lines);
 }
 
-G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, get standIns() { return standIns; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay, watch, free, renderer, blowUp, heaps, report, startCrash };
+G.debug = { get player() { return player; }, get traffic() { return traffic; }, get city() { return city; }, get standIns() { return standIns; }, get notes() { return notes; }, playerInput, step, startRun, skipTo, keys, camera, tick, render: () => post.render(), replay, watch, free, renderer, blowUp, heaps, report, startCrash };
 toMenu();
 if (!store.load('rush.seenHelp', false)) showScreen('help');
 requestAnimationFrame(frame);
