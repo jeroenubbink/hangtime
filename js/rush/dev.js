@@ -126,7 +126,8 @@ const css = `
 #dev { position: fixed; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); z-index: 20; display: flex;
   gap: 6px; align-items: center; font-size: 13px; }
 #dev b { font: 12px 'Russo One', sans-serif; letter-spacing: 1px; color: var(--accent-ink); background: var(--hot); padding: 4px 7px; border-radius: 6px; }
-#dev button, #devrun button { padding: 6px 10px; font-size: 13px; background: var(--panel); }
+#dev button, #devrun button { padding: 6px 10px; font-size: 13px; background: var(--panel); white-space: nowrap; }
+@media (max-width: 360px) { #dev { gap: 4px; } #dev button { padding: 5px 7px; font-size: 11px; } }
 #dev button.on, #devrun button.on { border-color: var(--hot); background: rgba(255, 138, 30, 0.28); }
 #devlib { position: fixed; top: calc(max(8px, env(safe-area-inset-top)) + 40px); right: max(8px, env(safe-area-inset-right)); z-index: 20;
   width: min(380px, calc(100vw - 16px)); max-height: 70vh; overflow: auto; background: var(--panel); border: 1px solid var(--line);
@@ -145,6 +146,13 @@ const css = `
 #devrun .what { flex-basis: 100%; opacity: 0.8; font-size: 12px; }
 #devhint { position: fixed; left: 50%; transform: translateX(-50%); top: max(8px, env(safe-area-inset-top)); z-index: 19; font-size: 12px;
   background: var(--panel); border-radius: 8px; padding: 5px 10px; opacity: 0.85; pointer-events: none; }
+/* (on a phone, in a run: down the left under retry and pause, two by two, off the score and the heat) */
+body.touch:not(.screen) #dev { top: calc(30% + 50px); left: max(12px, env(safe-area-inset-left)); right: auto; display: grid;
+  grid-template-columns: auto auto; gap: 4px; }
+body.touch:not(.screen) #dev b { grid-column: span 2; justify-self: start; font-size: 10px; padding: 2px 5px; }
+body.touch:not(.screen) #dev button { padding: 5px 7px; font-size: 11px; white-space: nowrap; }
+@media (orientation: landscape) and (max-height: 500px) { body.touch:not(.screen) #dev { top: calc(max(12px, env(safe-area-inset-top)) + 50px); } }
+body.touch .screen { padding-top: 52px; }
 .list h4 { margin: 6px 0 0; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.5; font-weight: 600; }
 .list .dev-only b::after { content: 'DEV'; margin-left: 8px; font-size: 10px; padding: 1px 5px; border-radius: 4px; background: var(--hot); color: var(--accent-ink); vertical-align: 2px; }
 `;

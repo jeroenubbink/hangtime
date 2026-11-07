@@ -2782,6 +2782,7 @@ function updateHud(dt) {
 // ---------- Screens ----------
 function showScreen(id) {
   for (const s of ['menu', 'results', 'pause', 'help']) $(s).classList.toggle('hidden', s !== id);
+  document.body.classList.toggle('screen', !!id);
 }
 // The engine, skid and boost are loops: silence them whenever the game stops updating them
 function muteLoops() { sound.engine(0, 0, false); sound.skid(0); sound.boost(0); }
