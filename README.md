@@ -106,9 +106,10 @@ through them. Things to know:
   of bays outside its gate, under warnings that get more worried the nearer you get: light one and the blasts run
   down the row both ways into two junctions, and once it's over the chain goes up again in slow motion, from the
   depot's yard, before the tour of the wreckage); **Bank Shot** (your road comes in at 45° and stops
-  at the avenue, its right lane queued solid with cars pulling out onto it one at a time as gaps come, so only the
-  last few, a tanker and a bus among them, are still waiting when you get there down the empty left lane: bounce
-  the wreckage off the shops and down to the big junction); and **Mind the Gap** (the road stops at a
+  at the avenue, in the late afternoon, its right lane queued solid behind roadworks, indicators blinking, cars
+  pulling out onto the avenue one at a time as gaps come, so only the last few, a tanker, Fiatmine's cash van and a
+  bus, are still waiting when you get there down the empty left lane; across the avenue, Fiatmine's bank, columns,
+  dome and all: bounce the wreckage off it and down to the big junction, and blow the van for the money); and **Mind the Gap** (the road stops at a
   canal, the ramp doesn't: short and you're swimming, long and you land on the queue past the quay road).
 - **Tower Dive**: the biggest ramp in town, five ramps side by side, 30° to 50° at the lip (white fins
   between them keep you in yours). Off the 35° to 45° ones at full speed you
@@ -319,7 +320,8 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
   modelled in Blender (source: `assets/src/toys.blend`); `assets/scenery/hotel.glb`, Tower Dive's palm and fountain
   (source: `assets/src/hotel.blend`); `assets/scenery/depot.glb`, Tanker Row's fuel depot (storage tanks, the loading
   rack, the gate, the office, the fence, pipes), built by a script: `blender -b -P assets/src/depot.py` makes
-  `assets/src/depot.blend` and the .glb
+  `assets/src/depot.blend` and the .glb; `assets/scenery/bank.glb`, Bank Shot's bank, the same way from
+  `assets/src/bank.py` (the two share `assets/src/kitlib.py`, the model builder and exporter)
 - `js/net.js`: online rooms over WebRTC, found through public Nostr relays (Trystero, loaded only when you go online)
 - `js/toon.js`: the shared toybox look for both games: two-tone shading, rim light and a colour boost, patched into three.js's shaders
 - `js/derby/`: Crunchtime
@@ -347,7 +349,12 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
     bays and the lawns (all paint and boards: nothing solid), and the shops' signs and awnings
   - `depot.js`: Tanker Row's fuel depot: the yard's fence, gate, tanks and bund walls, the lines on it, and the
     company's name on the gate and its biggest tank
-  - `roadsign.js`: the signs by and over the road: Last Chance's distance to the station, Tanker Row's warnings
+  - `bank.js`: Bank Shot's bank, Fiatmine: placed, made solid (columns and all), its name and slogan in gold and
+    its banners
+  - `banknotes.js`: what a cash van turns into when it goes up: notes blown high, fluttering down, left lying
+  - `blinkers.js`: the indicators on cars waiting to pull out of a merging lane
+  - `roadsign.js`: the signs by and over the road: Last Chance's distance to the station, Tanker Row's warnings,
+    Bank Shot's merge in turn
   - `standins.js`: a car park's cars, far off, as painted boxes (two draw calls instead of a few thousand triangles each)
   - `replay.js`: records each run for the Send replay button (see Run)
   - `guides.js`: the medal lines

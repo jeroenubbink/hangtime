@@ -24,6 +24,8 @@ const busy = (road, gap = [1.6, 3.0]) => [1, -1].flatMap(side => [0, 1].map(i =>
 const fade = x => { const t = Math.min(1, Math.max(0, (Math.abs(x) - 50) / 170)); return 1 - t * t * (3 - 2 * t); };
 const rails = (x, z0, z1) => Array.from({ length: Math.floor((z1 - z0) / 3) + 1 }, (_, i) => ['rail', x, z0 + i * 3, Math.PI / 2]);
 const D45 = Math.SQRT1_2;
+// (Bank Shot's road, in from the corner at 45°: a point s down it, off to the right of its middle)
+const diag = (s, off) => ({ x: -300 + D45 * (s + off), z: 300 - D45 * s + D45 * off });
 
 // Tower Dive's grounds. The stream through the park between the avenue and the skyway: its middle at x
 const brook = x => -85 + 7 * Math.sin(x / 26 + 0.4) + 2.5 * Math.sin(x / 11);
@@ -528,6 +530,7 @@ export const LEVELS = {
     draft: true,
     name: 'Bank Shot', blurb: 'Your road comes in at an angle and stops at the avenue. The big junction is down it: bounce the wreckage off the shops and send it there.',
     seed: 97,
+    time: 'afternoon',
     bounds: [-440, 440, -210, 470],
     // (on the diagonal, facing down it, in the left lane of the two your way: the right's queued solid)
     start: { x: -300 + D45 * (40 + 1.8), z: 300 - D45 * 40 + D45 * 1.8, yaw: -Math.PI / 4, speed: 28 },
@@ -557,6 +560,10 @@ export const LEVELS = {
     // Across the avenue from the end of your road, the bank, on a stone forecourt where the shops were: what's coming
     // out of your road at its angle goes into its front, and off it toward the big junction
     bank: { x: 19, z: -19.2 },
+    // Roadworks on your road, the reason for the queue: merge in turn, hung over it a way back, and cones between it
+    // and your lane down to the end (`diag(s, off)`: a point s down your road, off to the right of its middle)
+    warnings: [{ kind: 'merge', ...diag(290, 5.4), over: 4.8, yaw: -Math.PI / 4 }],
+    props: Array.from({ length: 12 }, (_, i) => ['cone', ...Object.values(diag(330 + i * 7, 3.6)), 0]),
     lots: [{ rect: [-8, 46, -54, -14.4], colour: '#d9d2c0' }],
     medals: [40000, 120000, 300000],
   },

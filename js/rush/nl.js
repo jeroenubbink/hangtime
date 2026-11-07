@@ -14,10 +14,10 @@ addDutch({
   'NO': 'NIET', 'SMOKING': 'ROKEN', 'INFLAMMABLE': 'ONTVLAMBAAR', 'FLAMMABLE': 'BRANDBAAR', 'JUST DON\'T': 'GEWOON NIET DOEN',
   'SERIOUSLY.': 'ECHT WAAR.', 'PERMIT': 'ALLEEN', 'HOLDERS': 'VERGUNNING-', 'ONLY': 'HOUDERS', 'SPARKS FUEL DEPOT': 'SPARKS BRANDSTOFDEPOT',
   // Bank Shot: the bank's slogan (solving, and dissolving, your hard-earned money: "zuurverdiend", so "zuurgemijnd")
-  'FIATMINE': 'FIATMINE', 'CASH OUT': 'UITBETAALD', 'SOLVING YOUR HARD MINED FIAT': 'LOST UW ZUURGEMIJNDE FIAT OP',
+  'FIATMINE': 'FIATMINE', 'MERGE': 'RITSEN', 'IN TURN': 'OM DE BEURT', 'CASH OUT': 'UITBETAALD', 'SOLVING YOUR HARD MINED FIAT': 'LOST UW ZUURGEMIJNDE FIAT OP',
   'REPLAY': 'HERHALING', 'AND AGAIN, FROM THE TOP': 'NOG EEN KEER, MET GEVOEL',
   'DRIFT': 'DRIFT', 'RETRY': 'OPNIEUW', 'BOOM': 'BOEM',
-  'Haze': 'Heiig', 'Dawn': 'Dageraad',
+  'Haze': 'Heiig', 'Dawn': 'Dageraad', 'Afternoon': 'Namiddag',
   'VICTORIA BRIDGE': 'VICTORIABRUG', 'SLOW DOWN.': 'RUSTIG AAN.', '…said nobody here, ever.': '…zei hier nog nooit iemand.',
   'FIZZ BANG!': 'PRIK & PATS!', 'The soda that hits you back': 'De frisdrank die terugslaat', 'BRAKES?': 'REMMEN?', 'Never heard of them.': 'Nooit van gehoord.',
   'WOK AROUND THE CLOCK': 'WOK DE KLOK ROND', 'Noodles · open all night': 'Noedels · de hele nacht open', 'DENT-ISTS': 'DEUKTISTEN', 'We fix smiles and bumpers': 'Wij maken glimlachen en bumpers weer heel',

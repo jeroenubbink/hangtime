@@ -67,6 +67,21 @@ const WARNINGS = {
     g.fillStyle = '#ffd23a'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = FONT(210); g.fillText(t('SERIOUSLY.'), 512, 330, 900);
   },
+  // roadworks: merge in turn, the two arrows zipping into one (Bank Shot's, over its queue)
+  merge: g => {
+    g.fillStyle = '#ffd23a'; g.fillRect(0, 0, 1024, 640);
+    g.strokeStyle = '#1b1b1f'; g.lineWidth = 24; g.strokeRect(24, 24, 976, 592);
+    g.strokeStyle = '#1b1b1f'; g.lineWidth = 34; g.lineCap = 'round'; g.lineJoin = 'round';
+    // (two lanes coming in from the bottom, meeting, one going on up: and the zip between them where they meet)
+    g.beginPath(); g.moveTo(150, 560); g.lineTo(150, 420); g.quadraticCurveTo(150, 330, 230, 300); g.stroke();
+    g.beginPath(); g.moveTo(310, 560); g.lineTo(310, 420); g.quadraticCurveTo(310, 330, 230, 300); g.stroke();
+    g.beginPath(); g.moveTo(230, 300); g.lineTo(230, 150); g.stroke();
+    g.fillStyle = '#1b1b1f'; g.beginPath(); g.moveTo(230, 70); g.lineTo(300, 170); g.lineTo(160, 170); g.closePath(); g.fill();
+    for (let k = 0; k < 4; k++) { g.fillRect(208 + (k % 2) * 22, 340 + k * 40, 22, 22); }
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = FONT(150); g.fillText(t('MERGE'), 680, 220, 560);
+    g.font = FONT(120); g.fillText(t('IN TURN'), 680, 420, 560);
+  },
   // a parking sign: the blue P, and who may
   permit: g => {
     g.fillStyle = '#f4f2ea'; g.fillRect(0, 0, 1024, 640);

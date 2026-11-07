@@ -26,6 +26,7 @@ import { roadsign, warning } from './roadsign.js';
 import { depot } from './depot.js';
 import { bank, coin } from './bank.js';
 import { Banknotes } from './banknotes.js';
+import { Blinkers } from './blinkers.js';
 import { filmset } from './filmset.js';
 import { RIDES, TRAFFIC, TRAFFIC_PAINTS } from './roster.js';
 import { Recorder, FLAGS, canSend, send } from './replay.js';
@@ -106,6 +107,10 @@ const TIMES = { ...STAGE_TIMES,
   // long shadows across the road, the last of the stars, the lamps not off yet
   dawn: { label: 'Dawn', sky: ['#24406e', '#8fa8d0', '#ffcf9e'], fog: ['#c4c4d2', 130, 620], hemi: ['#b4c4e6', '#4a4252', 1.25],
     sun: ['#ffc890', 1.9, [120, 32, 90]], orb: '#ffe0b8', stars: 0.15, lamps: 0.45 },
+  // and Bank Shot's: late afternoon, the rush hour, the sun low behind you and gold on the bank's front, the shadows
+  // long across the avenue, a warm haze down the streets
+  afternoon: { label: 'Afternoon', sky: ['#2a7fa2', '#8ec3c6', '#ffd49a'], fog: ['#e2cfae', 150, 650], hemi: ['#bcd6d6', '#7a5a3c', 1.35],
+    sun: ['#ffd29a', 2.2, [70, 42, 120]], orb: '#ffe6b8', stars: 0, lamps: 0 },
 };
 const settings = Object.assign({ level: 'cross', car: 'comet', time: 'day' }, store.load('rush.settings', {}));
 const records = Object.assign({ best: {}, medals: {} }, store.load('rush.records', {}));
@@ -130,12 +135,13 @@ const LOOKS = { ...TIMES,
   haze: { ...TIMES.haze, grade: 0.4 },
   rain: { ...TIMES.rain, grade: 0.6 },
   dawn: { ...TIMES.dawn, grade: 0.7 },
+  afternoon: { ...TIMES.afternoon, grade: 0.9 },
   // (and night: a deep teal dark, the street lamps and windows and the bridge's own lights doing the rest)
   night: { ...TIMES.night, label: 'Night', sky: ['#020812', '#0a2236', '#163a4c'], fog: ['#0a1c26', 110, 560], hemi: ['#4a7896', '#14110e', 0.5], sun: ['#9fc4ff', 0.55, [25, 120, 18]], grade: 0.7 },
 };
 
 // ---------- World ----------
-let city = null, props = null, traffic = null, debris = null, oranges = null, notes = null, player = null, guides = null, stacks = null, standIns = null;
+let city = null, props = null, traffic = null, debris = null, oranges = null, notes = null, blinkers = null, player = null, guides = null, stacks = null, standIns = null;
 const crates = [];
 let halves = [];
 const G = { state: 'menu', t: 0, heat: 1, rush: 0.4, crash: null, score: 0, shown: 0, wrecked: 0, chain: 0, shake: 0, punch: 0, flash: 0 };
@@ -281,6 +287,8 @@ function loadLevel(key) {
   oranges = new Oranges(scene, (x, z, y) => city.groundHeight(x, z, y));
   notes?.dispose();
   notes = new Banknotes(scene, (x, z, y) => city.groundHeight(x, z, y));
+  blinkers?.dispose();
+  blinkers = new Blinkers(scene);
   time = timeFor(key);
   setLook(time);
 }
@@ -3044,6 +3052,7 @@ function tick(raw, draw = true) {
   lead(acc);
   for (const v of traffic.list) if (!v.halved) v.pose();
   player.pose();
+  blinkers.update(traffic.list, G.t);
   for (const h of halves) { h.model.position.copy(h.car.pos); h.model.quaternion.copy(h.car.q); }
   effects(dt, raw);
   for (const k of crates) { k.m.rotation.y += raw * 1.6; k.m.position.y = k.y + Math.sin(G.t * 2.4 + k.x) * 0.2; }
