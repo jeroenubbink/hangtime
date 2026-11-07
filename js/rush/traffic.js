@@ -256,7 +256,8 @@ export class Traffic {
   shared(L) {
     const out = [];
     if (L.into) for (const c of L.into.cars) { if (c.s > L.joinT - 30) out.push([L.joinOwn + c.s - L.joinT, c]); }
-    for (const M of L.merging || []) for (const c of M.cars) { if (c.go && c.s > M.joinOwn - 25) out.push([L.joinT + c.s - M.joinOwn, c]); }
+    // (where the join is along this one is the merging lane's to know: `joinT`, on M, not on L)
+    for (const M of L.merging || []) for (const c of M.cars) { if (c.go && c.s > M.joinOwn - 25) out.push([M.joinT + c.s - M.joinOwn, c]); }
     return out;
   }
   // A merging lane: is there room on the lane it joins for `head` to pull out? Nothing on that one getting to the join

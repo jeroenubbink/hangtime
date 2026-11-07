@@ -620,7 +620,7 @@ export const LEVELS = {
       { lane: 6, kind: 'tanker', eta: 7 },
       { lane: 5, kind: 'bus', eta: 8.2 },
     ],
-    medals: [50000, 150000, 350000],
+    medals: [60000, 250000, 450000],
   },
   bank: {
     name: 'Bank Shot', blurb: 'Your road comes in at an angle and stops at the avenue. The big junction is down it: bounce the wreckage off the shops and send it there.',
@@ -759,7 +759,8 @@ export const LEVELS = {
       { road: 'main', side: 1, i: 1, speed: [21, 25], gap: [60, 120], stop: 410.3, queue: 1 },
       { road: 'main', side: -1, i: 0, speed: [18, 22], fill: [20, 400], gap: [50, 100] },
       // (the side streets wait at the depot road's crossings, red for them for good: they'd only go through each other)
-      ...busy('depot'), ...['west', 'east'].flatMap(r => busy(r, [2.0, 3.6]).map(l => ({ ...l, stop: l.side === 1 ? 410.3 : 165.3, hold: true, queue: 3 }))),
+      // (from the far side, back a parking lane's width further than usual: the depot road's wider by it)
+      ...busy('depot'), ...['west', 'east'].flatMap(r => busy(r, [2.0, 3.6]).map(l => ({ ...l, stop: l.side === 1 ? 410.3 : 161.7, hold: true, queue: 3 }))),
     ],
     specials: [{ lane: 4, kind: 'bus', eta: 7.6 }],
     // Across the end of your road, the depot: its yard paved from the far pavement back, between the side streets

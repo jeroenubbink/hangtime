@@ -47,7 +47,9 @@ export function crane(city, C) {
 const YACHT = { model: 'yacht', lift: 1.1, parts: [{ dz: 0, w: 6.4, d: 24, up: 0.38 }, { dz: 3, w: 4.8, d: 11, up: 2.68 }], board: [3.19, 0.95, 7.4] };
 export class Boat {
   constructor(scene, city, B) {
-    B = { ...YACHT, ...B };
+    // (the yacht's measures only for the yacht: another kit's boat has its own parts and board, and rides at its own
+    // `lift`, not the yacht's)
+    if (!B.model) B = { ...YACHT, ...B };
     this.scene = scene; this.city = city; this.B = B;
     const W = city.water;
     // (else a little low in the water: the bow's forefoot rides at the waterline)

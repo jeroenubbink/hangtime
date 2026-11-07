@@ -32,6 +32,9 @@ export class Blinkers {
     this.mesh.instanceMatrix.needsUpdate = true;
   }
 
+  // None lit (the traffic they were on gone)
+  clear() { this.mesh.count = 0; }
+
   dispose() {
     this.scene.remove(this.mesh);
     this.mesh.geometry.dispose();

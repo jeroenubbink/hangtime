@@ -157,7 +157,8 @@ body.touch #boom { bottom: calc(20px + var(--tb) + var(--th) + 2 * var(--tg) + 8
 /* (on the tour the heaps' own scores say it all: the rest of the HUD steps aside) */
 #hud.touring #crashbox, #hud.touring #heatbox, #hud.touring #rush, #hud.touring #speedo { display: none; }
 /* Tanker Row's reel: a tape's REPLAY mark, and what it is */
-.reel { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; animation: heap .45s cubic-bezier(.2, 1.6, .4, 1) both; }
+/* (centred by its margins, not a transform: the pop-in animates the transform, and would start it off to one side) */
+.reel { position: absolute; left: 0; right: 0; width: max-content; margin: 0 auto; top: 12%; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; animation: heap .45s cubic-bezier(.2, 1.6, .4, 1) both; }
 .reel .rec { font: 900 15px 'Titillium Web', sans-serif; letter-spacing: 3px; color: #fff; background: #d8352b; padding: 2px 10px 2px 22px; border-radius: 3px; position: relative; }
 .reel .rec::before { content: ''; position: absolute; left: 8px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: #fff; animation: rec 1s steps(2) infinite; }
 .reel b { font: italic 900 34px 'Titillium Web', 'Russo One', sans-serif; letter-spacing: 1px; color: #fff; text-shadow: 0 3px 0 #0b3b44, 0 0 18px rgba(255, 138, 26, .55); white-space: nowrap; }

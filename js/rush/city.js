@@ -242,11 +242,12 @@ export class City {
   }
   // (across a sheer edge, a roof's or the quay's, only the side (x, z) is on counts: it's flat there, not a wall
   // leaning out, which would throw what's sunk into it sideways off the edge)
-  // (`h`: the height there, if it's already known)
-  groundNormal(x, z, out = new THREE.Vector3(), y = Infinity, py = y, h = this.groundHeight(x, z, y, py)) {
+  // (`h`: the height there, if it's already known; `tyre`, as for groundHeight: what the height was taken from, so the
+  // slope round it sees the same scenery it did, not a step beside a wheel that the wheel itself doesn't stand on)
+  groundNormal(x, z, out = new THREE.Vector3(), y = Infinity, py = y, h = this.groundHeight(x, z, y, py), tyre = py) {
     const e = 0.35;
-    const dx = edgeSlope(this.groundHeight(x + e, z, y, py), h, this.groundHeight(x - e, z, y, py));
-    const dz = edgeSlope(this.groundHeight(x, z + e, y, py), h, this.groundHeight(x, z - e, y, py));
+    const dx = edgeSlope(this.groundHeight(x + e, z, y, py, tyre), h, this.groundHeight(x - e, z, y, py, tyre));
+    const dz = edgeSlope(this.groundHeight(x, z + e, y, py, tyre), h, this.groundHeight(x, z - e, y, py, tyre));
     return out.set(-dx, 2 * e, -dz).normalize();
   }
   surfaceGrip() { return 1; }
@@ -274,7 +275,7 @@ export class City {
     const ramp = point.x > ra - M && point.x < rb + M && point.z > rc - M && point.z < rd + M;
     const h = this.groundHeight(point.x, point.z, origin.y, origin.y, tyre);
     if (!ramp && Math.abs(h - point.y) > 0.5) return null;
-    return { dist: Math.max(0, t), point, normal: this.groundNormal(point.x, point.z, undefined, origin.y, origin.y, h) };
+    return { dist: Math.max(0, t), point, normal: this.groundNormal(point.x, point.z, undefined, origin.y, origin.y, h, tyre) };
   }
 
   // Buildings near (x, z)

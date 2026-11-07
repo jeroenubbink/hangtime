@@ -29,7 +29,8 @@ function sticker() {
   const g = cv.getContext('2d');
   const draw = () => {
     g.clearRect(0, 0, 512, 512);
-    g.fillStyle = '#ffffff'; g.beginPath(); g.roundRect(8, 8, 496, 496, 40); g.fill();
+    // (rounded where the browser can: roundRect is newer than the rest of this, and a level mustn't fail to load over it)
+    g.fillStyle = '#ffffff'; g.beginPath(); if (g.roundRect) g.roundRect(8, 8, 496, 496, 40); else g.rect(8, 8, 496, 496); g.fill();
     g.fillStyle = '#1b1b1f'; g.beginPath(); g.moveTo(256, 30); g.lineTo(476, 380); g.lineTo(36, 380); g.closePath(); g.fill();
     g.fillStyle = '#ffd23a'; g.beginPath(); g.moveTo(256, 78); g.lineTo(436, 360); g.lineTo(76, 360); g.closePath(); g.fill();
     // (the flame)

@@ -22,7 +22,7 @@ import { buildStation as stationModel, DEBRIS_COLOURS } from './station.js';
 import { crane, Boat } from './harbour.js';
 import { ruin } from './ruin.js';
 import { fixtures } from './fixtures.js';
-import { gateway } from './gateway.js';
+import { gateway, fit } from './gateway.js';
 import { roadsign, warning } from './roadsign.js';
 import { depot, flame as sparksFlame } from './depot.js';
 import { bank, coin } from './bank.js';
@@ -247,7 +247,7 @@ function sparksSides(v) {
       g.fillStyle = '#ff8a1a'; g.fillRect(12, 214, 1000, 30);
       sparksFlame(g, 150, 116, 1.75);
       g.fillStyle = '#11898c'; g.textAlign = 'left'; g.textBaseline = 'middle';
-      fitText(g, 'SPARKS', 720, 170, "900 {}px 'Titillium Web', Impact, sans-serif");
+      fit(g, 'SPARKS', 720, 170, "900 {}px 'Titillium Web', Impact, sans-serif");
       g.fillText('SPARKS', 262, 118);
     };
     draw();
@@ -278,7 +278,7 @@ function cashSides(v) {
       g.clearRect(0, 0, 512, 160);
       coin(g, 80, 80, 62);
       g.fillStyle = '#f2b632'; g.textAlign = 'left'; g.textBaseline = 'middle';
-      fitText(g, t('FIATMINE'), 340, 92, "900 {}px 'Cinzel', serif");
+      fit(g, t('FIATMINE'), 340, 92, "900 {}px 'Cinzel', serif");
       g.fillText(t('FIATMINE'), 160, 86);
     };
     draw();
@@ -294,7 +294,6 @@ function cashSides(v) {
   v.model.add(m);
 }
 const ROOF = 1.62;
-const fitText = (g, text, w, px, font) => { g.font = font.replace('{}', px); const m = g.measureText(text).width; if (m > w) g.font = font.replace('{}', Math.floor(px * w / m)); };
 
 function loadLevel(key) {
   if (city?.level === LEVELS[key]) return;
@@ -365,6 +364,7 @@ function clearRun() {
   for (const h of halves) dropHalf(h);
   halves = [];
   debris?.clear();
+  blinkers?.clear();
   clearEffects();
 }
 // Take a one-off effect mesh out of the scene and free its geometry and material
@@ -856,7 +856,8 @@ function fruit(at) {
 function sunk(B, X) {
   const p = B.spot;
   G.rec?.event(G.t, 'sunk', { by: X.id, boat: B.i });
-  if (G.crash) { G.crash.boatFrom = X.car.pos.clone(); G.crash.sank = B; }
+  // (the camera's shot of it worked out afresh: another boat gone down earlier in the crash had its own)
+  if (G.crash) { G.crash.boatFrom = X.car.pos.clone(); G.crash.sank = B; G.crash.boatCam = null; }
   splash(p, 70);
   sound.splash();
   if (G.state !== 'crash' || G.ended) return;
@@ -2520,7 +2521,8 @@ function updateCamera(dt, rawDt) {
     const over = city.level.overview && since >= city.level.overview.after;
     const T = over ? overview() : together(all, ks, C.wide ? C.wide.at : C.subject ? C.subject.car.pos : C.focus);
     // (overview: once it's up there it stays, the whole crash long)
-    if (over) { if (T && !C.wide) { C.wide = { at: T.at.clone(), r: T.r, max: T.max, from: city.level.overview.from }; C.wideA = null; } C.wideT = C.wideOff = 0; }
+    // (taking over from an ordinary wide shot that's up when it starts: held from here on, that one would never let go)
+    if (over) { if (T && (!C.wide || C.wide.from == null)) { C.wide = { at: T.at.clone(), r: T.r, max: T.max, from: city.level.overview.from }; C.wideA = null; } C.wideT = C.wideOff = 0; }
     // (but never for long: past WIDE_HOLD it's back in, for a full shot, however much is still going on)
     else if (T && (C.wide ? C.wideT <= WIDE_HOLD : C.wideT > 2 && C.cutT > (C.wideBack || 2))) { if (!C.wide) { C.wide = { at: T.at.clone(), r: T.r }; C.wideT = 0; C.wideBack = 0; } C.wideOff = 0; }
     else if (C.wide && ((C.wideOff = (C.wideOff || 0) + rawDt) > 1.5 && C.wideT > SHOT || C.wideT > WIDE_HOLD)) {
@@ -3092,6 +3094,8 @@ function tick(raw, draw = true) {
       for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) contact(B[i], B[j]);
     }
     for (const v of traffic.list) v.pose();
+    // (Bank Shot's queue blinking behind the menu too: on the clock, the game's stands still here)
+    blinkers.update(traffic.list, performance.now() / 1000);
     // (no dive ring left up from a run quit in the middle of one)
     mark.update();
     // (from over the roofs: Tower Dive's junction is a sky deck)
@@ -3251,7 +3255,6 @@ function replay(R) {
   time = R.time;
   setLook(time);
   startRun(0);
-  charges?.reset();
   for (const v of traffic.list.slice()) traffic.remove(v);
   standIns?.dispose();
   standIns = null;
@@ -3270,6 +3273,8 @@ function replay(R) {
   const F = R.frames, _q = new THREE.Quaternion(), _p = new THREE.Vector3(), look = new THREE.Vector3();
   // (and the yacht, afloat till it went down)
   const sank = G.boats.map(b => R.events?.find(e => e.type === 'sunk' && (e.boat || 0) === b.i)?.t);
+  // (and the roadworks' gas and tar, standing till they went up)
+  const went = (R.events || []).filter(e => e.type === 'charge');
   return {
     frames: F.length, start: F[0].t, end: F[F.length - 1].t,
     seek(t, view, draw = true, fx = false) {
@@ -3303,6 +3308,7 @@ function replay(R) {
         b.reset();
         if (sank[b.i] != null && t > sank[b.i]) { b.sink(); b.update(t - sank[b.i], () => {}); }
       }
+      if (charges) { charges.reset(); for (const e of went) if (e.t <= t) charges.hide(e.i); }
       // (`view` false: the camera's left where it is, the free camera's)
       if (view !== false) {
         const c = view || a.cam.map((n, i) => n + (b.cam[i] - n) * k);
@@ -3328,7 +3334,6 @@ function replay(R) {
           explosion(v.car.pos.clone(), big);
           sound.boom(Math.min(1, 0.6 * big));
         } else if (e.type === 'charge') {
-          charges?.hide(e.i);
           explosion(_p.set(e.at[0], e.at[1], e.at[2]).clone(), e.big);
           sound.boom(Math.min(1, 0.6 * e.big));
         } else if (e.type === 'score' && e.at) sparks(_p.set(e.at[0], e.at[1], e.at[2]), 12);

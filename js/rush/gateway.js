@@ -95,14 +95,15 @@ export function gateway(city, G) {
 }
 
 // A canvas drawn by `draw`, as a material (`lit`: glowing, not shaded). (Short Cut's film set letters its own with
-// these too)
-export function board(w, h, draw, lit) {
+// these too.) With a `font`, drawn again once that's in (`draw` paints the whole of it, every time)
+export function board(w, h, draw, lit, font) {
   const cv = document.createElement('canvas');
   cv.width = w; cv.height = h;
   draw(cv.getContext('2d'));
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
+  if (font) document.fonts?.load(font).then(() => { draw(cv.getContext('2d')); tex.needsUpdate = true; }).catch(() => {});
   const o = { map: tex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
   return lit ? new THREE.MeshBasicMaterial({ ...o, toneMapped: false }) : new THREE.MeshLambertMaterial(o);
 }

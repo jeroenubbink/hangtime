@@ -23,7 +23,7 @@ export function depot(city, D) {
   group.add(fixtures(city, [['depot_gate', ...D.gate, 0], ...D.kit, ...(D.masts || []).map(M => ['depot_mast', ...M])]));
   // The floodlights on the masts, and the pools of light they throw on the yard, warm: on at night, and at dawn still
   // (`group.lamps(k)`, k 0 to 1, turns them up)
-  const lensGeo = sceneryGeo('depot_mast_lens'), lit = new THREE.Group(), pools = [];
+  const lensGeo = sceneryGeo('depot_mast_lens'), lit = new THREE.Group();
   const glow = new THREE.MeshBasicMaterial({ color: '#fff0c8', transparent: true, toneMapped: false });
   const pool = new THREE.MeshBasicMaterial({ map: poolTexture(), color: '#ffb866', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 });
@@ -94,7 +94,7 @@ export function depot(city, D) {
     flame(g, 1416, 128, 1.15);
     g.fillStyle = '#ffffff'; fit(g, name, 1160, 170, FONT);
     g.fillText(name, 768, 136);
-  }, false);
+  }, false, FONT.replace('{}', 100));
   group.add(onto(new THREE.Mesh(new THREE.PlaneGeometry(14.5, 14.5 / 6), sign), gx, gy(gx, gz) + 8.2, gz, 0, 0, 0, 0.22));
   // and big round the front of the biggest tank, under its bands: the flame and SPARKS, toward the road
   if (D.lettered) {
@@ -105,7 +105,7 @@ export function depot(city, D) {
       flame(g, 330, 256, 2.6);
       g.fillStyle = TEAL; fit(g, 'SPARKS', 1500, 400, FONT);
       g.fillText('SPARKS', 1130, 270);
-    }, false);
+    }, false, FONT.replace('{}', 100));
     tex.transparent = true;
     const geo = new THREE.CylinderGeometry(r + 0.05, r + 0.05, h, 24, 1, true, -span / 2, span);
     const m = new THREE.Mesh(geo, tex);
