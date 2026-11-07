@@ -106,7 +106,9 @@ through them. Things to know:
   of bays outside its gate, under warnings that get more worried the nearer you get: light one and the blasts run
   down the row both ways into two junctions, and once it's over the chain goes up again in slow motion, from the
   depot's yard, before the tour of the wreckage); **Bank Shot** (your road comes in at 45° and stops
-  at the avenue: bounce the wreckage off the shops and down to the big junction); and **Mind the Gap** (the road stops at a
+  at the avenue, its right lane queued solid with cars pulling out onto it one at a time as gaps come, so only the
+  last few, a tanker and a bus among them, are still waiting when you get there down the empty left lane: bounce
+  the wreckage off the shops and down to the big junction); and **Mind the Gap** (the road stops at a
   canal, the ramp doesn't: short and you're swimming, long and you land on the queue past the quay road).
 - **Tower Dive**: the biggest ramp in town, five ramps side by side, 30° to 50° at the lip (white fins
   between them keep you in yours). Off the 35° to 45° ones at full speed you
@@ -337,8 +339,8 @@ Tracks are saved in the browser (localStorage). "Copy code" and "Paste code" sha
     pavements, buildings, the quay, and bridges (the ground is one height everywhere, except over a bridge deck, where
     it depends on whether you're above or below it)
   - `levels.js`: the junctions: roads, traffic lanes, red lights and queues, ramps, bridges, and the timed tanker and bus
-  - `traffic.js`: lanes and drivers (following, stopping at red, reacting late, swerving); far traffic glides along
-    its lane without physics
+  - `traffic.js`: lanes and drivers (following, stopping at red, reacting late, swerving, merging into a gap);
+    far traffic glides along its lane without physics
   - `props.js`: lamp posts, trees, traffic lights, bins, hydrants, bollards and crash barriers that get knocked flying
   - `stacks.js`: Tower Dive's stacks of cars in glass boxes, and how they come down
   - `hotel.js`: Tower Dive's grounds: the hotel's sign, the park's stream and footbridges, the drive, the car park's

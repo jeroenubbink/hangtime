@@ -529,8 +529,8 @@ export const LEVELS = {
     name: 'Bank Shot', blurb: 'Your road comes in at an angle and stops at the avenue. The big junction is down it: bounce the wreckage off the shops and send it there.',
     seed: 97,
     bounds: [-440, 440, -210, 470],
-    // (on the diagonal, in its right-hand lane, facing down it)
-    start: { x: -300 + D45 * (40 + 5.4), z: 300 - D45 * 40 + D45 * 5.4, yaw: -Math.PI / 4, speed: 28 },
+    // (on the diagonal, facing down it, in the left lane of the two your way: the right's queued solid)
+    start: { x: -300 + D45 * (40 + 1.8), z: 300 - D45 * 40 + D45 * 1.8, yaw: -Math.PI / 4, speed: 28 },
     junction: [0, 0],
     roads: [
       { name: 'main', x0: -300, z0: 300, x1: 0, z1: 0, right: 2, left: 2 },
@@ -539,7 +539,14 @@ export const LEVELS = {
     ],
     lanes: [
       { road: 'main', side: -1, i: 0, speed: [18, 22], fill: [20, 400], gap: [50, 100] },
-      ...busy('avenue'),
+      // (the avenue's near lane, the one they pull out into, a little lighter: else they'd never get out)
+      ...busy('avenue').map(l => l.side === 1 && l.i === 1 ? { ...l, gap: [10, 14] } : l),
+      // Your road's right lane, queued back from the avenue, every one of them waiting to pull out onto it and going
+      // when there's a gap, one at a time: by the time you get there, only the last few are left
+      { road: 'main', side: 1, i: 1, then: { road: 'avenue', side: 1, i: 1 }, bend: 10, speed: [14, 18], stop: 414,
+        merge: { every: [0.7, 1.1], after: 1.5, keep: 3 },
+        // (the back of it, the ones still there when you are: a tanker and a bus among them)
+        queue: [null, null, null, null, null, null, null, null, null, null, 'tanker', null, 'bus'] },
       // The big junction: queues both ways on the cross street, waiting for the avenue
       { road: 'north', side: 1, i: 0, speed: [16, 20], stop: 412.3, queue: [null, null, 'bus', null, null] },
       { road: 'north', side: 1, i: 1, speed: [16, 20], stop: 412.3, queue: [null, 'tanker', null, null] },
