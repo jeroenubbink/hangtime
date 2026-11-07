@@ -39,17 +39,19 @@ export function crane(city, C) {
 
 // A boat, `B`: { x, z, name, pts }, moored at the water's level; by default the yacht, bow out to sea (-z). Or another of
 // the kits' boats: `model`, turned `yaw` (0 or a right angle), the `parts` of it that are solid ({ dz, w, d, up }: along
-// it, across it, and how high over the water), and its `board`, where its name goes on each side ([out, up, along], or
-// none). It floats (solid sides, a deck to come down on, what's on that) until `sink()`: then it lurches over, the bow
+// it, across it, and how high over its waterline), its `board`, where its name goes on each side ([out, up, along], or
+// none), and its `lift`, how high it rides (the model's waterline over the water's level). It floats (solid sides, a deck to come down on, what's on that) until `sink()`: then it lurches over, the bow
 // comes up and it goes down stern first.
-const YACHT = { model: 'yacht', parts: [{ dz: 0, w: 6.4, d: 24, up: 1.6 }, { dz: 3, w: 4.8, d: 11, up: 3.9 }], board: [3.19, 0.95, 7.4] };
+// (the yacht rides up in the water, the white of its sides clear of it and the top of the red bottom showing; its deck's
+// where it always was, level with the quay)
+const YACHT = { model: 'yacht', lift: 1.1, parts: [{ dz: 0, w: 6.4, d: 24, up: 0.38 }, { dz: 3, w: 4.8, d: 11, up: 2.68 }], board: [3.19, 0.95, 7.4] };
 export class Boat {
   constructor(scene, city, B) {
     B = { ...YACHT, ...B };
     this.scene = scene; this.city = city; this.B = B;
     const W = city.water;
-    // (a little low in the water: the bow's forefoot rides at the waterline)
-    this.y = W.y - 0.12;
+    // (else a little low in the water: the bow's forefoot rides at the waterline)
+    this.y = W.y + (B.lift ?? -0.12);
     // (turned on the outside; it rolls and pitches inside, in its own axes)
     this.group = new THREE.Group();
     this.hull = new THREE.Group();
