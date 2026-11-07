@@ -89,7 +89,7 @@ through them. Things to know:
 
 ## Rushtime
 
-- **Six junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
+- **Nine junctions:** **Market Cross**, a four-way crossroads in town with four lanes of traffic crossing your path;
   **Dockside Drop**, a downhill run with a crest that throws you, ending at a six-lane harbour road with the
   water behind it; **Gridlock Leap**, where your way is jammed solid back from the lights and the roadworks left
   a ramp: fly onto the jam and shove it into the busy junction; **Over the Edge**, a jam backed up across a bridge,
@@ -97,30 +97,32 @@ through them. Things to know:
   at an angle and the wrecks go through the crash barrier and down the banks into the traffic below; **Short Cut**,
   where your road bends right and you don't: across the corner's traffic, off a kicker on a building site and
   120-220 m through the air, down on the queue at the first of two busy crossings (or, with full rush, on the
-  queue at the second), to shove it through both; and
+  queue at the second), to shove it through both;
   **Last Chance Gas**, a T-junction with Fuel's Paradise straight across it, a petrol station with a
   sunset-and-flaming-palm logo on its roof. Anything that hits it hard enough sets it off: your car under the canopy at speed or through a pump or pillar, or, once
   you've crashed, the traffic you've thrown at it, or a blast beside it. Then the pumps go, the canopy and its logo
-  fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction.
-- **Three rough ones, for ideas** (not shown to players yet: in dev mode only, see Run): **Tanker Row** (at dawn, the Sparks fuel depot's whole fleet parked in a row
-  of bays outside its gate (the next in turned to face it), under warnings that get more worried the nearer you get,
-  and more of it waiting in the yard at the two loading racks: light one and the blasts run down the row both ways
-  into two junctions, and mostly in through the gate too; the side streets wait at red lights, and now and then a
-  startled queue runs it, and once it's over the chain goes up again in slow motion, from the
-  depot's yard, before the tour of the wreckage); **Bank Shot** (your road comes in at 45° and stops
+  fly, and every car on the forecourt is thrown 10-15 m into the air and out over the junction;
+  **Bank Shot**, your road comes in at 45° and stops
   at the avenue, in the late afternoon, its right lane queued solid behind roadworks, indicators blinking, cars
   pulling out onto the avenue one at a time as gaps come, so only the last few, a tanker, Fiatmine's cash van and a
   bus, are still waiting when you get there down the empty left lane, the tanker pulling out round the corner as you
   arrive; across the avenue, Fiatmine's bank, columns, dome and all: bounce the wreckage off it into something for a
   BANK SHOT, and blow the van for the money; and beside the bank the roadworks' compound, its gas cage and tar boiler
-  yours to blow up); and **Mind the Gap** (at midday, the sun high over the water; the road stops at a
+  yours to blow up;
+  **Mind the Gap**, at midday, the sun high over the water; the road stops at a
   canal, the ramp doesn't: short and you're swimming, long and you land on the queue past the quay road; the signs on
   the way in pleading with you to turn around, and the old steel bridge with its deck lifted out, its trusses either
   side of you as you fly through, a floating crane lifting a piece of it out, a little of its deck still on at the
   far end, and road-closed fences across both ends to smash through (they cost you nothing); a towpath
   along the near bank with lanterns, benches and trees, and two boats moored out of the way, a houseboat on your side
   and the SIGHTSEER tour boat across the water: anything in your crash going into one, or a blast reaching it, sinks
-  it for 5,000 and a heap of its own in the tour).
+  it for 5,000 and a heap of its own in the tour; and
+  **Tanker Row**, at dawn, the Sparks fuel depot's whole fleet parked in a row
+  of bays outside its gate (the next in turned to face it), under warnings that get more worried the nearer you get,
+  and more of it waiting in the yard at the two loading racks: light one and the blasts run down the row both ways
+  into two junctions, and mostly in through the gate too; the side streets wait at red lights, and now and then a
+  startled queue runs it, and once it's over the chain goes up again in slow motion, from the
+  depot's yard, before the tour of the wreckage.
 - **Tower Dive**: the biggest ramp in town, five ramps side by side, 30° to 50° at the lip (white fins
   between them keep you in yours). Off the 35° to 45° ones at full speed you
   come down on the first of three **sky decks**, the roofs of the Hotel California (its name in lights across the
